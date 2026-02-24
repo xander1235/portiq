@@ -95,7 +95,17 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
       json
     };
   } catch (err) {
-    return { error: err.message || String(err) };
+    let errorMsg = err.message || String(err);
+    if (err.name === 'AggregateError' && err.errors) {
+      errorMsg += `: ${err.errors.map(e => e.message || String(e)).join(', ')}`;
+    } else if (err.cause) {
+      if (err.cause.name === 'AggregateError' && err.cause.errors) {
+        errorMsg += `: ${err.cause.errors.map(e => e.message || String(e)).join(', ')}`;
+      } else {
+        errorMsg += `: ${err.cause.message || String(err.cause)}`;
+      }
+    }
+    return { error: errorMsg };
   }
 });
 

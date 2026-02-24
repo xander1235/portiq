@@ -7,11 +7,15 @@ It provides an intuitive interface for testing, organizing, and managing your AP
 ## ✨ Features
 
 - **Organized Collections**: Nest requests deeply into folders. Drag and drop to reorder or move items easily.
-- **Dynamic Workspaces**: Collapsible sidebar, tabs, and adjustable layout panels for a clutter-free environment.
+- **Dynamic Workspaces**: Collapsible sidebar, tabs, and adjustable layout panels for a clutter-free environment. All layout resizing and toggles automatically persist across restarts.
 - **Smart Environments**: Manage basic URL presets, auth tokens, and specific variables per environment.
+- **Beautiful Environment Management**:
+  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request to instantly see their resolved values.
+  - Command your data via an overhauled, modern two-pane Manage Environments grid modal.
 - **Comprehensive Request Builder**: 
   - Visual editors for Query Params, Headers, and Auth.
   - Multi-format request body support (JSON, XML, form-data, urlencoded, raw).
+  - Your active request (method, URL, headers, body) fully persists across reloads.
 - **AI Assistant**: Built-in intelligent prompting to generate tests, suggest mock data, and analyze responses.
 - **Response Visualization**: View raw data, pretty-printed JSON, tabular data, XML, or CSV exports.
 - **Pre & Post Scripts**: Write scripts to run before a request is fired or to assert tests against the response.

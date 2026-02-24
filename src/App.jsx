@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse } from "./services/ai.js";
 import { jsonToCsv, jsonToXml, xmlToJson } from "./services/format.js";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table.js";
@@ -34,21 +35,251 @@ function getValueByPath(root, path) {
   if (!path || path === "$") return root;
   const cleaned = path.replace(/^\$\./, "");
   const parts = cleaned.split(".").flatMap((part) => {
-    const match = part.match(/(\\w+)\\[(\\d+)\\]/);
+    const match = part.match(/(\w+)\[(\d+)\]/);
     if (match) return [match[1], Number(match[2])];
     return [part];
   });
   return parts.reduce((acc, key) => (acc == null ? acc : acc[key]), root);
 }
 
-function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder }) {
+function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar }) {
+  const containerStyle = { position: "relative", display: "flex", alignItems: "center", flex: 1, ...style };
+  const inputRef = React.useRef(null);
+  const textRef = React.useRef(null);
+  const popupRef = React.useRef(null);
+  const [editingKey, setEditingKey] = React.useState(null);
+  const [draftValue, setDraftValue] = React.useState("");
+  const [hoveredData, setHoveredData] = React.useState(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event) {
+      if (editingKey && popupRef.current && !popupRef.current.contains(event.target)) {
+        setEditingKey(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [editingKey]);
+
+  const handleScroll = () => {
+    if (inputRef.current && textRef.current) {
+      textRef.current.scrollLeft = inputRef.current.scrollLeft;
+    }
+  };
+
+  React.useEffect(() => {
+    handleScroll();
+  }, [value]);
+
+  const renderHighlighted = () => {
+    if (!value) {
+      return <span style={{ color: "var(--muted)" }}>{placeholder}</span>;
+    }
+    const parts = value.split(/(\{\{.*?\}\})/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("{{") && part.endsWith("}}")) {
+        const key = part.slice(2, -2).trim();
+        const exists = envVars && Object.prototype.hasOwnProperty.call(envVars, key);
+        return (
+          <span
+            key={i}
+            onPointerEnter={(e) => {
+              const rect = e.target.getBoundingClientRect();
+              setHoveredData({ key, rect });
+            }}
+            onPointerLeave={() => setHoveredData(null)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (inputRef.current) {
+                inputRef.current.focus();
+                const rect = e.target.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const charWidth = rect.width / part.length;
+                const charOffset = Math.round(clickX / charWidth);
+                const prefixLength = parts.slice(0, i).join('').length;
+                const totalOffset = prefixLength + charOffset;
+                inputRef.current.setSelectionRange(totalOffset, totalOffset);
+              }
+            }}
+            onDoubleClick={(e) => {
+              if (!onUpdateEnvVar) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setEditingKey(key);
+              setDraftValue(exists ? envVars[key] : "");
+              setHoveredData(null);
+            }}
+            style={{
+              position: "relative",
+              color: exists ? "var(--accent-2)" : "#ff5555",
+              backgroundColor: exists ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
+              borderRadius: "3px",
+              padding: "0 2px",
+              cursor: onUpdateEnvVar ? "text" : "default",
+              pointerEvents: "auto"
+            }}
+          >
+            {part}
+          </span>
+        );
+      }
+      return <span key={i} style={{ pointerEvents: "none" }}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className={`env-input-wrap ${className}`} style={containerStyle}>
+      {hoveredData && !editingKey && ReactDOM.createPortal(
+        <div style={{
+          position: "fixed",
+          bottom: window.innerHeight - hoveredData.rect.top + 6,
+          left: hoveredData.rect.left + (hoveredData.rect.width / 2),
+          transform: "translateX(-50%)",
+          background: "var(--panel-2)",
+          border: "1px solid var(--border)",
+          padding: "4px 8px",
+          borderRadius: "4px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
+          color: "var(--text)",
+          fontSize: "0.80rem",
+          whiteSpace: "nowrap",
+          zIndex: 99999,
+          pointerEvents: "none",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
+        }}>
+          <div style={{ fontWeight: 600, color: (envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? 'var(--text)' : '#ff5555' }}>
+            {(envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? envVars[hoveredData.key] : "Unresolved Variable"}
+          </div>
+          {onUpdateEnvVar && (
+            <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "3px", fontWeight: 500 }}>
+              Double-click to edit
+            </div>
+          )}
+          <div style={{
+            position: "absolute",
+            top: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            borderWidth: "4px",
+            borderStyle: "solid",
+            borderColor: "var(--border) transparent transparent transparent"
+          }}></div>
+        </div>,
+        document.body
+      )}
+      {editingKey && (
+        <div ref={popupRef} style={{
+          position: "absolute",
+          top: "100%", left: 0,
+          marginTop: "4px",
+          zIndex: 100,
+          background: "var(--panel-2)",
+          border: "1px solid var(--border)",
+          padding: "8px",
+          borderRadius: "8px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          minWidth: "220px",
+          color: "var(--text)"
+        }}>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>Edit variable: {editingKey}</div>
+          <input
+            autoFocus
+            className="input compact"
+            value={draftValue}
+            onChange={(e) => setDraftValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                onUpdateEnvVar(editingKey, draftValue);
+                setEditingKey(null);
+              }
+              if (e.key === "Escape") setEditingKey(null);
+            }}
+            placeholder="Value..."
+          />
+          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+            <button className="ghost compact" onPointerDown={() => setEditingKey(null)}>Cancel</button>
+            <button
+              className="primary compact"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                onUpdateEnvVar(editingKey, draftValue);
+                setEditingKey(null);
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", overflow: "hidden", padding: 0, margin: 0, height: "100%" }}>
+        <div
+          ref={textRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            pointerEvents: "none",
+            whiteSpace: "pre",
+            overflow: "hidden",
+            color: "var(--text)",
+            zIndex: 3,
+            fontFamily: "inherit",
+            fontSize: "inherit",
+            fontWeight: "inherit",
+            letterSpacing: "inherit",
+            wordSpacing: "inherit",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {renderHighlighted()}
+        </div>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onScroll={handleScroll}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            width: "100%",
+            height: "100%",
+            padding: 0,
+            margin: 0,
+            border: "none",
+            background: "transparent",
+            outline: "none",
+            color: "transparent",
+            caretColor: "var(--text)",
+            fontFamily: "inherit",
+            fontSize: "inherit",
+            fontWeight: "inherit",
+            letterSpacing: "inherit",
+            wordSpacing: "inherit",
+            zIndex: 2,
+            minWidth: 0,
+            position: "relative"
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, envVars, onUpdateEnvVar }) {
   function updateRow(index, field, value) {
     const next = rows.map((row, idx) => (idx === index ? { ...row, [field]: value } : row));
     onChange(next);
   }
 
   function addRow() {
-    onChange([...rows, { key: "", value: "", enabled: true }]);
+    onChange([...rows, { key: "", value: "", comment: "", enabled: true }]);
   }
 
   function removeRow(index) {
@@ -61,56 +292,93 @@ function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder }) {
         <div />
         <div>{keyPlaceholder}</div>
         <div>{valuePlaceholder}</div>
+        <div>Comment</div>
         <div className="table-editor-actions">
           <button className="ghost" onClick={addRow}>Add</button>
         </div>
       </div>
-      {rows.map((row, idx) => (
-        <div className={row.enabled ? "table-editor-row active" : "table-editor-row"} key={idx}>
-          <label className="table-editor-toggle">
+      <div className="table-rows">
+        {rows.map((row, index) => (
+          <div className="table-row" key={index}>
             <input
               type="checkbox"
-              checked={row.enabled ?? true}
-              onChange={(e) => updateRow(idx, "enabled", e.target.checked)}
+              className="checkbox"
+              checked={row.enabled !== false}
+              onChange={(e) => updateRow(index, "enabled", e.target.checked)}
             />
-          </label>
-          <input
-            className="input"
-            value={row.key}
-            placeholder={keyPlaceholder}
-            onChange={(e) => updateRow(idx, "key", e.target.value)}
-          />
-          <input
-            className="input"
-            value={row.value}
-            placeholder={valuePlaceholder}
-            onChange={(e) => updateRow(idx, "value", e.target.value)}
-          />
-          <button className="ghost" onClick={() => removeRow(idx)}>Remove</button>
-        </div>
-      ))}
+            <input
+              className="input table-input"
+              value={row.key}
+              placeholder={keyPlaceholder || "Key"}
+              onChange={(e) => updateRow(index, "key", e.target.value)}
+            />
+            <EnvInput
+              className="input table-input"
+              value={row.value}
+              placeholder={valuePlaceholder || "Value"}
+              onChange={(val) => updateRow(index, "value", val)}
+              envVars={envVars}
+              onUpdateEnvVar={onUpdateEnvVar}
+              style={{ width: "100%" }}
+            />
+            <input
+              className="input table-input"
+              value={row.comment || ""}
+              placeholder="Comment"
+              onChange={(e) => updateRow(index, "comment", e.target.value)}
+            />
+            <button className="ghost icon-button" onClick={() => removeRow(index)} aria-label="Remove row">
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.warn(error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.warn(error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+
 function App() {
-  const [activeRequestTab, setActiveRequestTab] = useState("Body");
-  const [activeResponseTab, setActiveResponseTab] = useState("Pretty");
-  const [method, setMethod] = useState("GET");
-  const [url, setUrl] = useState("https://api.example.com/users");
-  const [headersText, setHeadersText] = useState("{\n  \"Content-Type\": \"application/json\"\n}");
-  const [bodyText, setBodyText] = useState("");
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const [activeRequestTab, setActiveRequestTab] = useLocalStorage("ui_activeRequestTab", "Body");
+  const [activeResponseTab, setActiveResponseTab] = useLocalStorage("ui_activeResponseTab", "Pretty");
+  const [method, setMethod] = useLocalStorage("ui_method", "GET");
+  const [url, setUrl] = useLocalStorage("ui_url", "https://api.example.com/users");
+  const [headersText, setHeadersText] = useLocalStorage("ui_headersText", "{\n  \"Content-Type\": \"application/json\"\n}");
+  const [bodyText, setBodyText] = useLocalStorage("ui_bodyText", "");
+  const [aiPrompt, setAiPrompt] = useLocalStorage("ui_aiPrompt", "");
+  const [templateId, setTemplateId] = useLocalStorage("ui_templateId", "");
 
   const [response, setResponse] = useState(null);
   const [responseSummary, setResponseSummary] = useState({ summary: "No response yet.", hints: [] });
   const [error, setError] = useState("");
-  const [activeSidebar, setActiveSidebar] = useState("Collections");
+  const [activeSidebar, setActiveSidebar] = useLocalStorage("ui_activeSidebar", "Collections");
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const [showRightRail, setShowRightRail] = useState(true);
-  const [collections, setCollections] = useState([
+  const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [collections, setCollections] = useLocalStorage("ui_collections", [
     {
       id: "col-default",
       name: "Users API",
@@ -143,27 +411,27 @@ function App() {
       ]
     }
   ]);
-  const [activeCollectionId, setActiveCollectionId] = useState("col-default");
-  const [environments, setEnvironments] = useState([
+  const [activeCollectionId, setActiveCollectionId] = useLocalStorage("ui_activeCollectionId", "col-default");
+  const [environments, setEnvironments] = useLocalStorage("ui_environments", [
     {
       id: "env-default",
       name: "Local",
-      vars: [{ key: "baseUrl", value: "https://api.example.com", enabled: true }]
+      vars: [{ key: "baseUrl", value: "https://api.example.com", comment: "", enabled: true }]
     }
   ]);
-  const [activeEnvId, setActiveEnvId] = useState("env-default");
+  const [activeEnvId, setActiveEnvId] = useLocalStorage("ui_activeEnvId", "env-default");
 
-  const [paramsRows, setParamsRows] = useState([{ key: "", value: "", enabled: true }]);
-  const [headersRows, setHeadersRows] = useState([{ key: "Content-Type", value: "application/json", enabled: true }]);
-  const [authRows, setAuthRows] = useState([{ key: "Authorization", value: "Bearer <token>", enabled: false }]);
-  const [bodyType, setBodyType] = useState("json");
-  const [bodyRows, setBodyRows] = useState([{ key: "", value: "", enabled: true }]);
-  const [testsPreText, setTestsPreText] = useState("");
-  const [testsPostText, setTestsPostText] = useState("");
-  const [testsInputText, setTestsInputText] = useState("{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
+  const [paramsRows, setParamsRows] = useLocalStorage("ui_paramsRows", [{ key: "", value: "", comment: "", enabled: true }]);
+  const [headersRows, setHeadersRows] = useLocalStorage("ui_headersRows", [{ key: "Content-Type", value: "application/json", comment: "", enabled: true }]);
+  const [authRows, setAuthRows] = useLocalStorage("ui_authRows", [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }]);
+  const [bodyType, setBodyType] = useLocalStorage("ui_bodyType", "json");
+  const [bodyRows, setBodyRows] = useLocalStorage("ui_bodyRows", [{ key: "", value: "", comment: "", enabled: true }]);
+  const [testsPreText, setTestsPreText] = useLocalStorage("ui_testsPreText", "");
+  const [testsPostText, setTestsPostText] = useLocalStorage("ui_testsPostText", "");
+  const [testsInputText, setTestsInputText] = useLocalStorage("ui_testsInputText", "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
   const [testsOutput, setTestsOutput] = useState([]);
-  const [headersMode, setHeadersMode] = useState("table");
-  const [testsMode, setTestsMode] = useState("post");
+  const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
+  const [testsMode, setTestsMode] = useLocalStorage("ui_testsMode", "post");
   const [showTestInput, setShowTestInput] = useState(false);
   const [showTestOutput, setShowTestOutput] = useState(false);
   const [selectedTablePath, setSelectedTablePath] = useState("$");
@@ -182,16 +450,16 @@ function App() {
   const [editingFolderId, setEditingFolderId] = useState("");
   const [folderNameDraft, setFolderNameDraft] = useState("");
   const [openFolderMenuId, setOpenFolderMenuId] = useState("");
-  const [requestName, setRequestName] = useState("/users");
-  const [currentRequestId, setCurrentRequestId] = useState("");
+  const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
+  const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
   const [editingRequestId, setEditingRequestId] = useState("");
   const [requestNameDraft, setRequestNameDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
 
-  const [leftWidth, setLeftWidth] = useState(260);
-  const [rightWidth, setRightWidth] = useState(260);
-  const [topHeight, setTopHeight] = useState(window.innerHeight / 2);
+  const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 260);
+  const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
+  const [topHeight, setTopHeight] = useLocalStorage("ui_topHeight", window.innerHeight / 2);
   const [draggingLeft, setDraggingLeft] = useState(false);
   const [draggingRight, setDraggingRight] = useState(false);
   const [draggingMain, setDraggingMain] = useState(false);
@@ -1314,10 +1582,25 @@ function App() {
       .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
   }
 
+  function handleUpdateEnvVar(key, newValue) {
+    if (!activeEnvId) return;
+    setEnvironments((prev) => prev.map(env => {
+      if (env.id !== activeEnvId) return env;
+      const existing = env.vars.find(v => v.key === key);
+      let updatedVars;
+      if (existing) {
+        updatedVars = env.vars.map(v => v.key === key ? { ...v, value: newValue } : v);
+      } else {
+        updatedVars = [...env.vars, { key, value: newValue, comment: "", enabled: true }];
+      }
+      return { ...env, vars: updatedVars };
+    }));
+  }
+
   function interpolate(value) {
     if (typeof value !== "string") return value;
     const vars = getEnvVars();
-    return value.replace(/\\{\\{(.*?)\\}\\}/g, (_match, key) => {
+    return value.replace(/\{\{(.*?)\}\}/g, (_match, key) => {
       const trimmed = String(key).trim();
       return Object.prototype.hasOwnProperty.call(vars, trimmed) ? vars[trimmed] : "";
     });
@@ -1366,8 +1649,11 @@ function App() {
   }
 
   function buildUrlWithParams() {
-    if (!paramsRows.length) return url;
-    const base = interpolate(url || "");
+    let base = interpolate(url || "");
+
+    // Fix missing slash between a port and the path (e.g. http://localhost:8080api -> http://localhost:8080/api)
+    base = base.replace(/^(https?:\/\/[a-zA-Z0-9.-]+:\d+)([^\/?#])/i, "$1/$2");
+    if (!paramsRows || !paramsRows.length) return base;
     const query = paramsRows
       .filter((row) => row.key && row.enabled !== false)
       .map((row) => `${encodeURIComponent(row.key)}=${encodeURIComponent(interpolate(row.value || ""))}`)
@@ -1433,6 +1719,11 @@ function App() {
     }
 
     const result = await window.api.sendRequest(payload);
+
+    if (result.error) {
+      setError(result.error);
+    }
+
     setResponse(result);
     const summary = await summarizeResponse(result);
     setResponseSummary(summary);
@@ -1468,6 +1759,7 @@ function App() {
   function handleHeadersRowsChange(next) {
     setHeadersRows(next);
     setHeadersText(JSON.stringify(rowsToObject(next), null, 2));
+    if (currentRequestId) updateRequestState(currentRequestId, "headersRows", next);
   }
 
   async function handleGenerateTests() {
@@ -1648,7 +1940,22 @@ function App() {
           >
             History
           </button>
-          <button className="ghost" onClick={() => setShowEnvModal(true)}>Environments</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px' }}>
+            <select
+              className="input compact"
+              value={activeEnvId}
+              onChange={(e) => setActiveEnvId(e.target.value)}
+              style={{ padding: '4px 24px 4px 8px', maxWidth: '150px' }}
+            >
+              <option value="" disabled>Select Environment</option>
+              {environments.map(env => (
+                <option key={env.id} value={env.id}>{env.name}</option>
+              ))}
+            </select>
+            <button className="ghost" onClick={() => setShowEnvModal(true)} title="Manage Environments">
+              Manage Environments
+            </button>
+          </div>
         </div>
         <div className="topbar-actions">
           <input
@@ -1880,17 +2187,15 @@ function App() {
                 <option>PUT</option>
                 <option>DELETE</option>
               </select>
-              <input
+              <EnvInput
                 className="input url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(val) => setUrl(val)}
+                envVars={getEnvVars()}
+                onUpdateEnvVar={handleUpdateEnvVar}
+                placeholder="https://api.example.com/v1/users/{{id}}"
+                style={{ flex: 1 }}
               />
-              <select className="input template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                <option value="">Template</option>
-                {templates.map((item) => (
-                  <option key={item.id} value={item.id}>{item.label}</option>
-                ))}
-              </select>
               <button className="primary" onClick={handleSend}>Send</button>
             </div>
 
@@ -1944,6 +2249,12 @@ function App() {
                 )}
                 {activeRequestTab === "Tests" && (
                   <>
+                    <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestOutput((prev) => !prev)}>
+                      Output
+                    </button>
+                    <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestInput((prev) => !prev)}>
+                      Test Input
+                    </button>
                     <div className="tabs" style={{ marginBottom: 0 }}>
                       <button
                         className={testsMode === "pre" ? "tab active" : "tab"}
@@ -1958,12 +2269,6 @@ function App() {
                         Post-response
                       </button>
                     </div>
-                    <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestOutput((prev) => !prev)}>
-                      Output
-                    </button>
-                    <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestInput((prev) => !prev)}>
-                      Test Input
-                    </button>
                     <button className="primary compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={runTests}>Run Tests</button>
                   </>
                 )}
@@ -1974,9 +2279,14 @@ function App() {
               {activeRequestTab === "Params" && (
                 <TableEditor
                   rows={paramsRows}
-                  onChange={setParamsRows}
-                  keyPlaceholder="Param"
+                  onChange={(r) => {
+                    setParamsRows(r);
+                    if (currentRequestId) updateRequestState(currentRequestId, "paramsRows", r);
+                  }}
+                  keyPlaceholder="Query Param"
                   valuePlaceholder="Value"
+                  envVars={getEnvVars()}
+                  onUpdateEnvVar={handleUpdateEnvVar}
                 />
               )}
               {activeRequestTab === "Headers" && (
@@ -1987,6 +2297,7 @@ function App() {
                       onChange={handleHeadersRowsChange}
                       keyPlaceholder="Header"
                       valuePlaceholder="Value"
+                      envVars={getEnvVars()}
                     />
                   )}
                   {headersMode === "json" && (
@@ -2002,9 +2313,14 @@ function App() {
               {activeRequestTab === "Auth" && (
                 <TableEditor
                   rows={authRows}
-                  onChange={setAuthRows}
-                  keyPlaceholder="Auth key"
-                  valuePlaceholder="Value"
+                  onChange={(r) => {
+                    setAuthRows(r);
+                    if (currentRequestId) updateRequestState(currentRequestId, "authRows", r);
+                  }}
+                  keyPlaceholder="Auth Type"
+                  valuePlaceholder="Credentials"
+                  envVars={getEnvVars()}
+                  onUpdateEnvVar={handleUpdateEnvVar}
                 />
               )}
               {activeRequestTab === "Body" && (
@@ -2019,9 +2335,13 @@ function App() {
                   {(bodyType === "form" || bodyType === "multipart") && (
                     <TableEditor
                       rows={bodyRows}
-                      onChange={setBodyRows}
+                      onChange={(r) => {
+                        setBodyRows(r);
+                        if (currentRequestId) updateRequestState(currentRequestId, "bodyRows", r);
+                      }}
                       keyPlaceholder="Field"
                       valuePlaceholder="Value"
+                      envVars={getEnvVars()}
                     />
                   )}
                 </div>
@@ -2076,25 +2396,27 @@ function App() {
           <div className="resizer vertical" onMouseDown={() => setDraggingMain(true)} />
 
           <section className="response">
-            <div className="response-meta">
-              <div>Status: {response?.status ? `${response.status} ${response.statusText}` : "-"}</div>
-              <div>Latency: {response?.duration ? `${response.duration} ms` : "-"}</div>
-              <div>Size: {response?.body ? `${response.body.length} bytes` : "-"}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div className="response-meta" style={{ marginBottom: 0 }}>
+                <div>Status: {response?.status ? `${response.status} ${response.statusText}` : "-"}</div>
+                <div>Latency: {response?.duration ? `${response.duration} ms` : "-"}</div>
+                <div>Size: {response?.body ? `${response.body.length} bytes` : "-"}</div>
+              </div>
+
+              <div className="tabs" style={{ marginBottom: 0 }}>
+                {responseTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    className={tab === activeResponseTab ? "tab active" : "tab"}
+                    onClick={() => setActiveResponseTab(tab)}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {error && <div className="error">{error}</div>}
-
-            <div className="tabs">
-              {responseTabs.map((tab) => (
-                <button
-                  key={tab}
-                  className={tab === activeResponseTab ? "tab active" : "tab"}
-                  onClick={() => setActiveResponseTab(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
 
             <div className="response-body">
               {activeResponseTab === "Pretty" && (
@@ -2312,72 +2634,71 @@ function App() {
       {showEnvModal && (
         <div className="modal-backdrop" onClick={() => setShowEnvModal(false)}>
           <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Environments</div>
+            <div className="modal-title">
+              <div>Manage Environments</div>
+              <button className="ghost icon-button" onClick={() => setShowEnvModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+            </div>
             <div className="env-layout">
               <div className="env-sidebar">
                 <div className="env-sidebar-header">
-                  <div className="field-label">Select env</div>
+                  <span style={{ fontSize: "0.9rem", color: "var(--muted)" }}>Environments</span>
                   <button
-                    className="ghost"
+                    className="ghost icon-button"
+                    title="Create Environment"
+                    style={{ padding: '4px', height: 'auto', minHeight: 0 }}
                     onClick={() => {
                       const id = `env-${Date.now()}`;
                       setEnvironments((prev) => [
                         ...prev,
-                        { id, name: `Env ${prev.length + 1}`, vars: [{ key: "", value: "", enabled: true }] }
+                        { id, name: `Env ${prev.length + 1}`, vars: [{ key: "", value: "", comment: "", enabled: true }] }
                       ]);
                       setActiveEnvId(id);
                     }}
                   >
-                    Create Env
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </button>
                 </div>
                 <div className="env-list scroll">
                   {environments.map((env) => (
-                    <label key={env.id} className={activeEnvId === env.id ? "env-item active" : "env-item"}>
-                      <input
-                        type="checkbox"
-                        checked={selectedEnvIds.includes(env.id)}
-                        onChange={(e) => {
-                          setSelectedEnvIds((prev) =>
-                            e.target.checked ? [...prev, env.id] : prev.filter((id) => id !== env.id)
-                          );
-                        }}
-                      />
-                      <button
-                        className="ghost env-select"
-                        onClick={() => setActiveEnvId(env.id)}
-                      >
+                    <div
+                      key={env.id}
+                      className={activeEnvId === env.id ? "env-item active" : "env-item"}
+                      onClick={() => setActiveEnvId(env.id)}
+                    >
+                      <div className="env-select">
                         {env.name}
-                      </button>
-                    </label>
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    if (selectedEnvIds.length === 0) return;
-                    const remaining = environments.filter((env) => !selectedEnvIds.includes(env.id));
-                    setEnvironments(remaining);
-                    if (remaining.length === 0) {
-                      setActiveEnvId("");
-                    } else if (!remaining.find((env) => env.id === activeEnvId)) {
-                      setActiveEnvId(remaining[0].id);
-                    }
-                    setSelectedEnvIds([]);
-                  }}
-                >
-                  Delete Selected
-                </button>
+                <div className="env-sidebar-footer">
+                  <button
+                    className="ghost container-fluid"
+                    style={{ width: "100%", justifyContent: "center" }}
+                    onClick={() => {
+                      if (!activeEnvId) return;
+                      const remaining = environments.filter((env) => env.id !== activeEnvId);
+                      setEnvironments(remaining);
+                      if (remaining.length > 0) {
+                        setActiveEnvId(remaining[0].id);
+                      } else {
+                        setActiveEnvId(null);
+                      }
+                    }}
+                  >
+                    Delete Environment
+                  </button>
+                </div>
               </div>
-
               <div className="env-editor">
                 {getActiveEnv() ? (
                   <>
-                    <div className="panel-row">
+                    <div style={{ display: "flex", alignItems: "center", marginBottom: "8px", gap: "12px" }}>
                       <input
                         className="input"
                         placeholder="Environment name"
                         value={getActiveEnv()?.name || ""}
+                        style={{ fontSize: "1.2rem", fontWeight: "600", border: "none", background: "transparent", padding: "0" }}
                         onChange={(e) =>
                           setEnvironments((prev) =>
                             prev.map((env) =>
@@ -2387,7 +2708,10 @@ function App() {
                         }
                       />
                     </div>
-                    <div className="env-vars">
+                    <div className="panel-body" style={{ marginBottom: "16px" }}>
+                      Use in requests via interpolation: <code>{"{{variableName}}"}</code>
+                    </div>
+                    <div className="env-vars" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                       <TableEditor
                         rows={getActiveEnv()?.vars || []}
                         onChange={(rows) => {
@@ -2399,18 +2723,18 @@ function App() {
                         }}
                         keyPlaceholder="Key"
                         valuePlaceholder="Value"
+                        envVars={getEnvVars()}
+                        onUpdateEnvVar={handleUpdateEnvVar}
                       />
-                    </div>
-                    <div className="panel-body">
-                      Use in requests as <code>{"{{baseUrl}}"}</code>
-                    </div>
-                    <div className="modal-footer">
-                      <button className="primary" onClick={() => setShowEnvModal(false)}>Save Environment</button>
                     </div>
                   </>
                 ) : (
                   <div className="empty-state">
-                    No Environments. Create one from the left panel.
+                    <div className="empty-state-icon">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    </div>
+                    <div>No environment selected</div>
+                    <div style={{ fontSize: "0.85rem", marginTop: "8px" }}>Create one from the sidebar to manage variables.</div>
                   </div>
                 )}
               </div>
@@ -2419,176 +2743,184 @@ function App() {
         </div>
       )}
 
-      {showCollectionModal && (
-        <div className="modal-backdrop" onClick={() => setShowCollectionModal(false)}>
-          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Manage Collections</div>
-            <div className="env-layout">
-              <div className="env-sidebar">
-                <div className="env-sidebar-header">
-                  <div className="field-label">Collections</div>
-                  <button className="ghost" onClick={addCollection}>Create Collection</button>
-                </div>
-                <div className="env-list scroll">
-                  {collections.map((col) => (
-                    <label key={col.id} className="env-item">
-                      <input
-                        type="checkbox"
-                        checked={selectedCollectionIds.includes(col.id)}
-                        onChange={(e) => {
-                          setSelectedCollectionIds((prev) =>
-                            e.target.checked ? [...prev, col.id] : prev.filter((id) => id !== col.id)
-                          );
-                        }}
-                      />
-                      <button className="ghost env-select" onClick={() => setActiveCollectionId(col.id)}>
-                        {col.name}
-                      </button>
-                    </label>
-                  ))}
-                </div>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    if (selectedCollectionIds.length === 0) return;
-                    const remaining = collections.filter((col) => !selectedCollectionIds.includes(col.id));
-                    if (remaining.length === 0) {
+      {
+        showCollectionModal && (
+          <div className="modal-backdrop" onClick={() => setShowCollectionModal(false)}>
+            <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Manage Collections</div>
+              <div className="env-layout">
+                <div className="env-sidebar">
+                  <div className="env-sidebar-header">
+                    <div className="field-label">Collections</div>
+                    <button className="ghost" onClick={addCollection}>Create Collection</button>
+                  </div>
+                  <div className="env-list scroll">
+                    {collections.map((col) => (
+                      <label key={col.id} className="env-item">
+                        <input
+                          type="checkbox"
+                          checked={selectedCollectionIds.includes(col.id)}
+                          onChange={(e) => {
+                            setSelectedCollectionIds((prev) =>
+                              e.target.checked ? [...prev, col.id] : prev.filter((id) => id !== col.id)
+                            );
+                          }}
+                        />
+                        <button className="ghost env-select" onClick={() => setActiveCollectionId(col.id)}>
+                          {col.name}
+                        </button>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      if (selectedCollectionIds.length === 0) return;
+                      const remaining = collections.filter((col) => !selectedCollectionIds.includes(col.id));
+                      if (remaining.length === 0) {
+                        setSelectedCollectionIds([]);
+                        return;
+                      }
+                      setCollections(remaining);
+                      if (!remaining.find((col) => col.id === activeCollectionId)) {
+                        setActiveCollectionId(remaining[0].id);
+                      }
                       setSelectedCollectionIds([]);
-                      return;
-                    }
-                    setCollections(remaining);
-                    if (!remaining.find((col) => col.id === activeCollectionId)) {
-                      setActiveCollectionId(remaining[0].id);
-                    }
-                    setSelectedCollectionIds([]);
-                  }}
-                >
-                  Delete Selected
-                </button>
-              </div>
+                    }}
+                  >
+                    Delete Selected
+                  </button>
+                </div>
 
-              <div className="env-editor">
-                {getActiveCollection() ? (
-                  <>
-                    <div className="panel-row">
-                      <input
-                        className="input"
-                        placeholder="Collection name"
-                        value={getActiveCollection()?.name || ""}
-                        onChange={(e) => updateCollectionName(e.target.value)}
-                      />
+                <div className="env-editor">
+                  {getActiveCollection() ? (
+                    <>
+                      <div className="panel-row">
+                        <input
+                          className="input"
+                          placeholder="Collection name"
+                          value={getActiveCollection()?.name || ""}
+                          onChange={(e) => updateCollectionName(e.target.value)}
+                        />
+                      </div>
+                      <div className="panel-body">
+                        Use the left panel to select collections. Nested folders and requests remain in the collection tree.
+                      </div>
+                      <div className="modal-footer">
+                        <button className="primary" onClick={() => setShowCollectionModal(false)}>Save</button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-state">
+                      No Collections. Create one from the left panel.
                     </div>
-                    <div className="panel-body">
-                      Use the left panel to select collections. Nested folders and requests remain in the collection tree.
-                    </div>
-                    <div className="modal-footer">
-                      <button className="primary" onClick={() => setShowCollectionModal(false)}>Save</button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="empty-state">
-                    No Collections. Create one from the left panel.
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {showImportTextModal && (
-        <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Import JSON from Text</div>
-            <textarea
-              className="input code-editor"
-              value={importTextDraft}
-              onChange={(e) => setImportTextDraft(e.target.value)}
-              placeholder="Paste JSON collection here..."
-              style={{ width: '100%', height: '200px', marginBottom: '10px' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="ghost" onClick={() => setShowImportTextModal(false)}>Cancel</button>
-              <button className="primary" onClick={handleImportTextSubmit}>Import</button>
+      {
+        showImportTextModal && (
+          <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Import JSON from Text</div>
+              <textarea
+                className="input code-editor"
+                value={importTextDraft}
+                onChange={(e) => setImportTextDraft(e.target.value)}
+                placeholder="Paste JSON collection here..."
+                style={{ width: '100%', height: '200px', marginBottom: '10px' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="ghost" onClick={() => setShowImportTextModal(false)}>Cancel</button>
+                <button className="primary" onClick={handleImportTextSubmit}>Import</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {showImportApiModal && (
-        <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Import JSON from API URL</div>
-            <input
-              className="input"
-              value={importApiDraft}
-              onChange={(e) => setImportApiDraft(e.target.value)}
-              placeholder="https://example.com/collection.json"
-              style={{ width: '100%', marginBottom: '10px' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="ghost" onClick={() => setShowImportApiModal(false)}>Cancel</button>
-              <button className="primary" onClick={handleImportApiSubmit}>Import</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMoveModal && itemToMove && (
-        <div className="modal-backdrop" onClick={() => setShowMoveModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Move "{itemToMove.name}"</div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', color: 'var(--muted)' }}>Select Destination</label>
+      {
+        showImportApiModal && (
+          <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Import JSON from API URL</div>
               <input
                 className="input"
-                style={{ width: '100%', marginBottom: '8px' }}
-                placeholder="Search folders..."
-                value={moveSearchQuery}
-                onChange={(e) => setMoveSearchQuery(e.target.value)}
-                autoFocus
+                value={importApiDraft}
+                onChange={(e) => setImportApiDraft(e.target.value)}
+                placeholder="https://example.com/collection.json"
+                style={{ width: '100%', marginBottom: '10px' }}
               />
-              <select
-                className="input"
-                style={{ width: '100%' }}
-                size={8}
-                value={moveTargetId}
-                onChange={(e) => setMoveTargetId(e.target.value)}
-              >
-                {!moveSearchQuery && <option value="root">Collection Root (Top Level)</option>}
-                {getAllFolders(getActiveCollection()?.items || [])
-                  .filter(f => f.id !== itemToMove.id)
-                  .filter(f => !moveSearchQuery || f.name.toLowerCase().includes(moveSearchQuery.toLowerCase()))
-                  .map(folder => (
-                    <option key={folder.id} value={folder.id}>
-                      {folder.name}
-                    </option>
-                  ))
-                }
-              </select>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="ghost" onClick={() => { setShowMoveModal(false); setMoveSearchQuery(""); }}>Cancel</button>
-              <button
-                className="primary"
-                onClick={() => {
-                  if (moveTargetId === "root") {
-                    moveItemInCollection(itemToMove.id, null, true);
-                  } else {
-                    moveItemInCollection(itemToMove.id, moveTargetId, true);
-                  }
-                  setShowMoveModal(false);
-                  setItemToMove(null);
-                  setMoveSearchQuery("");
-                }}
-              >
-                Move Here
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="ghost" onClick={() => setShowImportApiModal(false)}>Cancel</button>
+                <button className="primary" onClick={handleImportApiSubmit}>Import</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+
+      {
+        showMoveModal && itemToMove && (
+          <div className="modal-backdrop" onClick={() => setShowMoveModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Move "{itemToMove.name}"</div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', color: 'var(--muted)' }}>Select Destination</label>
+                <input
+                  className="input"
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  placeholder="Search folders..."
+                  value={moveSearchQuery}
+                  onChange={(e) => setMoveSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                <select
+                  className="input"
+                  style={{ width: '100%' }}
+                  size={8}
+                  value={moveTargetId}
+                  onChange={(e) => setMoveTargetId(e.target.value)}
+                >
+                  {!moveSearchQuery && <option value="root">Collection Root (Top Level)</option>}
+                  {getAllFolders(getActiveCollection()?.items || [])
+                    .filter(f => f.id !== itemToMove.id)
+                    .filter(f => !moveSearchQuery || f.name.toLowerCase().includes(moveSearchQuery.toLowerCase()))
+                    .map(folder => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.name}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="ghost" onClick={() => { setShowMoveModal(false); setMoveSearchQuery(""); }}>Cancel</button>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    if (moveTargetId === "root") {
+                      moveItemInCollection(itemToMove.id, null, true);
+                    } else {
+                      moveItemInCollection(itemToMove.id, moveTargetId, true);
+                    }
+                    setShowMoveModal(false);
+                    setItemToMove(null);
+                    setMoveSearchQuery("");
+                  }}
+                >
+                  Move Here
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }
 
