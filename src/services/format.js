@@ -24,9 +24,34 @@ export function xmlToJson(xmlString) {
   const doc = parser.parseFromString(xmlString, "text/xml");
   const parseError = doc.querySelector("parsererror");
   if (parseError) {
-    throw new Error("Invalid XML");
+    throw new Error(parseError.textContent || "Invalid XML");
   }
   return xmlNodeToObject(doc.documentElement);
+}
+
+export function prettifyXml(xml) {
+  let formatted = '';
+  let pad = 0;
+
+  // Collapse whitespace between tags
+  xml = xml.replace(/>\s+</g, '><');
+
+  // Insert newlines between tags, but NOT inside text nodes
+  xml = xml.replace(/(>)(<)(\/*)/g, '$1\r\n$2$3');
+
+  xml.split('\r\n').forEach((node) => {
+    let indent = 0;
+    if (node.match(/^<\//)) {
+      pad -= 1;
+    } else if (node.match(/^<[^>]*[^\/]>$/) && !node.match(/^<\?/)) {
+      indent = 1;
+    }
+
+    formatted += '  '.repeat(Math.max(0, pad)) + node + '\n';
+    pad += indent;
+  });
+
+  return formatted.trim();
 }
 
 export function jsonToCsv(obj) {
