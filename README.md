@@ -17,6 +17,7 @@ It provides an intuitive interface for testing, organizing, and managing your AP
   - Visual editors for Query Params, Headers, and Auth.
   - Multi-format request body support (JSON, XML, form-data, urlencoded, raw).
   - Your active request (method, URL, headers, body) fully persists across reloads.
+  - **Full-Screen Editing**: Expand the request or response code editors to full-screen mode to get a distraction-free view with natively integrated `Command+F` search functionality.
 - **AI Assistant**: Built-in intelligent prompting to generate tests, suggest mock data, and analyze responses.
 - **Response Visualization**: View raw data, pretty-printed JSON, tabular data, XML, or CSV exports.
 - **Pre & Post Scripts**: Write scripts to run before a request is fired or to assert tests against the response.
