@@ -10,7 +10,8 @@ It provides an intuitive interface for testing, organizing, and managing your AP
 - **Dynamic Workspaces**: Collapsible sidebar, tabs, and adjustable layout panels for a clutter-free environment. All layout resizing and toggles automatically persist across restarts.
 - **Smart Environments**: Manage basic URL presets, auth tokens, and specific variables per environment.
 - **Beautiful Environment Management**:
-  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request to instantly see their resolved values.
+  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button.
+  - Multi-line Variable Interpolation support via CodeMirror syntax highlighting.
   - Command your data via an overhauled, modern two-pane Manage Environments grid modal.
 - **Comprehensive Request Builder**: 
   - Visual editors for Query Params, Headers, and Auth.

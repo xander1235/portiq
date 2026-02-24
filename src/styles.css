@@ -6,6 +6,11 @@
   --panel-2: #1c2233;
   --accent: #ff7a59;
   --accent-2: #2ed3c6;
+  --accent-green: #2ecc71;
+  --accent-yellow: #f1c40f;
+  --accent-blue: #3498db;
+  --accent-purple: #9b59b6;
+  --accent-red: #e74c3c;
   --text: #e9edf5;
   --muted: #a2a9b8;
   --border: #2a3042;
@@ -265,6 +270,64 @@ select {
   min-height: 100px;
 }
 
+/* CodeMirror Overrides */
+.cm-theme-dark,
+.cm-editor {
+  background-color: transparent !important;
+}
+
+.cm-gutters {
+  background-color: transparent !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.cm-env-var,
+.cm-env-var * {
+  color: var(--accent-yellow) !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+
+.cm-tooltip {
+  pointer-events: auto !important;
+}
+
+.cm-lint-marker-error {
+  background-color: transparent !important;
+  background-image: none !important;
+  color: #e74c3c !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.cm-lint-marker-error::after {
+  content: "×";
+  font-size: 14px;
+}
+
+.cm-tooltip-lint {
+  background-color: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text) !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: 0.85rem !important;
+}
+
+.cm-diagnostic-error {
+  border-left: 3px solid #e74c3c !important;
+}
+
+.cm-lintRange-error {
+  background-image: none !important;
+  border-bottom: 2px dotted #e74c3c !important;
+}
+
 .url {
   width: 100%;
 }
@@ -274,20 +337,47 @@ select {
   border: none;
   color: #1a0f0a;
   font-weight: 600;
-  border-radius: 4px;
-  padding: 4px 10px;
+  border-radius: 6px;
+  padding: 6px 14px;
   font-size: 0.85rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .ghost {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 6px 12px;
   font-size: 0.85rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ghost:hover {
+  background: var(--panel-2);
+  border-color: var(--text);
+}
+
+.ghost:active {
+  background: var(--border);
+  transform: translateY(1px);
 }
 
 .tabs {
@@ -1116,6 +1206,149 @@ th {
   padding: 8px 10px;
   display: flex;
   gap: 8px;
+}
+
+/* Export Modal UI */
+.export-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px 16px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.export-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-row:last-child {
+  border-bottom: none;
+}
+
+.export-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.export-row input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.export-row input[type="checkbox"]:checked {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.export-row input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.export-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  width: 40px;
+  text-align: left;
+}
+
+.export-badge.get {
+  color: var(--accent-green);
+}
+
+.export-badge.post {
+  color: var(--accent-yellow);
+}
+
+.export-badge.put {
+  color: var(--accent-blue);
+}
+
+.export-badge.patch {
+  color: var(--accent-purple);
+}
+
+.export-badge.delete {
+  color: var(--accent-red);
+}
+
+.export-title {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.export-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.export-tag {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.export-tag.green::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+}
+
+.export-tag.red::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+}
+
+.export-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
 @media (max-width: 1100px) {

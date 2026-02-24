@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
+import CodeMirror from '@uiw/react-codemirror';
+import { vscodeDark } from '@uiw/codemirror-theme-vscode';
+import { json, jsonParseLinter } from '@codemirror/lang-json';
+import { xml as xmlLang } from '@codemirror/lang-xml';
+import { linter, lintGutter } from '@codemirror/lint';
+import { autocompletion } from '@codemirror/autocomplete';
+import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
 import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse } from "./services/ai.js";
-import { jsonToCsv, jsonToXml, xmlToJson } from "./services/format.js";
+import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format.js";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table.js";
 
-const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize"];
+const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
 const templates = [
   { id: "crud", label: "CRUD (REST)" },
@@ -13,6 +20,86 @@ const templates = [
   { id: "webhook", label: "Webhook Receiver" },
   { id: "search", label: "Search / Query" }
 ];
+
+const xmlLinter = linter((view) => {
+  const diagnostics = [];
+  const text = view.state.doc.toString();
+  if (!text.trim()) return diagnostics;
+
+  // Mask interpolations to avoid valid variables throwing syntax errors
+  const masked = text.replace(/\{\{[^}]+\}\}/g, m => 'x'.repeat(m.length));
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(masked, "text/xml");
+  const parseError = doc.querySelector("parsererror");
+
+  if (parseError) {
+    let line = 1, col = 1, msg = parseError.textContent || "Invalid XML";
+    const chromeMatch = msg.match(/line (\d+) at column (\d+)/);
+    if (chromeMatch) {
+      line = parseInt(chromeMatch[1], 10);
+      col = parseInt(chromeMatch[2], 10);
+    }
+    let pos = 0;
+    try {
+      if (line <= view.state.doc.lines) {
+        pos = view.state.doc.line(line).from + Math.max(0, col - 1);
+      }
+    } catch (e) { }
+
+    diagnostics.push({
+      from: pos,
+      to: pos,
+      severity: "error",
+      message: msg.slice(0, 150)
+    });
+  }
+  return diagnostics;
+});
+
+const customJsonLinter = linter((view) => {
+  const text = view.state.doc.toString();
+  if (!text.trim()) return [];
+
+  try {
+    const noComments = text.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, m => ' '.repeat(m.length));
+    const masked = noComments.replace(/\{\{[^}]+\}\}/g, m => '"' + 'x'.repeat(Math.max(0, m.length - 2)) + '"');
+    JSON.parse(masked);
+    return [];
+  } catch (e) {
+    const diagnostics = jsonParseLinter()(view);
+    const interpolations = [];
+    const regex = /\{\{[^}]+\}\}/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      interpolations.push({ from: match.index, to: match.index + match[0].length });
+    }
+    return diagnostics.filter(d => {
+      return !interpolations.some(i => (d.to >= i.from - 2 && d.from <= i.to + 2));
+    });
+  }
+});
+
+const envVarMatcher = new MatchDecorator({
+  regexp: /\{\{([^}]+)\}\}/g,
+  decoration: (match) => Decoration.mark({
+    class: "cm-env-var",
+    attributes: { "data-env-key": match[1].trim() }
+  })
+});
+const envVarHighlightPlugin = ViewPlugin.fromClass(
+  class {
+    constructor(view) {
+      this.decorations = envVarMatcher.createDeco(view);
+    }
+    update(update) {
+      this.decorations = envVarMatcher.updateDeco(update, this.decorations);
+    }
+  },
+  {
+    decorations: (v) => v.decorations
+  }
+);
 
 function findArrayPaths(value, prefix = "$") {
   const paths = [];
@@ -424,6 +511,12 @@ function App() {
   const [paramsRows, setParamsRows] = useLocalStorage("ui_paramsRows", [{ key: "", value: "", comment: "", enabled: true }]);
   const [headersRows, setHeadersRows] = useLocalStorage("ui_headersRows", [{ key: "Content-Type", value: "application/json", comment: "", enabled: true }]);
   const [authRows, setAuthRows] = useLocalStorage("ui_authRows", [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }]);
+  const [authType, setAuthType] = useLocalStorage("ui_authType", "none");
+  const [authConfig, setAuthConfig] = useLocalStorage("ui_authConfig", {
+    bearer: { token: "" },
+    basic: { username: "", password: "" },
+    api_key: { key: "", value: "", add_to: "header" }
+  });
   const [bodyType, setBodyType] = useLocalStorage("ui_bodyType", "json");
   const [bodyRows, setBodyRows] = useLocalStorage("ui_bodyRows", [{ key: "", value: "", comment: "", enabled: true }]);
   const [testsPreText, setTestsPreText] = useLocalStorage("ui_testsPreText", "");
@@ -443,12 +536,18 @@ function App() {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
+  const [showImportCollisionModal, setShowImportCollisionModal] = useState(false);
+  const [importCollisionData, setImportCollisionData] = useState(null);
+  const [importCollisionNameDraft, setImportCollisionNameDraft] = useState("");
   const [importTextDraft, setImportTextDraft] = useState("");
   const [importApiDraft, setImportApiDraft] = useState("");
   const [editingCollectionName, setEditingCollectionName] = useState(false);
   const [collectionNameDraft, setCollectionNameDraft] = useState("");
   const [editingFolderId, setEditingFolderId] = useState("");
   const [folderNameDraft, setFolderNameDraft] = useState("");
+  const [editingEnvKey, setEditingEnvKey] = useState(null);
+  const [editingEnvDraft, setEditingEnvDraft] = useState("");
+  const [cmEnvEdit, setCmEnvEdit] = useState(null);
   const [openFolderMenuId, setOpenFolderMenuId] = useState("");
   const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
   const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
@@ -456,6 +555,17 @@ function App() {
   const [requestNameDraft, setRequestNameDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
+
+  const [showSnippetModal, setShowSnippetModal] = useState(false);
+  const [snippetLanguage, setSnippetLanguage] = useLocalStorage("ui_snippetLang", "curl");
+  const [snippetInterpolate, setSnippetInterpolate] = useLocalStorage("ui_snippetInterpolate", false);
+  const [snippetSearch, setSnippetSearch] = useState("");
+
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportTargetNode, setExportTargetNode] = useState(null);
+  const [exportSelections, setExportSelections] = useState(new Set());
+  const [exportCollapsedFolders, setExportCollapsedFolders] = useState(new Set());
+  const [exportInterpolate, setExportInterpolate] = useLocalStorage("ui_exportInterpolate", false);
 
   const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 260);
   const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
@@ -781,14 +891,40 @@ function App() {
           .filter((row) => row.key && row.enabled !== false)
           .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
       }
-      const authHeaders = authRows
-        .filter((row) => row.key && row.enabled !== false)
-        .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+
+      const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, (v) => v);
       return { ...authHeaders, ...parsed };
     } catch (err) {
       setError("Headers must be valid JSON.");
       return null;
     }
+  }
+
+  function getCompiledAuthHeaders(type, config, customRows, valFn) {
+    if (type === "none") return {};
+    if (type === "bearer" && config.bearer?.token) {
+      return { "Authorization": `Bearer ${valFn(config.bearer.token)}` };
+    }
+    if (type === "basic" && (config.basic?.username || config.basic?.password)) {
+      const creds = `${valFn(config.basic.username)}:${valFn(config.basic.password)}`;
+      return { "Authorization": `Basic ${btoa(creds)}` };
+    }
+    if (type === "api_key" && config.api_key?.add_to === "header" && config.api_key?.key) {
+      return { [valFn(config.api_key.key)]: valFn(config.api_key.value) };
+    }
+    if (type === "custom") {
+      return customRows
+        .filter((row) => row.key && row.enabled !== false)
+        .reduce((acc, row) => ({ ...acc, [valFn(row.key)]: valFn(row.value) }), {});
+    }
+    return {};
+  }
+
+  function getCompiledAuthParams(type, config, valFn) {
+    if (type === "api_key" && config.api_key?.add_to === "query" && config.api_key?.key) {
+      return { [valFn(config.api_key.key)]: valFn(config.api_key.value) };
+    }
+    return {};
   }
 
   function getActiveCollection() {
@@ -837,6 +973,150 @@ function App() {
     dlAnchorElem.remove();
   }
 
+  function parseImportData(imported) {
+    let collection = null;
+
+    if (imported.meta && imported.meta.format === "httpie") {
+      const colId = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      collection = {
+        id: colId,
+        name: imported.entry?.name || "HTTPie Import",
+        items: []
+      };
+
+      const requests = imported.entry?.requests || [];
+
+      requests.forEach((req, idx) => {
+        const parts = (req.name || `Request ${idx}`).split(' / ').map(p => p.trim());
+        // Only treat it as folders if there's an overarching collection name matches the first part
+        if (parts.length > 1 && parts[0] === collection.name) {
+          parts.shift(); // Remove the root collection name from the folders path
+        }
+
+        const reqName = parts.pop();
+
+        let currentItems = collection.items;
+        parts.forEach(part => {
+          let found = currentItems.find(i => i.type === "folder" && i.name === part);
+          if (!found) {
+            found = {
+              type: "folder",
+              id: `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              name: part,
+              items: []
+            };
+            currentItems.push(found);
+          }
+          currentItems = found.items;
+        });
+
+        const parsedReq = {
+          type: "request",
+          id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          name: reqName,
+          method: req.method || "GET",
+          url: req.url || "",
+          headersRows: (req.headers || []).map(h => ({ key: h.name, value: h.value, enabled: true })),
+          paramsRows: (req.queryParams || []).map(q => ({ key: q.name, value: q.value, enabled: true })),
+          authRows: [{ key: "", value: "", enabled: false }],
+          bodyRows: [{ key: "", value: "", enabled: true }]
+        };
+
+        if (req.body?.type === "text" && req.body?.text?.value) {
+          parsedReq.bodyType = "json";
+          parsedReq.bodyText = req.body.text.value;
+        }
+        if (req.body?.type === "form" && req.body?.form?.fields?.length > 0) {
+          parsedReq.bodyType = "form";
+          parsedReq.bodyRows = req.body.form.fields.map(f => ({ key: f.name, value: f.value, enabled: true }));
+        }
+
+        if (parsedReq.headersRows.length === 0) parsedReq.headersRows = [{ key: "", value: "", enabled: true }];
+        if (parsedReq.paramsRows.length === 0) parsedReq.paramsRows = [{ key: "", value: "", enabled: true }];
+
+        currentItems.push(parsedReq);
+      });
+    } else if (imported.info && imported.info.schema && imported.info.schema.includes("postman.com/json/collection/v2.1.0")) {
+      const colId = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      collection = {
+        id: colId,
+        name: imported.info.name || "Postman Import",
+        items: []
+      };
+
+      const parsePostmanItem = (pmItem) => {
+        if (pmItem.item) {
+          return {
+            type: "folder",
+            id: `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            name: pmItem.name || "Imported Folder",
+            items: pmItem.item.map(parsePostmanItem).filter(Boolean)
+          };
+        } else if (pmItem.request) {
+          const pmReq = pmItem.request;
+          const parsedReq = {
+            type: "request",
+            id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            name: pmItem.name || "Imported Request",
+            method: pmReq.method || "GET",
+            url: typeof pmReq.url === 'string' ? pmReq.url : (pmReq.url?.raw || ""),
+            headersRows: (pmReq.header || []).map(h => ({ key: h.key, value: h.value, enabled: true })),
+            paramsRows: (pmReq.url?.query || []).map(q => ({ key: q.key, value: q.value, enabled: true })),
+            authRows: [{ key: "", value: "", enabled: false }],
+            bodyRows: [{ key: "", value: "", enabled: true }]
+          };
+
+          if (pmReq.body) {
+            const mode = pmReq.body.mode;
+            if (mode === 'raw') {
+              parsedReq.bodyType = "json";
+              parsedReq.bodyText = pmReq.body.raw || "";
+            } else if (mode === 'urlencoded') {
+              parsedReq.bodyType = "form";
+              parsedReq.bodyRows = (pmReq.body.urlencoded || []).map(p => ({ key: p.key, value: p.value, enabled: true }));
+            } else if (mode === 'formdata') {
+              parsedReq.bodyType = "multipart";
+              parsedReq.bodyRows = (pmReq.body.formdata || []).map(p => ({ key: p.key, value: p.value, enabled: true }));
+            }
+          }
+
+          if (parsedReq.headersRows.length === 0) parsedReq.headersRows = [{ key: "", value: "", enabled: true }];
+          if (parsedReq.paramsRows.length === 0) parsedReq.paramsRows = [{ key: "", value: "", enabled: true }];
+
+          return parsedReq;
+        }
+        return null;
+      };
+
+      collection.items = (imported.item || []).map(parsePostmanItem).filter(Boolean);
+
+    } else if (imported.id) {
+      imported.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      collection = imported;
+    }
+
+    if (!collection) return null;
+
+    const existing = collections.find(c => c.name && collection.name && c.name.toLowerCase() === collection.name.toLowerCase());
+    if (existing) {
+      setImportCollisionData(collection);
+      setImportCollisionNameDraft(`${collection.name} Copy`);
+      setShowImportCollisionModal(true);
+      return false; // False indicates it was caught by collision flow
+    }
+
+    return collection;
+  }
+
+  function handleImportCollisionSubmit() {
+    if (!importCollisionData) return;
+    const finalCol = { ...importCollisionData, name: importCollisionNameDraft.trim() || `${importCollisionData.name} Copy` };
+    setCollections((prev) => [...prev, finalCol]);
+    setActiveCollectionId(finalCol.id);
+    setShowImportCollisionModal(false);
+    setImportCollisionData(null);
+  }
+
   function importCollection() {
     const input = document.createElement("input");
     input.type = "file";
@@ -848,15 +1128,16 @@ function App() {
       reader.onload = (event) => {
         try {
           const imported = JSON.parse(event.target.result);
-          if (!imported.id) {
-            alert("Invalid collection format.");
+          const parsedCol = parseImportData(imported);
+          if (parsedCol === false) return; // Handled by collision modal
+          if (!parsedCol) {
+            alert("Invalid collection format. Expected Commu or HTTPie format.");
             return;
           }
-          imported.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-          setCollections((prev) => [...prev, imported]);
-          setActiveCollectionId(imported.id);
+          setCollections((prev) => [...prev, parsedCol]);
+          setActiveCollectionId(parsedCol.id);
         } catch (err) {
-          alert("Failed to parse JSON file.");
+          alert("Failed to parse JSON file. Error: " + err.message);
         }
       };
       reader.readAsText(file);
@@ -868,17 +1149,22 @@ function App() {
     if (!importTextDraft) return;
     try {
       const imported = JSON.parse(importTextDraft);
-      if (!imported.id) {
-        alert("Invalid collection format. Expected an object with an 'id'.");
+      const parsedCol = parseImportData(imported);
+      if (parsedCol === false) {
+        setShowImportTextModal(false); // Hide the parent modal so the collision modal takes over
+        setImportTextDraft("");
         return;
       }
-      imported.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      setCollections((prev) => [...prev, imported]);
-      setActiveCollectionId(imported.id);
+      if (!parsedCol) {
+        alert("Invalid collection format. Expected Commu or HTTPie format.");
+        return;
+      }
+      setCollections((prev) => [...prev, parsedCol]);
+      setActiveCollectionId(parsedCol.id);
       setShowImportTextModal(false);
       setImportTextDraft("");
     } catch (err) {
-      alert("Failed to parse the provided text as JSON.");
+      alert("Failed to parse the provided text as JSON. Error: " + err.message);
     }
   }
 
@@ -887,18 +1173,23 @@ function App() {
     fetch(importApiDraft)
       .then(res => res.json())
       .then(imported => {
-        if (!imported.id) {
-          alert("Invalid collection format. Expected an object with an 'id'.");
+        const parsedCol = parseImportData(imported);
+        if (parsedCol === false) {
+          setShowImportApiModal(false);
+          setImportApiDraft("");
           return;
         }
-        imported.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        setCollections((prev) => [...prev, imported]);
-        setActiveCollectionId(imported.id);
+        if (!parsedCol) {
+          alert("Invalid collection format. Expected Commu or HTTPie format.");
+          return;
+        }
+        setCollections((prev) => [...prev, parsedCol]);
+        setActiveCollectionId(parsedCol.id);
         setShowImportApiModal(false);
         setImportApiDraft("");
       })
       .catch(err => {
-        alert("Failed to fetch or parse the collection from the URL.");
+        alert("Failed to fetch or parse the collection from the URL. Error: " + err.message);
       });
   }
 
@@ -979,17 +1270,32 @@ function App() {
     setParamsRows(req.paramsRows || [{ key: "", value: "", enabled: true }]);
     setHeadersRows(req.headersRows || [{ key: "", value: "", enabled: true }]);
     setAuthRows(req.authRows || [{ key: "", value: "", enabled: false }]);
+
+    // Backward compatibility for existing payloads
+    if (req.authType) {
+      setAuthType(req.authType);
+    } else {
+      const hasActiveAuth = req.authRows && req.authRows.some(r => r.key && r.enabled);
+      setAuthType(hasActiveAuth ? "custom" : "none");
+    }
+
+    setAuthConfig(req.authConfig || {
+      bearer: { token: "" },
+      basic: { username: "", password: "" },
+      api_key: { key: "", value: "", add_to: "header" }
+    });
+
     setBodyRows(req.bodyRows || [{ key: "", value: "", enabled: true }]);
   }
 
-  function updateRequestName(requestId, name) {
+  function updateRequestState(requestId, field, value) {
     const updateItems = (items) =>
       items.map((item) => {
         if (item.type === "folder") {
           return { ...item, items: updateItems(item.items || []) };
         }
         if (item.type === "request" && item.id === requestId) {
-          return { ...item, name };
+          return { ...item, [field]: value };
         }
         return item;
       });
@@ -1000,22 +1306,12 @@ function App() {
     );
   }
 
+  function updateRequestName(requestId, name) {
+    updateRequestState(requestId, "name", name);
+  }
+
   function updateRequestMethod(requestId, method) {
-    const updateItems = (items) =>
-      items.map((item) => {
-        if (item.type === "folder") {
-          return { ...item, items: updateItems(item.items || []) };
-        }
-        if (item.type === "request" && item.id === requestId) {
-          return { ...item, method };
-        }
-        return item;
-      });
-    setCollections((prev) =>
-      prev.map((col) =>
-        col.id === activeCollectionId ? { ...col, items: updateItems(col.items || []) } : col
-      )
-    );
+    updateRequestState(requestId, "method", method);
   }
 
   function deleteRequest(requestId) {
@@ -1234,6 +1530,248 @@ function App() {
     );
   }
 
+  function exportCollection(collectionOrFolderId) {
+    const coll = getActiveCollection();
+    if (!coll) return;
+
+    let rootNode = null;
+    if (coll.id === collectionOrFolderId) {
+      rootNode = coll;
+    } else {
+      const traverse = (items) => {
+        for (let item of items) {
+          if (item.id === collectionOrFolderId) return item;
+          if (item.type === "folder" && item.items) {
+            const res = traverse(item.items);
+            if (res) return res;
+          }
+        }
+        return null;
+      };
+      rootNode = traverse(coll.items);
+    }
+    if (!rootNode) return;
+
+    const allIds = new Set();
+    const collectIds = (node) => {
+      allIds.add(node.id);
+      if (node.items) node.items.forEach(collectIds);
+    };
+    collectIds(rootNode);
+
+    setExportTargetNode(rootNode);
+    setExportSelections(allIds);
+    setShowExportModal(true);
+  }
+
+  function getExportPayload() {
+    if (!exportTargetNode) return { jsonStr: "", fileName: "export.json" };
+
+    const translateNode = (node) => {
+      if (!exportSelections.has(node.id)) return null;
+
+      if (node.type === "folder" || (node.id === exportTargetNode.id && node.id.startsWith("col-"))) {
+        const children = (node.items || []).map(translateNode).filter(Boolean);
+        if (node.id === exportTargetNode.id && node.id.startsWith("col-")) {
+          return children;
+        }
+        return {
+          name: node.name,
+          item: children
+        };
+      }
+      if (node.type === "request") {
+        // If exportInterpolate is true, leave placeholders intact. If false, evaluate them using interpolate()
+        const val = (v) => exportInterpolate ? String(v) : interpolate(String(v));
+
+        let pmReqUrl = node.url ? val(node.url) : "";
+        const pmReqMethod = node.method || "GET";
+        const pmHeaders = (node.headersRows || []).filter(h => h.key && h.enabled !== false).map(h => ({
+          key: val(h.key),
+          value: val(h.value)
+        }));
+        const pmParams = (node.paramsRows || []).filter(p => p.key && p.enabled !== false).map(p => ({
+          key: val(p.key),
+          value: val(p.value)
+        }));
+
+        const type = node.authType || "none";
+        const config = node.authConfig || {};
+        const cRows = node.authRows || [];
+        const authP = getCompiledAuthParams(type, config, val);
+        Object.entries(authP).forEach(([k, v]) => {
+          pmParams.push({ key: k, value: v });
+        });
+        const authH = getCompiledAuthHeaders(type, config, cRows, val);
+        Object.entries(authH).forEach(([k, v]) => {
+          pmHeaders.push({ key: k, value: v });
+        });
+
+        const urlObject = { raw: pmReqUrl };
+        try {
+          if (pmReqUrl.includes("://")) {
+            const u = new URL(pmReqUrl);
+            urlObject.protocol = u.protocol.replace(':', '');
+            urlObject.host = u.hostname.split('.');
+            urlObject.port = u.port || undefined;
+            urlObject.path = u.pathname.split('/').filter(Boolean);
+            urlObject.query = pmParams;
+          } else {
+            urlObject.host = pmReqUrl.split('.');
+            urlObject.query = pmParams;
+          }
+        } catch (e) { /* ignore parse errors, keep raw */ }
+
+        let bodyMode = "raw";
+        let bodyOptions = {};
+        if (node.bodyType === "json") { bodyOptions = { raw: { language: "json" } }; }
+        else if (node.bodyType === "form") { bodyMode = "urlencoded"; }
+        else if (node.bodyType === "multipart") { bodyMode = "formdata"; }
+
+        const pmReqBody = { mode: bodyMode };
+        if (bodyMode === "raw") {
+          if (node.bodyText) pmReqBody.raw = val(node.bodyText);
+          pmReqBody.options = bodyOptions;
+        }
+        if (bodyMode === "urlencoded") {
+          pmReqBody.urlencoded = (node.bodyRows || []).filter(r => r.key && r.enabled !== false).map(r => ({
+            key: val(r.key),
+            value: val(r.value),
+            type: "text"
+          }));
+        }
+        if (bodyMode === "formdata") {
+          pmReqBody.formdata = (node.bodyRows || []).filter(r => r.key && r.enabled !== false).map(r => ({
+            key: val(r.key),
+            value: val(r.value),
+            type: "text"
+          }));
+        }
+
+        return {
+          name: node.name,
+          request: {
+            method: pmReqMethod,
+            header: pmHeaders,
+            body: Object.keys(pmReqBody).length > 1 || pmReqBody.raw ? pmReqBody : undefined,
+            url: urlObject
+          },
+          response: []
+        };
+      }
+      return null;
+    };
+
+    let postmanItems = [];
+    if (exportTargetNode.id.startsWith("col-")) {
+      const translated = translateNode(exportTargetNode);
+      if (Array.isArray(translated)) postmanItems = translated;
+    } else {
+      const translated = translateNode(exportTargetNode);
+      if (translated) postmanItems = [translated];
+    }
+
+    const exportData = {
+      info: {
+        name: exportTargetNode.name || "Commu Collection",
+        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      item: postmanItems
+    };
+
+    return {
+      jsonStr: JSON.stringify(exportData, null, 2),
+      fileName: `${exportTargetNode.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_collection.json`
+    };
+  }
+
+  function renderExportTree(node, depth = 0) {
+    if (!node) return null;
+
+    // Auto-selection check for folders: if all children are selected, parent is considered selected
+    const isNodeSelected = (n) => {
+      if (n.type === "request") return exportSelections.has(n.id);
+      if (!n.items || n.items.length === 0) return exportSelections.has(n.id);
+      return n.items.every(child => isNodeSelected(child));
+    };
+
+    const isSelected = isNodeSelected(node);
+
+    const toggle = () => {
+      const next = new Set(exportSelections);
+      if (isSelected) {
+        // Uncheck self and all children
+        const removeIds = (n) => { next.delete(n.id); if (n.items) n.items.forEach(removeIds); };
+        removeIds(node);
+      } else {
+        // Check self and all children
+        const addIds = (n) => { next.add(n.id); if (n.items) n.items.forEach(addIds); };
+        addIds(node);
+      }
+      setExportSelections(next);
+    };
+
+    if (node.type === "folder" || node.id.startsWith("col-")) {
+      const isCollapsed = exportCollapsedFolders.has(node.id);
+      const toggleCollapse = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = new Set(exportCollapsedFolders);
+        if (isCollapsed) next.delete(node.id);
+        else next.add(node.id);
+        setExportCollapsedFolders(next);
+      };
+
+      return (
+        <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0', marginBottom: '8px' }}>
+          <div className="export-row" style={{ borderBottom: 'none', padding: '4px 0' }}>
+
+            <button
+              className="ghost icon-button compact"
+              style={{ width: '20px', height: '20px', padding: 0, marginRight: '4px', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s' }}
+              onClick={toggleCollapse}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            <label>
+              <input type="checkbox" checked={isSelected} onChange={toggle} />
+              <span style={{ fontWeight: '500', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                {node.name}
+              </span>
+            </label>
+          </div>
+          {!isCollapsed && node.items && node.items.length > 0 && (
+            <div style={{ paddingLeft: '8px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+              {node.items.map(child => renderExportTree(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const methodColorClass = node.method ? node.method.toLowerCase() : 'get';
+
+    return (
+      <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0' }} className="export-row">
+        <label>
+          <input type="checkbox" checked={isSelected} onChange={toggle} />
+          <span className={`export-badge ${methodColorClass}`}>{node.method || 'GET'}</span>
+          <span className="export-title" title={node.name}>{node.name}</span>
+        </label>
+        <div className="export-tags">
+          {node.bodyType && node.bodyType !== "none" && (
+            <span className="export-tag green">Body</span>
+          )}
+          {((node.authType && node.authType !== "none") || (!node.authType && node.authRows && node.authRows.some(a => a.key && a.enabled))) && (
+            <span className="export-tag">Auth</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function matchesQuery(item, query) {
     if (!query) return true;
     const q = query.toLowerCase();
@@ -1393,6 +1931,15 @@ function App() {
                         }}
                       >
                         Delete
+                      </button>
+                      <button
+                        className="ghost"
+                        onClick={() => {
+                          exportCollection(item.id);
+                          setOpenFolderMenuId("");
+                        }}
+                      >
+                        Export
                       </button>
                       <button
                         className="ghost"
@@ -1606,10 +2153,11 @@ function App() {
     });
   }
 
-  function rowsToObject(rows) {
+  function rowsToObject(rows, interpolateValues = true) {
+    const val = (v) => interpolateValues ? interpolate(v) : v;
     return rows
       .filter((row) => row.key && row.enabled !== false)
-      .reduce((acc, row) => ({ ...acc, [row.key]: interpolate(row.value) }), {});
+      .reduce((acc, row) => ({ ...acc, [val(row.key)]: val(row.value) }), {});
   }
 
   function objectToRows(obj) {
@@ -1648,18 +2196,230 @@ function App() {
       .replace(/\/\*[\s\S]*?\*\//g, "");
   }
 
-  function buildUrlWithParams() {
-    let base = interpolate(url || "");
+  function buildUrlWithParams(interpolateValues = true) {
+    const val = (v) => interpolateValues ? interpolate(v) : v;
+    let base = val(url || "");
 
     // Fix missing slash between a port and the path (e.g. http://localhost:8080api -> http://localhost:8080/api)
-    base = base.replace(/^(https?:\/\/[a-zA-Z0-9.-]+:\d+)([^\/?#])/i, "$1/$2");
-    if (!paramsRows || !paramsRows.length) return base;
-    const query = paramsRows
+    // Only insert a slash if the port is immediately followed by a letter or valid path character, not a number (to prevent breaking port 8080 into 808/0)
+    base = base.replace(/^(https?:\/\/[a-zA-Z0-9.-]+:\d+)([a-zA-Z_\-~])/i, "$1/$2");
+
+    const activeParams = [...(paramsRows || [])];
+
+    // Inject API Key into query if configured
+    const authParams = getCompiledAuthParams(authType, authConfig, val);
+    Object.entries(authParams).forEach(([k, v]) => {
+      activeParams.push({ key: k, value: v, enabled: true });
+    });
+
+    if (!activeParams.length) return base;
+    const query = activeParams
       .filter((row) => row.key && row.enabled !== false)
-      .map((row) => `${encodeURIComponent(row.key)}=${encodeURIComponent(interpolate(row.value || ""))}`)
+      .map((row) => `${encodeURIComponent(val(row.key))}=${encodeURIComponent(val(row.value || ""))}`)
       .join("&");
     if (!query) return base;
     return base.includes("?") ? `${base}&${query}` : `${base}?${query}`;
+  }
+
+  function generateSnippet() {
+    const val = (v) => snippetInterpolate ? v : interpolate(v);
+    const reqMethod = method || "GET";
+    const reqUrl = buildUrlWithParams(!snippetInterpolate);
+
+    const activeHeaders = headersRows.filter(r => r.key && r.enabled !== false);
+    const headerObj = {};
+    activeHeaders.forEach(r => { headerObj[val(r.key)] = val(r.value); });
+
+    const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, val);
+    Object.entries(authHeaders).forEach(([k, v]) => {
+      headerObj[k] = v;
+    });
+
+    let reqBody = bodyText;
+    if (bodyType === "json") {
+      reqBody = stripJsonComments(val(bodyText));
+    } else if (bodyType === "form" || bodyType === "multipart") {
+      const data = rowsToObject(bodyRows, snippetInterpolate);
+      reqBody = new URLSearchParams(data).toString();
+    } else {
+      reqBody = val(bodyText);
+    }
+
+    const snippetVars = new Set();
+    const extractVars = (str) => {
+      if (typeof str !== 'string') return;
+      const matches = str.match(/\{\{(.*?)\}\}/g);
+      if (matches) {
+        matches.forEach(m => snippetVars.add(m.replace(/[{}]/g, '').trim()));
+      }
+    };
+
+    if (!snippetInterpolate) {
+      extractVars(reqUrl);
+      extractVars(reqBody);
+      Object.entries(headerObj).forEach(([k, v]) => { extractVars(k); extractVars(v); });
+    }
+
+    const varDeclarations = Array.from(snippetVars).map(v => {
+      // getEnvVars() returns an array like [{key: 'baseUrl', value: 'http://...'}, ...]
+      const row = getEnvVars().find(e => e.key === v);
+      return { key: v, value: row ? row.value : "" };
+    });
+
+    if (snippetLanguage === "curl") {
+      let curl = `curl -X ${reqMethod} '${reqUrl}'`;
+      Object.entries(headerObj).forEach(([k, v]) => {
+        curl += ` \\\n  -H '${k}: ${v}'`;
+      });
+      if (reqBody && reqMethod !== "GET") {
+        curl += ` \\\n  -d '${reqBody.replace(/'/g, "'\\''")}'`;
+      }
+      return curl;
+    }
+    if (snippetLanguage === "raw") {
+      let raw = `${reqMethod} ${reqUrl} HTTP/1.1\n`;
+      Object.entries(headerObj).forEach(([k, v]) => {
+        raw += `${k}: ${v}\n`;
+      });
+      if (reqBody && reqMethod !== "GET") {
+        raw += `\n${reqBody}`;
+      }
+      return raw;
+    }
+    if (snippetLanguage === "python") {
+      let py = `import requests\n\n`;
+      if (varDeclarations.length > 0) {
+        varDeclarations.forEach(v => { py += `${v.key} = "${v.value.replace(/"/g, '\\"')}"\n` });
+        py += `\n`;
+      }
+      const pyStr = (s) => s.includes('{{') ? `f"${s.replace(/\{\{(.*?)\}\}/g, '{$1}')}"` : `"${s}"`;
+
+      py += `url = ${pyStr(reqUrl)}\n`;
+      if (Object.keys(headerObj).length > 0) {
+        py += `headers = {\n`;
+        Object.entries(headerObj).forEach(([k, v]) => {
+          py += `    ${pyStr(k)}: ${pyStr(v.replace(/"/g, '\\"'))},\n`;
+        });
+        py += `}\n`;
+      }
+      if (reqBody && reqMethod !== "GET") {
+        if (bodyType === 'json') {
+          py += `\ndata = ${reqBody || "{}"}\n`; // JSON formatting is tricky with vars inside, Python handles dict natively but we have raw text
+          // If we have vars inside the json text, we should probably evaluate it as an f-string
+          if (reqBody.includes('{{')) {
+            py = py.replace(`\ndata = ${reqBody || "{}"}\n`, `\ndata = f"""${reqBody}"""\n`);
+          }
+        } else {
+          py += `\ndata = ${reqBody.includes('{{') ? `f"""${reqBody}"""` : `"""${reqBody}"""`}\n`;
+        }
+        py += `\nresponse = requests.${reqMethod.toLowerCase()}(url, headers=headers${Object.keys(headerObj).length > 0 ? '' : 'headers=None'}, data=data)\n`;
+      } else {
+        py += `\nresponse = requests.${reqMethod.toLowerCase()}(url, headers=headers${Object.keys(headerObj).length > 0 ? '' : 'headers=None'})\n`;
+      }
+      py += `\nprint(response.text)`;
+      return py;
+    }
+    if (snippetLanguage === "node") {
+      let js = ``;
+      if (varDeclarations.length > 0) {
+        varDeclarations.forEach(v => { js += `const ${v.key} = "${v.value.replace(/"/g, '\\"')}";\n` });
+        js += `\n`;
+      }
+      const jsStr = (s) => s.includes('{{') ? `\`${s.replace(/\{\{(.*?)\}\}/g, '${$1}')}\`` : `"${s}"`;
+
+      js += `const response = await fetch(${jsStr(reqUrl)}, {\n  method: "${reqMethod}",\n`;
+      if (Object.keys(headerObj).length > 0) {
+        js += `  headers: {\n`;
+        Object.entries(headerObj).forEach(([k, v]) => {
+          js += `    [${jsStr(k)}]: ${jsStr(v.replace(/"/g, '\\"'))},\n`;
+        });
+        js += `  },\n`;
+      }
+      if (reqBody && reqMethod !== "GET") {
+        let jsBody = ``;
+        if (bodyType === 'json') {
+          jsBody = `JSON.stringify(${reqBody.includes('{{') ? `JSON.parse(\`${reqBody.replace(/\{\{(.*?)\}\}/g, '${$1}')}\`)` : (reqBody || "{}")})`;
+        } else {
+          jsBody = jsStr(reqBody);
+        }
+        js += `  body: ${jsBody}\n`;
+      }
+      js += `});\n\nconst data = await response.json();\nconsole.log(data);`;
+      return js;
+    }
+    if (snippetLanguage === "c") {
+      let c = `#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n\nint main(void) {\n`;
+      if (varDeclarations.length > 0) {
+        varDeclarations.forEach(v => { c += `  const char* ${v.key} = "${v.value.replace(/"/g, '\\"')}";\n` });
+        c += `\n`;
+      }
+      // C doesn't easily interpolate URLs dynamically without snprintf. To keep it simple, we'll keep placeholders natively unless resolved.
+      c += `  CURL *curl = curl_easy_init();\n  if(curl) {\n`;
+      c += `    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "${reqMethod}");\n`;
+      // If interpolations exist, we fallback to static string
+      c += `    curl_easy_setopt(curl, CURLOPT_URL, "${reqUrl}");\n`;
+      if (Object.keys(headerObj).length > 0) {
+        c += `    struct curl_slist *headers = NULL;\n`;
+        Object.entries(headerObj).forEach(([k, v]) => {
+          c += `    headers = curl_slist_append(headers, "${k}: ${v.replace(/"/g, '\\"')}");\n`;
+        });
+        c += `    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);\n`;
+      }
+      if (reqBody && reqMethod !== "GET") {
+        c += `    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "${reqBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}");\n`;
+      }
+      c += `    CURLcode res = curl_easy_perform(curl);\n    curl_easy_cleanup(curl);\n  }\n  return 0;\n}`;
+      return c;
+    }
+    if (snippetLanguage === "csharp") {
+      let cs = `using System;\nusing System.Net.Http;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static async Task Main()\n    {\n`;
+      if (varDeclarations.length > 0) {
+        varDeclarations.forEach(v => { cs += `        var ${v.key} = "${v.value.replace(/"/g, '\\"')}";\n` });
+        cs += `\n`;
+      }
+      const csStr = (s) => s.includes('{{') ? `$"${s.replace(/\{\{(.*?)\}\}/g, '{$1}')}"` : `"${s}"`;
+
+      cs += `        var client = new HttpClient();\n        var request = new HttpRequestMessage(new HttpMethod("${reqMethod}"), ${csStr(reqUrl)});\n`;
+      Object.entries(headerObj).forEach(([k, v]) => {
+        if (k.toLowerCase() !== 'content-type') {
+          cs += `        request.Headers.Add(${csStr(k)}, ${csStr(v.replace(/"/g, '\\"'))});\n`;
+        }
+      });
+      if (reqBody && reqMethod !== "GET") {
+        let cType = headerObj['Content-Type'] || headerObj['content-type'] || 'text/plain';
+        cs += `        request.Content = new StringContent(${csStr(reqBody.replace(/"/g, '\\"').replace(/\n/g, '\\n'))}, System.Text.Encoding.UTF8, "${cType}");\n`;
+      }
+      cs += `        var response = await client.SendAsync(request);\n        response.EnsureSuccessStatusCode();\n        Console.WriteLine(await response.Content.ReadAsStringAsync());\n    }\n}`;
+      return cs;
+    }
+    if (snippetLanguage === "go") {
+      let go = `package main\n\nimport (\n\t"fmt"\n\t"io/ioutil"\n\t"net/http"\n\t"strings"\n)\n\nfunc main() {\n`;
+      if (varDeclarations.length > 0) {
+        varDeclarations.forEach(v => { go += `\t${v.key} := "${v.value.replace(/"/g, '\\"')}"\n` });
+        go += `\n`;
+      }
+      // Go string interpolation requires fmt.Sprintf, keeping simple for now. 
+      // User can manually interpolate or use snippetInterpolate=true
+      const goStr = (s) => s.includes('{{') ? `fmt.Sprintf("${s.replace(/\{\{(.*?)\}\}/g, '%s')}", ${s.match(/\{\{(.*?)\}\}/g).map(m => m.replace(/[{}]/g, '').trim()).join(', ')})` : `"${s}"`;
+
+      let bodyStr = `nil`;
+      if (reqBody && reqMethod !== "GET") {
+        if (reqBody.includes("{{")) {
+          go += `\tpayloadStr := ${goStr(reqBody.replace(/`/g, '\\"'))}\n`;
+          go += `\tpayload := strings.NewReader(payloadStr)\n`;
+        } else {
+          go += `\tpayload := strings.NewReader(\`${reqBody.replace(/`/g, '`+"`"+`')}\`)\n`;
+        }
+        bodyStr = `payload`;
+      }
+      go += `\n\treq, _ := http.NewRequest("${reqMethod}", ${goStr(reqUrl)}, ${bodyStr})\n\n`;
+      Object.entries(headerObj).forEach(([k, v]) => {
+        go += `\treq.Header.Add(${goStr(k)}, ${goStr(v.replace(/"/g, '\\"'))})\n`;
+      });
+      go += `\n\tres, _ := http.DefaultClient.Do(req)\n\tdefer res.Body.Close()\n\tbody, _ := ioutil.ReadAll(res.Body)\n\n\tfmt.Println(string(body))\n}`;
+      return go;
+    }
+    return "";
   }
 
   function buildTemplatePrompt() {
@@ -2046,13 +2806,13 @@ function App() {
                         {getActiveCollection()?.name || "Untitled Collection"}
                       </button>
                     )}
-                    <div className="menu-wrap">
+                    <div className="menu-wrap" style={{ marginLeft: 'auto' }}>
                       <button
                         className="ghost icon-button"
-                        aria-label="Add item"
+                        aria-label="Collection options"
                         onClick={() => setShowCollectionMenu((prev) => !prev)}
                       >
-                        +
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
                       </button>
                       {showCollectionMenu && (
                         <div className="menu">
@@ -2143,33 +2903,42 @@ function App() {
 
         <main className="main" style={{ gridTemplateRows: `${topHeight}px 10px 1fr` }}>
           <section className="request">
-            <div className="request-title">
-              {editingMainRequestName ? (
-                <input
-                  autoFocus
-                  className="input compact"
-                  value={requestName}
-                  onChange={(e) => setRequestName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || (e.ctrlKey && e.key.toLowerCase() === "s")) {
+            <div className="request-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {editingMainRequestName ? (
+                  <input
+                    autoFocus
+                    className="input compact"
+                    value={requestName}
+                    onChange={(e) => setRequestName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || (e.ctrlKey && e.key.toLowerCase() === "s")) {
+                        if (currentRequestId) {
+                          updateRequestName(currentRequestId, requestName.trim() || "New Request");
+                        }
+                        setEditingMainRequestName(false);
+                      }
+                    }}
+                    onBlur={() => {
                       if (currentRequestId) {
                         updateRequestName(currentRequestId, requestName.trim() || "New Request");
                       }
                       setEditingMainRequestName(false);
-                    }
-                  }}
-                  onBlur={() => {
-                    if (currentRequestId) {
-                      updateRequestName(currentRequestId, requestName.trim() || "New Request");
-                    }
-                    setEditingMainRequestName(false);
-                  }}
-                />
-              ) : (
-                <span className="request-name" onDoubleClick={() => setEditingMainRequestName(true)}>
-                  {requestName}
-                </span>
-              )}
+                    }}
+                  />
+                ) : (
+                  <span className="request-name" onDoubleClick={() => setEditingMainRequestName(true)}>
+                    {requestName}
+                  </span>
+                )}
+              </div>
+              <button
+                className="ghost icon-button"
+                title="Export Code Snippet"
+                onClick={() => setShowSnippetModal(true)}
+              >
+                &lt;/&gt;
+              </button>
             </div>
             <div className="request-bar">
               <select
@@ -2244,6 +3013,27 @@ function App() {
                       <option value="multipart">form-data (simple)</option>
                       <option value="raw">Raw</option>
                     </select>
+                    {(bodyType === "json" || bodyType === "xml") && (
+                      <button
+                        className="ghost compact"
+                        style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                        onClick={() => {
+                          try {
+                            if (bodyType === "json") {
+                              const stripComments = (str) => str.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+                              const parsed = JSON.parse(stripComments(bodyText));
+                              setBodyText(JSON.stringify(parsed, null, 2));
+                            } else if (bodyType === "xml") {
+                              setBodyText(prettifyXml(bodyText));
+                            }
+                          } catch (e) {
+                            // Ignored if invalid
+                          }
+                        }}
+                      >
+                        Prettify
+                      </button>
+                    )}
                     {bodyType === "json" && <div style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>Supports // comments</div>}
                   </>
                 )}
@@ -2311,27 +3101,252 @@ function App() {
                 </div>
               )}
               {activeRequestTab === "Auth" && (
-                <TableEditor
-                  rows={authRows}
-                  onChange={(r) => {
-                    setAuthRows(r);
-                    if (currentRequestId) updateRequestState(currentRequestId, "authRows", r);
-                  }}
-                  keyPlaceholder="Auth Type"
-                  valuePlaceholder="Credentials"
-                  envVars={getEnvVars()}
-                  onUpdateEnvVar={handleUpdateEnvVar}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Type</span>
+                    <select
+                      className="input compact"
+                      style={{ width: '200px' }}
+                      value={authType}
+                      onChange={(e) => {
+                        setAuthType(e.target.value);
+                        if (currentRequestId) updateRequestState(currentRequestId, "authType", e.target.value);
+                      }}
+                    >
+                      <option value="none">No Auth</option>
+                      <option value="bearer">Bearer Token</option>
+                      <option value="basic">Basic Auth</option>
+                      <option value="api_key">API Key</option>
+                      <option value="custom">Custom (Legacy)</option>
+                    </select>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                    {authType === "none" && (
+                      <div style={{ color: 'var(--muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        This request does not use any authorization.
+                      </div>
+                    )}
+
+                    {authType === "bearer" && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Token</span>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Token"
+                            value={authConfig.bearer?.token || ""}
+                            onChange={(e) => {
+                              const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {authType === "basic" && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Username</span>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Username"
+                            value={authConfig.basic?.username || ""}
+                            onChange={(e) => {
+                              const next = { ...authConfig, basic: { ...authConfig.basic, username: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Password</span>
+                          <input
+                            type="password"
+                            className="input"
+                            placeholder="Password"
+                            value={authConfig.basic?.password || ""}
+                            onChange={(e) => {
+                              const next = { ...authConfig, basic: { ...authConfig.basic, password: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {authType === "api_key" && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Key</span>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Key"
+                            value={authConfig.api_key?.key || ""}
+                            onChange={(e) => {
+                              const next = { ...authConfig, api_key: { ...authConfig.api_key, key: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Value</span>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Value"
+                            value={authConfig.api_key?.value || ""}
+                            onChange={(e) => {
+                              const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: 500 }}>Add to</span>
+                          <select
+                            className="input compact"
+                            value={authConfig.api_key?.add_to || "header"}
+                            onChange={(e) => {
+                              const next = { ...authConfig, api_key: { ...authConfig.api_key, add_to: e.target.value } };
+                              setAuthConfig(next);
+                              if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                            }}
+                          >
+                            <option value="header">Header</option>
+                            <option value="query">Query Params</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
+
+                    {authType === "custom" && (
+                      <TableEditor
+                        rows={authRows}
+                        onChange={(r) => {
+                          setAuthRows(r);
+                          if (currentRequestId) updateRequestState(currentRequestId, "authRows", r);
+                        }}
+                        keyPlaceholder="Custom Key"
+                        valuePlaceholder="Credentials"
+                        envVars={getEnvVars()}
+                        onUpdateEnvVar={handleUpdateEnvVar}
+                      />
+                    )}
+                  </div>
+                </div>
               )}
               {activeRequestTab === "Body" && (
-                <div className="body-editor">
-                  {(bodyType === "json" || bodyType === "xml" || bodyType === "raw") && (
-                    <textarea
-                      className="textarea fixed"
-                      value={bodyText}
-                      onChange={(e) => setBodyText(e.target.value)}
-                    />
-                  )}
+                <div
+                  className="body-editor"
+                  style={{ position: 'relative' }}
+                >
+                  {(bodyType === "json" || bodyType === "xml" || bodyType === "raw") && (() => {
+                    const currentEnvVars = getEnvVars();
+                    const envAutoComplete = autocompletion({
+                      override: [(context) => {
+                        let word = context.matchBefore(/\{\{\w*/);
+                        if (!word) return null;
+                        if (word.from === word.to && !context.explicit) return null;
+                        return {
+                          from: word.from + 2,
+                          options: Object.entries(currentEnvVars).map(([k, v]) => ({
+                            label: k,
+                            type: "variable",
+                            detail: String(v) || "",
+                            apply: `${k}}}`
+                          }))
+                        };
+                      }]
+                    });
+
+                    const envHoverTooltip = hoverTooltip((view, pos, side) => {
+                      const text = view.state.doc.toString();
+                      const regex = /\{\{([^}]+)\}\}/g;
+                      let match;
+                      while ((match = regex.exec(text)) !== null) {
+                        const start = match.index;
+                        const end = start + match[0].length;
+                        if (pos >= start && pos <= end) {
+                          const key = match[1].trim();
+                          const val = currentEnvVars[key];
+                          const exists = Object.prototype.hasOwnProperty.call(currentEnvVars, key);
+                          return {
+                            pos: start,
+                            end: end,
+                            above: true,
+                            create() {
+                              const dom = document.createElement("div");
+                              dom.style.background = "var(--panel-2)";
+                              dom.style.border = "1px solid var(--border)";
+                              dom.style.borderRadius = "4px";
+                              dom.style.padding = "4px 8px";
+                              dom.style.fontSize = "0.80rem";
+                              dom.style.boxShadow = "0 4px 12px rgba(0,0,0,0.6)";
+                              dom.style.whiteSpace = "nowrap";
+                              dom.style.fontFamily = '"Space Grotesk", sans-serif';
+                              dom.style.display = "flex";
+                              dom.style.alignItems = "center";
+                              dom.style.gap = "8px";
+
+                              dom.style.pointerEvents = "auto";
+                              dom.onmousedown = (e) => e.stopPropagation();
+
+                              const textSpan = document.createElement("span");
+                              textSpan.style.color = exists ? "var(--text)" : "#ff5555";
+                              textSpan.textContent = exists ? `${key}: ${val}` : `Unresolved variable: ${key}`;
+
+                              const editBtn = document.createElement("span");
+                              editBtn.textContent = "✎ Edit";
+                              editBtn.style.color = "var(--accent-blue)";
+                              editBtn.style.cursor = "pointer";
+                              editBtn.style.fontSize = "0.75rem";
+                              editBtn.style.fontWeight = "bold";
+                              editBtn.onclick = (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCmEnvEdit({ key, value: String(val || "") });
+                              };
+
+                              dom.appendChild(editBtn);
+                              dom.appendChild(textSpan);
+
+                              return { dom };
+                            }
+                          };
+                        }
+                      }
+                      return null;
+                    });
+
+                    return (
+                      <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                        <CodeMirror
+                          value={bodyText}
+                          height="100%"
+                          theme={vscodeDark}
+                          extensions={
+                            bodyType === "json"
+                              ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip]
+                              : bodyType === "xml"
+                                ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip]
+                                : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip]
+                          }
+                          onChange={(value) => setBodyText(value)}
+                          basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                          style={{ height: '100%', fontSize: '13px' }}
+                        />
+                      </div>
+                    );
+                  })()}
                   {(bodyType === "form" || bodyType === "multipart") && (
                     <TableEditor
                       rows={bodyRows}
@@ -2420,18 +3435,68 @@ function App() {
 
             <div className="response-body">
               {activeResponseTab === "Pretty" && (
-                <pre className="code">{pretty || "No response yet."}</pre>
+                <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                  <CodeMirror
+                    value={pretty || "No response yet."}
+                    readOnly={true}
+                    theme={vscodeDark}
+                    extensions={[json()]}
+                    basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
+                    style={{ fontSize: '13px', minHeight: '100px' }}
+                  />
+                </div>
               )}
               {activeResponseTab === "Raw" && (
-                <pre className="code">{raw || "No response yet."}</pre>
+                <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                  <CodeMirror
+                    value={raw || "No response yet."}
+                    readOnly={true}
+                    theme={vscodeDark}
+                    basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
+                    style={{ fontSize: '13px', minHeight: '100px' }}
+                  />
+                </div>
               )}
               {activeResponseTab === "XML" && (
                 <div className="split">
-                  <pre className="code">{xml || raw || "No XML available."}</pre>
+                  <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                    <CodeMirror
+                      value={xml || raw || "No XML available."}
+                      readOnly={true}
+                      theme={vscodeDark}
+                      extensions={[xmlLang()]}
+                      basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
+                      style={{ fontSize: '13px', minHeight: '100px' }}
+                    />
+                  </div>
                   <div className="inline-actions">
                     <button className="ghost" onClick={handleXmlToJson}>XML → JSON</button>
                     <button className="ghost" onClick={() => navigator.clipboard.writeText(xml || raw || "")}>Copy XML</button>
                   </div>
+                </div>
+              )}
+              {activeResponseTab === "Headers" && (
+                <div className="headers-view" style={{ overflow: 'auto', padding: '16px' }}>
+                  {response?.headers && Object.keys(response.headers).length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ padding: '8px', color: 'var(--muted)' }}>Header</th>
+                          <th style={{ padding: '8px', color: 'var(--muted)' }}>Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(response.headers).map(([key, value]) => (
+                          <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '8px', fontWeight: 500 }}>{key}</td>
+                            <td style={{ padding: '8px', wordBreak: 'break-all', fontFamily: 'monospace' }}>{value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ color: 'var(--muted)' }}>No headers available.</div>
+                  )}
                 </div>
               )}
               {activeResponseTab === "Table" && (
@@ -2631,6 +3696,179 @@ function App() {
         </div>
       )}
 
+      {showSnippetModal && (
+        <div className="modal-backdrop" onClick={() => setShowSnippetModal(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} style={{ width: '800px', maxWidth: '90vw' }}>
+            <div className="modal-title">
+              <div>Export Code Snippet</div>
+              <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
+              <select
+                className="input"
+                value={snippetLanguage}
+                onChange={(e) => setSnippetLanguage(e.target.value)}
+                style={{ flex: 1 }}
+              >
+                <option value="curl">cURL</option>
+                <option value="raw">Raw HTTP</option>
+                <option value="python">Python (Requests)</option>
+                <option value="node">Node.js (Fetch)</option>
+                <option value="go">Go (Native)</option>
+                <option value="c">C (libcurl)</option>
+                <option value="csharp">C# (HttpClient)</option>
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <input
+                  type="checkbox"
+                  checked={snippetInterpolate}
+                  onChange={(e) => setSnippetInterpolate(e.target.checked)}
+                />
+                Replace values with placeholders
+              </label>
+            </div>
+
+            <textarea
+              className="textarea"
+              readOnly
+              value={generateSnippet()}
+              style={{ minHeight: '350px', whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px', background: 'var(--panel)' }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button className="ghost" onClick={() => setShowSnippetModal(false)}>Close</button>
+              <button
+                className="primary"
+                onClick={() => {
+                  navigator.clipboard.writeText(generateSnippet());
+                }}
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && (
+        <div className="modal-backdrop" onClick={() => setShowExportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '600px', maxWidth: '95vw', padding: '20px', gap: '20px' }}>
+            <div className="modal-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>Export collection</div>
+              <button className="ghost icon-button" onClick={() => setShowExportModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+            </div>
+
+            <div className="export-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span style={{ fontWeight: '600', fontSize: '1.05rem' }}>{exportTargetNode?.name}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="ghost input compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => {
+                    const allIds = new Set();
+                    const collectIds = (n) => { allIds.add(n.id); if (n.items) n.items.forEach(collectIds); };
+                    collectIds(exportTargetNode);
+                    setExportSelections(allIds);
+                  }}>Select All</button>
+                  <button className="ghost input compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => setExportSelections(new Set())}>None</button>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  Requests <span style={{ color: 'var(--accent-green)', fontWeight: 'bold' }}>{Array.from(exportSelections).filter(id => id.startsWith('req-')).length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="export-list" style={{ overflowY: 'auto', maxHeight: '50vh', padding: '8px 16px' }}>
+              {renderExportTree(exportTargetNode)}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <button className="ghost" style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)' }} onClick={() => setShowExportModal(false)}>Cancel</button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={exportInterpolate}
+                    onChange={(e) => setExportInterpolate(e.target.checked)}
+                  />
+                  Preserve {"{{variables}}"} (don't evaluate)
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button
+                  className="ghost icon-button"
+                  title="Copy to Clipboard"
+                  onClick={() => {
+                    const { jsonStr } = getExportPayload();
+                    navigator.clipboard.writeText(jsonStr);
+                    setShowExportModal(false);
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button
+                  className="ghost"
+                  style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)' }}
+                  onClick={() => alert("Exporting via API is coming soon!")}
+                >
+                  Export as API
+                </button>
+                <button
+                  className="primary"
+                  style={{ background: 'var(--accent-green)', color: '#000', fontWeight: '600', padding: '8px 24px', borderRadius: '8px' }}
+                  onClick={() => {
+                    const { jsonStr, fileName } = getExportPayload();
+                    const blob = new Blob([jsonStr], { type: "application/json" });
+                    const u = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = u;
+                    a.download = fileName;
+                    a.click();
+                    URL.revokeObjectURL(u);
+                    setShowExportModal(false);
+                  }}
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cmEnvEdit && (
+        <div className="modal-backdrop" onClick={() => setCmEnvEdit(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Edit Variable: {cmEnvEdit.key}</div>
+            <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="field-label">Value</div>
+              <input
+                className="input"
+                value={cmEnvEdit.value}
+                onChange={(e) => setCmEnvEdit({ ...cmEnvEdit, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleUpdateEnvVar(cmEnvEdit.key, cmEnvEdit.value);
+                    setCmEnvEdit(null);
+                  }
+                }}
+                autoFocus
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
+                <button className="ghost" onClick={() => setCmEnvEdit(null)}>Cancel</button>
+                <button className="primary" onClick={() => {
+                  handleUpdateEnvVar(cmEnvEdit.key, cmEnvEdit.value);
+                  setCmEnvEdit(null);
+                }}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showEnvModal && (
         <div className="modal-backdrop" onClick={() => setShowEnvModal(false)}>
           <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
@@ -2821,6 +4059,34 @@ function App() {
           </div>
         )
       }
+
+      {showImportCollisionModal && (
+        <div className="modal-backdrop" onClick={() => { setShowImportCollisionModal(false); setImportCollisionData(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Collection Already Exists</div>
+            <div className="modal-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text)' }}>
+                A collection named <b>{importCollisionData?.name}</b> already exists in your workspace.
+                Please provide a new name for the imported collection.
+              </div>
+              <input
+                autoFocus
+                className="input"
+                style={{ width: '100%' }}
+                value={importCollisionNameDraft}
+                onChange={(e) => setImportCollisionNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleImportCollisionSubmit();
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button className="ghost" onClick={() => { setShowImportCollisionModal(false); setImportCollisionData(null); }}>Cancel</button>
+              <button className="primary" onClick={handleImportCollisionSubmit}>Import Collection</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {
         showImportTextModal && (
