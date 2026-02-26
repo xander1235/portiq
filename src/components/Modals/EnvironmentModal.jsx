@@ -108,6 +108,7 @@ export function EnvironmentModal({
                                         valuePlaceholder="Value"
                                         envVars={getEnvVars()}
                                         onUpdateEnvVar={handleUpdateEnvVar}
+                                        isEnv={true}
                                     />
                                 </div>
                             </>

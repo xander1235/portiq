@@ -20,6 +20,7 @@ import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } f
 import { TableEditor } from "./components/TableEditor.jsx";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal.jsx";
 import { ExportModal } from "./components/Modals/ExportModal.jsx";
+import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal.jsx";
 import { Sidebar } from "./components/Sidebar/Sidebar.jsx";
 import { RequestEditor } from "./components/RequestPane/RequestEditor.jsx";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer.jsx";
@@ -114,6 +115,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [isSending, setIsSending] = useState(false);
+
+  const [history, setHistory] = useLocalStorage("ui_history", []);
+  const [historyRetentionDays, setHistoryRetentionDays] = useLocalStorage("ui_historyRetentionDays", 7);
 
 
   const {
@@ -157,6 +162,7 @@ function App() {
   const [snippetSearch, setSnippetSearch] = useState("");
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showGitHubSyncModal, setShowGitHubSyncModal] = useState(false);
   const [exportTargetNode, setExportTargetNode] = useState(null);
   const [exportSelections, setExportSelections] = useState(new Set());
   const [exportCollapsedFolders, setExportCollapsedFolders] = useState(new Set());
@@ -1139,71 +1145,124 @@ function App() {
     return `Template: ${selected.label}. ${aiPrompt || ""}`.trim();
   }
 
+  async function handleLoadHistory(item) {
+    if (!item || !item.request) return;
+    const req = item.request;
+    const res = item.response;
+
+    const mockReq = {
+      name: "History Request",
+      method: req.method,
+      url: req.url,
+      bodyText: req.body || "",
+      bodyType: req.body ? "raw" : "none"
+    };
+
+    if (req.headers && Object.keys(req.headers).length > 0) {
+      const hRows = Object.entries(req.headers).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
+      hRows.push({ key: "", value: "", enabled: true });
+      mockReq.headersRows = hRows;
+      mockReq.headersText = JSON.stringify(req.headers, null, 2);
+    }
+
+    // Restore the workspace
+    loadRequest(mockReq);
+
+    // Restore the response
+    if (res) {
+      setResponse(res);
+      const summary = await summarizeResponse(res);
+      setResponseSummary(summary);
+    } else {
+      setResponse(null);
+      setResponseSummary({ summary: "No response recorded.", hints: [] });
+    }
+  }
+
   async function handleSend() {
+    setIsSending(true);
+    setResponse(null);
+    setResponseSummary({ summary: "Sending request...", hints: [] });
     setError("");
-    const headers = parseHeaders();
-    if (headers === null) return;
-    let body = bodyText;
-    if (bodyType === "json") {
-      body = stripJsonComments(interpolate(bodyText));
-    }
-    if (bodyType === "form") {
-      const data = rowsToObject(bodyRows);
-      body = new URLSearchParams(data).toString();
-    }
-    if (bodyType === "multipart") {
-      const data = rowsToObject(bodyRows);
-      body = new URLSearchParams(data).toString();
-    }
-    if (bodyType === "xml") {
-      body = interpolate(bodyText);
-    }
-    if (bodyType === "raw") {
-      body = interpolate(bodyText);
-    }
-    const payload = {
-      method,
-      url: buildUrlWithParams(),
-      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
-      body
-    };
+    try {
+      const headers = parseHeaders();
+      if (headers === null) return;
+      let body = bodyText;
+      if (bodyType === "json") {
+        body = stripJsonComments(interpolate(bodyText));
+      }
+      if (bodyType === "form") {
+        const data = rowsToObject(bodyRows);
+        body = new URLSearchParams(data).toString();
+      }
+      if (bodyType === "multipart") {
+        const data = rowsToObject(bodyRows);
+        body = new URLSearchParams(data).toString();
+      }
+      if (bodyType === "xml") {
+        body = interpolate(bodyText);
+      }
+      if (bodyType === "raw") {
+        body = interpolate(bodyText);
+      }
+      const payload = {
+        method,
+        url: buildUrlWithParams(),
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
+        body
+      };
 
-    const preOutput = [];
-    const preContext = {
-      request: {
-        method: payload.method,
-        url: payload.url,
-        headers: { ...payload.headers },
-        body: payload.body,
-        params: rowsToObject(paramsRows)
-      },
-      response: null
-    };
-    runScript(testsPreText, preContext, preOutput);
-    payload.method = preContext.request.method || payload.method;
-    payload.url = preContext.request.url || payload.url;
-    payload.headers = preContext.request.headers || payload.headers;
-    payload.body = preContext.request.body ?? payload.body;
-    if (preOutput.length) {
-      setTestsOutput(preOutput.join("\n"));
-      setShowTestOutput(true);
-    }
+      const preOutput = [];
+      const preContext = {
+        request: {
+          method: payload.method,
+          url: payload.url,
+          headers: { ...payload.headers },
+          body: payload.body,
+          params: rowsToObject(paramsRows)
+        },
+        response: null
+      };
+      runScript(testsPreText, preContext, preOutput);
+      payload.method = preContext.request.method || payload.method;
+      payload.url = preContext.request.url || payload.url;
+      payload.headers = preContext.request.headers || payload.headers;
+      payload.body = preContext.request.body ?? payload.body;
+      if (preOutput.length) {
+        setTestsOutput(preOutput.join("\n"));
+        setShowTestOutput(true);
+      }
 
-    const result = await window.api.sendRequest(payload);
+      const result = await window.api.sendRequest(payload);
 
-    if (result.error) {
-      setError(result.error);
-    }
+      if (result.error) {
+        setError(result.error);
+      }
 
-    setResponse(result);
-    const summary = await summarizeResponse(result);
-    setResponseSummary(summary);
+      setResponse(result);
+      const summary = await summarizeResponse(result);
+      setResponseSummary(summary);
 
-    const postOutput = [];
-    runScript(testsPostText, { request: payload, response: result }, postOutput);
-    if (postOutput.length) {
-      setTestsOutput(postOutput.join("\n"));
-      setShowTestOutput(true);
+      const now = Date.now();
+      const historyEntry = {
+        timestamp: now,
+        request: payload,
+        response: result
+      };
+      const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;
+      setHistory(prev => {
+        const next = [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs);
+        return next;
+      });
+
+      const postOutput = [];
+      runScript(testsPostText, { request: payload, response: result }, postOutput);
+      if (postOutput.length) {
+        setTestsOutput(postOutput.join("\n"));
+        setShowTestOutput(true);
+      }
+    } finally {
+      setIsSending(false);
     }
   }
 
@@ -1451,6 +1510,7 @@ function App() {
         <Sidebar
           activeSidebar={activeSidebar}
           topSearch={topSearch}
+          history={history}
           setShowCollectionModal={setShowCollectionModal}
           setShowImportMenu={setShowImportMenu}
           showImportMenu={showImportMenu}
@@ -1474,9 +1534,11 @@ function App() {
           deleteRequest={deleteRequest}
           updateRequestName={updateRequestName}
           loadRequest={loadRequest}
+          loadHistoryItem={handleLoadHistory}
           setItemToMove={setItemToMove}
           setMoveTargetId={setMoveTargetId}
           setShowMoveModal={setShowMoveModal}
+          setShowGitHubSyncModal={setShowGitHubSyncModal}
         />
 
         <div className="resizer" onMouseDown={() => setDraggingLeft(true)} />
@@ -1498,6 +1560,7 @@ function App() {
             getEnvVars={getEnvVars}
             handleUpdateEnvVar={handleUpdateEnvVar}
             handleSend={handleSend}
+            isSending={isSending}
             requestTabs={requestTabs}
             activeRequestTab={activeRequestTab}
             setActiveRequestTab={setActiveRequestTab}
@@ -1648,7 +1711,23 @@ function App() {
                 <input type="checkbox" /> Redact secrets before AI
               </label>
             </div>
-            <button className="primary" onClick={() => setShowSettings(false)}>Close</button>
+
+            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+
+            <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label>History Retention (Days)</label>
+              <input
+                type="number"
+                className="input"
+                style={{ width: '80px' }}
+                min="1"
+                max="365"
+                value={historyRetentionDays}
+                onChange={(e) => setHistoryRetentionDays(Number(e.target.value))}
+              />
+            </div>
+
+            <button className="primary" onClick={() => setShowSettings(false)} style={{ marginTop: '16px', width: '100%' }}>Close</button>
           </div>
         </div>
       )}
@@ -1738,6 +1817,11 @@ function App() {
         setExportInterpolate={setExportInterpolate}
         renderExportTree={renderExportTree}
         getExportPayload={getExportPayload}
+      />
+
+      <GitHubSyncModal
+        isOpen={showGitHubSyncModal}
+        onClose={() => setShowGitHubSyncModal(false)}
       />
 
       {cmEnvEdit && (

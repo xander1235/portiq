@@ -31,6 +31,7 @@ export function RequestEditor({
     getEnvVars,
     handleUpdateEnvVar,
     handleSend,
+    isSending,
     requestTabs,
     activeRequestTab,
     setActiveRequestTab,
@@ -138,7 +139,9 @@ export function RequestEditor({
                     placeholder="https://api.example.com/v1/users/{{id}}"
                     style={{ flex: 1 }}
                 />
-                <button className="primary" onClick={handleSend}>Send</button>
+                <button className="primary" onClick={handleSend} disabled={isSending}>
+                    {isSending ? "Sending..." : "Send"}
+                </button>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>

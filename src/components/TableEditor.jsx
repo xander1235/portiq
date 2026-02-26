@@ -231,14 +231,16 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
     );
 }
 
-export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, envVars, onUpdateEnvVar }) {
+export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, envVars, onUpdateEnvVar, isEnv }) {
     function updateRow(index, field, value) {
         const next = rows.map((row, idx) => (idx === index ? { ...row, [field]: value } : row));
         onChange(next);
     }
 
     function addRow() {
-        onChange([...rows, { key: "", value: "", comment: "", enabled: true }]);
+        const newRow = { key: "", value: "", comment: "", enabled: true };
+        if (isEnv) newRow.secret = false;
+        onChange([...rows, newRow]);
     }
 
     function removeRow(index) {
@@ -247,10 +249,11 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
 
     return (
         <div className="table-editor">
-            <div className="table-editor-header">
+            <div className="table-editor-header" style={{ gridTemplateColumns: isEnv ? "30px 1fr 1fr 40px 1fr 80px" : "30px 1fr 1fr 1fr 80px" }}>
                 <div />
                 <div>{keyPlaceholder}</div>
                 <div>{valuePlaceholder}</div>
+                {isEnv && <div style={{ textAlign: "center", fontSize: "16px" }} title="GitHub Secret">🔒</div>}
                 <div>Comment</div>
                 <div className="table-editor-actions">
                     <button className="ghost" onClick={addRow}>Add</button>
@@ -258,7 +261,7 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
             </div>
             <div className="table-rows">
                 {rows.map((row, index) => (
-                    <div className="table-row" key={index}>
+                    <div className="table-row" key={index} style={{ gridTemplateColumns: isEnv ? "30px 1fr 1fr 40px 1fr 80px" : "30px 1fr 1fr 1fr 80px" }}>
                         <input
                             type="checkbox"
                             className="checkbox"
@@ -280,6 +283,20 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
                             onUpdateEnvVar={onUpdateEnvVar}
                             style={{ width: "100%" }}
                         />
+                        {isEnv && (
+                            <button
+                                className="ghost icon-button"
+                                style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: row.secret ? 'var(--accent)' : 'var(--muted)',
+                                    opacity: row.secret ? 1 : 0.5
+                                }}
+                                title="Toggle GitHub Secret"
+                                onClick={() => updateRow(index, "secret", !row.secret)}
+                            >
+                                {row.secret ? '🔒' : '🔓'}
+                            </button>
+                        )}
                         <input
                             className="input table-input"
                             value={row.comment || ""}

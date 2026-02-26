@@ -3,6 +3,7 @@ import React, { useState } from "react";
 export function Sidebar({
     activeSidebar,
     topSearch,
+    history,
     setShowCollectionModal,
     setShowImportMenu,
     showImportMenu,
@@ -28,7 +29,9 @@ export function Sidebar({
     loadRequest,
     setItemToMove,
     setMoveTargetId,
-    setShowMoveModal
+    setShowMoveModal,
+    setShowGitHubSyncModal,
+    loadHistoryItem
 }) {
     const [editingCollectionName, setEditingCollectionName] = useState(false);
     const [collectionNameDraft, setCollectionNameDraft] = useState("");
@@ -41,6 +44,7 @@ export function Sidebar({
     const [openFolderMenuId, setOpenFolderMenuId] = useState("");
     const [editingRequestId, setEditingRequestId] = useState("");
     const [requestNameDraft, setRequestNameDraft] = useState("");
+    const [collapsedHistoryDates, setCollapsedHistoryDates] = useState(new Set());
 
     function matchesQuery(item, q) {
         if (!q) return true;
@@ -546,8 +550,140 @@ export function Sidebar({
                     </div>
                 )}
                 {activeSidebar === "History" && (
-                    <div className="panel-body">Browse request history and re-run previous calls.</div>
+                    <div className="history-list" style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+                        {(() => {
+                            if (!Array.isArray(history) || history.length === 0) {
+                                return (
+                                    <div className="empty-state">
+                                        <div className="empty-state-icon">
+                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                        </div>
+                                        <div>No request history</div>
+                                        <div style={{ fontSize: "0.85rem", marginTop: "8px" }}>Your sent requests will appear here.</div>
+                                    </div>
+                                );
+                            }
+
+                            // Group history by date
+                            const groupedHistory = {};
+                            history.slice().reverse().forEach(item => {
+                                const d = new Date(item.timestamp);
+                                const dateStr = d.toLocaleDateString();
+                                if (!groupedHistory[dateStr]) groupedHistory[dateStr] = [];
+                                groupedHistory[dateStr].push(item);
+                            });
+
+                            return Object.keys(groupedHistory).map(dateStr => {
+                                const isCollapsed = collapsedHistoryDates.has(dateStr);
+                                const items = groupedHistory[dateStr];
+
+                                return (
+                                    <div key={dateStr} style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <div
+                                            onClick={() => {
+                                                const newCollapsed = new Set(collapsedHistoryDates);
+                                                if (isCollapsed) newCollapsed.delete(dateStr);
+                                                else newCollapsed.add(dateStr);
+                                                setCollapsedHistoryDates(newCollapsed);
+                                            }}
+                                            style={{
+                                                padding: '6px 12px',
+                                                background: 'var(--panel-1)',
+                                                borderBottom: '1px solid var(--border)',
+                                                borderTop: '1px solid var(--border)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                cursor: 'pointer',
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10
+                                            }}
+                                        >
+                                            <div className={`caret ${isCollapsed ? '' : 'open'}`}>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                            </div>
+                                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+                                                {dateStr}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: 'auto' }}>
+                                                {items.length} req
+                                            </div>
+                                        </div>
+
+                                        {!isCollapsed && items.map((item, idx) => {
+                                            const d = new Date(item.timestamp);
+                                            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            const methodColor = item.request?.method === "GET" ? "var(--accent)" :
+                                                item.request?.method === "POST" ? "var(--accent-2)" :
+                                                    item.request?.method === "DELETE" ? "#ff5555" : "var(--accent-3)";
+
+                                            // Make identical requests grouped locally look connected
+                                            const isLast = idx === items.length - 1;
+
+                                            return (
+                                                <div key={idx} style={{
+                                                    borderBottom: isLast ? "none" : "1px solid var(--border)",
+                                                    padding: "10px 16px 10px 24px",
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    gap: "6px",
+                                                    cursor: "pointer",
+                                                    background: "var(--panel-2)",
+                                                    transition: "background 0.1s ease",
+                                                }} onClick={() => {
+                                                    loadHistoryItem(item);
+                                                }}
+                                                    onMouseOver={(e) => e.currentTarget.style.background = "var(--panel-3)"}
+                                                    onMouseOut={(e) => e.currentTarget.style.background = "var(--panel-2)"}
+                                                >
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.80rem" }}>
+                                                        <span style={{ color: methodColor, fontWeight: 700 }}>{item.request?.method}</span>
+                                                        <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>{timeStr}</span>
+                                                    </div>
+                                                    <div style={{
+                                                        fontSize: "0.85rem",
+                                                        whiteSpace: "nowrap",
+                                                        overflow: "hidden",
+                                                        textOverflow: "ellipsis",
+                                                        color: "var(--text)"
+                                                    }} title={item.request?.url}>
+                                                        {item.request?.url || "Unknown URL"}
+                                                    </div>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                                                        <span style={{
+                                                            fontSize: "0.70rem",
+                                                            padding: "2px 6px",
+                                                            borderRadius: "4px",
+                                                            background: item.response?.status >= 200 && item.response?.status < 300 ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
+                                                            color: item.response?.status >= 200 && item.response?.status < 300 ? "var(--accent-2)" : "#ff5555",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {item.response?.status} {item.response?.statusText}
+                                                        </span>
+                                                        <span style={{ fontSize: "0.70rem", color: "var(--muted)" }}>
+                                                            {item.response?.time ? `${item.response.time}ms` : ""}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            });
+                        })()}
+                    </div>
                 )}
+            </div>
+            <div style={{ marginTop: 'auto', padding: '16px', borderTop: '1px solid var(--border)' }}>
+                <button
+                    className="ghost"
+                    style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    onClick={() => setShowGitHubSyncModal(true)}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                    GitHub Sync
+                </button>
             </div>
         </aside>
     );
