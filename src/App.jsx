@@ -132,7 +132,8 @@ function App() {
     getActiveEnv,
     getEnvVars,
     handleUpdateEnvVar,
-    interpolate
+    interpolate,
+    redactSecrets
   } = useEnvironmentState();
 
 
@@ -1244,9 +1245,21 @@ function App() {
       setResponseSummary(summary);
 
       const now = Date.now();
+
+      const redactedPayload = { ...payload };
+      redactedPayload.url = redactSecrets(redactedPayload.url);
+      if (redactedPayload.headers) {
+        redactedPayload.headers = Object.fromEntries(
+          Object.entries(redactedPayload.headers).map(([k, v]) => [k, redactSecrets(v)])
+        );
+      }
+      if (redactedPayload.body) {
+        redactedPayload.body = redactSecrets(redactedPayload.body);
+      }
+
       const historyEntry = {
         timestamp: now,
-        request: payload,
+        request: redactedPayload,
         response: result
       };
       const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;

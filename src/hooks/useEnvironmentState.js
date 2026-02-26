@@ -54,6 +54,21 @@ export function useEnvironmentState() {
         });
     }
 
+    function redactSecrets(value) {
+        if (typeof value !== "string") return value;
+        const env = getActiveEnv();
+        if (!env || !env.vars) return value;
+        let redacted = value;
+        env.vars.forEach(v => {
+            if (v.secret && v.enabled && v.value) {
+                // Replace any occurrence of the secret value with its placeholder
+                const escapedValue = v.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                redacted = redacted.replace(new RegExp(escapedValue, 'g'), `{{${v.key}}}`);
+            }
+        });
+        return redacted;
+    }
+
     return {
         environments, setEnvironments,
         activeEnvId, setActiveEnvId,
@@ -65,6 +80,7 @@ export function useEnvironmentState() {
         getActiveEnv,
         getEnvVars,
         handleUpdateEnvVar,
-        interpolate
+        interpolate,
+        redactSecrets
     };
 }
