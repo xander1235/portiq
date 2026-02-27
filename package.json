@@ -6,6 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently \"vite\" \"electron .\"",
+    "dev:nix": "env -u ELECTRON_RUN_AS_NODE concurrently \"vite\" \"electron .\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "build": "vite build",
     "preview": "vite preview",

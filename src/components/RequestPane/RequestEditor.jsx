@@ -14,6 +14,7 @@ import { TableEditor } from "../TableEditor.jsx";
 import { EnvInput } from "../TableEditor.jsx";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import { prettifyXml } from "../../services/format.js";
+import styles from "./RequestEditor.module.css";
 
 export function RequestEditor({
     editingMainRequestName,
@@ -74,10 +75,12 @@ export function RequestEditor({
     testsOutput
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
+    const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
 
     return (
-        <section className="request">
-            <div className="request-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <section className={styles.request}>
+            <div className={styles.requestTitle} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     {editingMainRequestName ? (
                         <input
@@ -114,7 +117,7 @@ export function RequestEditor({
                     &lt;/&gt;
                 </button>
             </div>
-            <div className="request-bar">
+            <div className={styles.requestBar}>
                 <select
                     className="input method"
                     value={method}
@@ -131,7 +134,7 @@ export function RequestEditor({
                     <option>DELETE</option>
                 </select>
                 <EnvInput
-                    className="input url"
+                    className={`input ${styles.url}`}
                     value={url}
                     onChange={(val) => setUrl(val)}
                     envVars={getEnvVars()}
@@ -145,11 +148,11 @@ export function RequestEditor({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div className="tabs" style={{ marginBottom: 0 }}>
+                <div className={styles.tabs} style={{ marginBottom: 0 }}>
                     {requestTabs.map((tab) => (
                         <button
                             key={tab}
-                            className={tab === activeRequestTab ? "tab active" : "tab"}
+                            className={tab === activeRequestTab ? `${styles.tab} ${styles.active}` : styles.tab}
                             onClick={() => setActiveRequestTab(tab)}
                         >
                             {tab}
@@ -158,15 +161,15 @@ export function RequestEditor({
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {activeRequestTab === "Headers" && (
-                        <div className="tabs" style={{ marginBottom: 0 }}>
+                        <div className={styles.tabs} style={{ marginBottom: 0 }}>
                             <button
-                                className={headersMode === "table" ? "tab active" : "tab"}
+                                className={headersMode === "table" ? `${styles.tab} ${styles.active}` : styles.tab}
                                 onClick={() => setHeadersMode("table")}
                             >
                                 Table
                             </button>
                             <button
-                                className={headersMode === "json" ? "tab active" : "tab"}
+                                className={headersMode === "json" ? `${styles.tab} ${styles.active}` : styles.tab}
                                 onClick={() => setHeadersMode("json")}
                             >
                                 JSON
@@ -175,20 +178,131 @@ export function RequestEditor({
                     )}
                     {activeRequestTab === "Body" && (
                         <>
-                            <select
-                                className="input compact"
-                                value={bodyType}
-                                onChange={(e) => {
-                                    setBodyType(e.target.value);
-                                    setContentType(e.target.value);
-                                }}
-                            >
-                                <option value="json">JSON</option>
-                                <option value="xml">XML</option>
-                                <option value="form">x-www-form-urlencoded</option>
-                                <option value="multipart">form-data (simple)</option>
-                                <option value="raw">Raw</option>
-                            </select>
+                            <div style={{ position: 'relative' }}>
+                                <button
+                                    style={{
+                                        width: '180px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                        padding: '4px 10px',
+                                        height: '28px',
+                                        background: 'var(--panel)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
+                                        color: 'var(--text)',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: showBodyTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
+                                        borderColor: showBodyTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!showBodyTypeDropdown) {
+                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                                            e.currentTarget.style.background = 'var(--panel-3)';
+                                        }
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!showBodyTypeDropdown) {
+                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                            e.currentTarget.style.background = 'var(--panel)';
+                                        }
+                                    }}
+                                    onClick={() => setShowBodyTypeDropdown(prev => !prev)}
+                                >
+                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {
+                                            bodyType === "json" ? "JSON" :
+                                                bodyType === "xml" ? "XML" :
+                                                    bodyType === "form" ? "x-www-form-urlencoded" :
+                                                        bodyType === "multipart" ? "form-data (simple)" :
+                                                            bodyType === "raw" ? "Raw" : "Select Type"
+                                        }
+                                    </span>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '16px',
+                                        height: '16px',
+                                        borderRadius: '3px',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        transition: 'transform 0.3s ease',
+                                        transform: showBodyTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
+                                    }}>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                </button>
+                                {showBodyTypeDropdown && (
+                                    <>
+                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowBodyTypeDropdown(false)}></div>
+                                        <div className="menu" style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 4px)',
+                                            left: 0,
+                                            width: '200px',
+                                            zIndex: 100,
+                                            background: 'var(--panel)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '8px',
+                                            padding: '4px',
+                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
+                                        }}>
+                                            {[
+                                                { value: "json", label: "JSON" },
+                                                { value: "xml", label: "XML" },
+                                                { value: "form", label: "x-www-form-urlencoded" },
+                                                { value: "multipart", label: "form-data (simple)" },
+                                                { value: "raw", label: "Raw" }
+                                            ].map((opt) => {
+                                                const isActive = bodyType === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        style={{
+                                                            width: '100%',
+                                                            textAlign: 'left',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '6px 8px',
+                                                            fontSize: '12px',
+                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
+                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
+                                                            fontWeight: isActive ? 600 : 400,
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            transition: 'background 0.1s'
+                                                        }}
+                                                        onMouseOver={(e) => {
+                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
+                                                        }}
+                                                        onMouseOut={(e) => {
+                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
+                                                        }}
+                                                        onClick={() => {
+                                                            setBodyType(opt.value);
+                                                            setContentType(opt.value);
+                                                            setShowBodyTypeDropdown(false);
+                                                        }}
+                                                    >
+                                                        {opt.label}
+                                                        {isActive && (
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                             {(bodyType === "json" || bodyType === "xml") && (
                                 <button
                                     className="ghost compact"
@@ -224,15 +338,15 @@ export function RequestEditor({
                             <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestInput((prev) => !prev)}>
                                 Test Input
                             </button>
-                            <div className="tabs" style={{ marginBottom: 0 }}>
+                            <div className={styles.tabs} style={{ marginBottom: 0 }}>
                                 <button
-                                    className={testsMode === "pre" ? "tab active" : "tab"}
+                                    className={testsMode === "pre" ? `${styles.tab} ${styles.active}` : styles.tab}
                                     onClick={() => setTestsMode("pre")}
                                 >
                                     Pre-request
                                 </button>
                                 <button
-                                    className={testsMode === "post" ? "tab active" : "tab"}
+                                    className={testsMode === "post" ? `${styles.tab} ${styles.active}` : styles.tab}
                                     onClick={() => setTestsMode("post")}
                                 >
                                     Post-response
@@ -244,7 +358,7 @@ export function RequestEditor({
                 </div>
             </div>
 
-            <div className="editor">
+            <div className={styles.editor}>
                 {activeRequestTab === "Params" && (
                     <TableEditor
                         rows={paramsRows}
@@ -259,7 +373,7 @@ export function RequestEditor({
                     />
                 )}
                 {activeRequestTab === "Headers" && (
-                    <div className="headers-editor">
+                    <div className={styles.headersEditor}>
                         {headersMode === "table" && (
                             <TableEditor
                                 rows={headersRows}
@@ -271,7 +385,7 @@ export function RequestEditor({
                         )}
                         {headersMode === "json" && (
                             <textarea
-                                className="textarea fixed"
+                                className={`${styles.textarea} ${styles.fixed}`}
                                 value={headersText}
                                 onChange={(e) => handleHeadersTextChange(e.target.value)}
                                 placeholder="Paste JSON headers here"
@@ -283,21 +397,131 @@ export function RequestEditor({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Type</span>
-                            <select
-                                className="input compact"
-                                style={{ width: '200px' }}
-                                value={authType}
-                                onChange={(e) => {
-                                    setAuthType(e.target.value);
-                                    if (currentRequestId) updateRequestState(currentRequestId, "authType", e.target.value);
-                                }}
-                            >
-                                <option value="none">No Auth</option>
-                                <option value="bearer">Bearer Token</option>
-                                <option value="basic">Basic Auth</option>
-                                <option value="api_key">API Key</option>
-                                <option value="custom">Custom (Legacy)</option>
-                            </select>
+                            <div style={{ position: 'relative' }}>
+                                <button
+                                    style={{
+                                        width: '200px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                        padding: '4px 10px',
+                                        height: '28px',
+                                        background: 'var(--panel)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
+                                        color: 'var(--text)',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: showAuthTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
+                                        borderColor: showAuthTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!showAuthTypeDropdown) {
+                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                                            e.currentTarget.style.background = 'var(--panel-3)';
+                                        }
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!showAuthTypeDropdown) {
+                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                            e.currentTarget.style.background = 'var(--panel)';
+                                        }
+                                    }}
+                                    onClick={() => setShowAuthTypeDropdown(prev => !prev)}
+                                >
+                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {
+                                            authType === "none" ? "No Auth" :
+                                                authType === "bearer" ? "Bearer Token" :
+                                                    authType === "basic" ? "Basic Auth" :
+                                                        authType === "api_key" ? "API Key" :
+                                                            authType === "custom" ? "Custom (Legacy)" : "Select Auth Type"
+                                        }
+                                    </span>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '16px',
+                                        height: '16px',
+                                        borderRadius: '3px',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        transition: 'transform 0.3s ease',
+                                        transform: showAuthTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
+                                    }}>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                </button>
+                                {showAuthTypeDropdown && (
+                                    <>
+                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowAuthTypeDropdown(false)}></div>
+                                        <div className="menu" style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 4px)',
+                                            left: 0,
+                                            width: '200px',
+                                            zIndex: 100,
+                                            background: 'var(--panel)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '8px',
+                                            padding: '4px',
+                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
+                                        }}>
+                                            {[
+                                                { value: "none", label: "No Auth" },
+                                                { value: "bearer", label: "Bearer Token" },
+                                                { value: "basic", label: "Basic Auth" },
+                                                { value: "api_key", label: "API Key" },
+                                                { value: "custom", label: "Custom (Legacy)" }
+                                            ].map((opt) => {
+                                                const isActive = authType === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        style={{
+                                                            width: '100%',
+                                                            textAlign: 'left',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '6px 8px',
+                                                            fontSize: '12px',
+                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
+                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
+                                                            fontWeight: isActive ? 600 : 400,
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            transition: 'background 0.1s'
+                                                        }}
+                                                        onMouseOver={(e) => {
+                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
+                                                        }}
+                                                        onMouseOut={(e) => {
+                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
+                                                        }}
+                                                        onClick={() => {
+                                                            setAuthType(opt.value);
+                                                            if (currentRequestId) updateRequestState(currentRequestId, "authType", opt.value);
+                                                            setShowAuthTypeDropdown(false);
+                                                        }}
+                                                    >
+                                                        {opt.label}
+                                                        {isActive && (
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
@@ -467,7 +691,7 @@ export function RequestEditor({
 
                     const bodyEditorContent = (
                         <div
-                            className="body-editor"
+                            className={styles.bodyEditor}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}
                         >
                             {(bodyType === "json" || bodyType === "xml" || bodyType === "raw") && (() => {
@@ -519,12 +743,12 @@ export function RequestEditor({
                     );
                 })()}
                 {activeRequestTab === "Tests" && (
-                    <div className="tests-editor">
+                    <div className={styles.testsEditor}>
                         {showTestInput && (
-                            <div className="tests-input-inline">
+                            <div className={styles.testsInputInline}>
                                 <div className="panel-title">Test Input (JSON)</div>
                                 <textarea
-                                    className="textarea compact"
+                                    className={`${styles.textarea} ${styles.compact}`}
                                     value={testsInputText}
                                     onChange={(e) => setTestsInputText(e.target.value)}
                                 />
@@ -532,20 +756,20 @@ export function RequestEditor({
                         )}
                         {testsMode === "pre" && (
                             <textarea
-                                className="textarea fixed"
+                                className={`${styles.textarea} ${styles.fixed}`}
                                 value={testsPreText}
                                 onChange={(e) => setTestsPreText(e.target.value)}
                             />
                         )}
                         {testsMode === "post" && (
                             <textarea
-                                className="textarea fixed"
+                                className={`${styles.textarea} ${styles.fixed}`}
                                 value={testsPostText}
                                 onChange={(e) => setTestsPostText(e.target.value)}
                             />
                         )}
                         {showTestOutput && (
-                            <div className="tests-output">
+                            <div className={styles.testsOutput}>
                                 {testsOutput.map((entry, index) => (
                                     <div className={`log ${entry.type}`} key={index}>
                                         <span className="log-label">{entry.label || "script"}&gt;</span>

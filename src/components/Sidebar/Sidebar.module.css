@@ -1,0 +1,243 @@
+.sidebar {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px;
+    overflow: hidden;
+    transition: width 0.2s ease, padding 0.2s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebarPanel {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.navButtons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.navButton {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.navButton.active {
+    color: var(--text);
+    border-color: var(--accent-2);
+}
+
+.collectionSection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.collectionSection:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.panelTitle {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.headerRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.treeNode {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.treeFolder {
+    font-weight: 600;
+    color: var(--text);
+    padding: 4px 6px;
+    background: #1a2030;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.treeRequest {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: transparent;
+    border-radius: 4px;
+    padding: 4px 6px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.treeRequest:hover,
+.treeRequest.active {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.treeRequest.dragOver,
+.treeFolder.dragOver,
+.panelList.dragOver {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    background: rgba(46, 211, 198, 0.1);
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+.folderName {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.treeRequestHeader {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.menuWrap {
+    position: relative;
+}
+
+.treeRequestHeader .menuWrap {
+    margin-left: auto;
+}
+
+.methodBadge {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0px 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    width: 44px;
+    text-align: center;
+    color: var(--muted);
+    display: inline-block;
+    text-transform: uppercase;
+}
+
+.methodBadge.get {
+    background: rgba(46, 211, 198, 0.1);
+    border-color: rgba(46, 211, 198, 0.2);
+    color: var(--accent-2);
+}
+
+.methodBadge.post {
+    background: rgba(255, 187, 0, 0.1);
+    border-color: rgba(255, 187, 0, 0.2);
+    color: #ffcc00;
+}
+
+.methodBadge.put {
+    background: rgba(89, 158, 255, 0.1);
+    border-color: rgba(89, 158, 255, 0.2);
+    color: #599eff;
+}
+
+.methodBadge.patch {
+    background: rgba(189, 147, 249, 0.1);
+    border-color: rgba(189, 147, 249, 0.2);
+    color: #bd93f9;
+}
+
+.methodBadge.delete {
+    background: rgba(255, 85, 85, 0.1);
+    border-color: rgba(255, 85, 85, 0.2);
+    color: #ff5555;
+}
+
+.methodBadge.options {
+    background: rgba(162, 169, 184, 0.1);
+    border-color: rgba(162, 169, 184, 0.2);
+    color: var(--muted);
+}
+
+.treeTitle {
+    padding: 0;
+    font-size: 0.9rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.treeUrl {
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 52px;
+}
+
+.panelList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.treeDesc {
+    color: var(--muted);
+    font-size: 0.75rem;
+    padding-left: 44px;
+}
+
+.treeTags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding-left: 44px;
+}
+
+.treeChildren {
+    border-left: 1px dashed var(--border);
+    margin-left: 6px;
+    padding-left: 6px;
+}
+
+.tag {
+    background: #1c2a3a;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    color: var(--muted);
+}

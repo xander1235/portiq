@@ -5,6 +5,7 @@ import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
 import { search as searchExtension } from '@codemirror/search';
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
+import styles from "./ResponseViewer.module.css";
 
 export function ResponseViewer({
     response,
@@ -42,11 +43,11 @@ export function ResponseViewer({
     const [isFullScreen, setIsFullScreen] = useState(false);
 
     const responseTabButtons = (
-        <div className="tabs" style={{ marginBottom: 0 }}>
+        <div className={styles.tabs} style={{ marginBottom: 0 }}>
             {responseTabs.map((tab) => (
                 <button
                     key={tab}
-                    className={tab === activeResponseTab ? "tab active" : "tab"}
+                    className={tab === activeResponseTab ? `${styles.tab} ${styles.active}` : styles.tab}
                     onClick={() => setActiveResponseTab(tab)}
                 >
                     {tab}
@@ -85,7 +86,7 @@ export function ResponseViewer({
     };
 
     const responseBodyContent = (
-        <div className="response-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className={styles.responseBody} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {activeResponseTab === "Pretty" && renderCodeMirror(pretty, [json()])}
             {activeResponseTab === "Raw" && renderCodeMirror(raw, [])}
             {activeResponseTab === "XML" && (
@@ -205,18 +206,18 @@ export function ResponseViewer({
                 </div>
             )}
             {activeResponseTab === "Visualize" && (
-                <div className="visualize">
-                    <div className="viz-card">
-                        <div className="viz-title">Summary</div>
-                        <div className="viz-value">{responseSummary.summary}</div>
+                <div className={styles.visualize}>
+                    <div className={styles.vizCard}>
+                        <div className={styles.vizTitle}>Summary</div>
+                        <div className={styles.vizValue}>{responseSummary.summary}</div>
                     </div>
-                    <div className="viz-card">
-                        <div className="viz-title">Rows</div>
-                        <div className="viz-value">{tableRows.length}</div>
+                    <div className={styles.vizCard}>
+                        <div className={styles.vizTitle}>Rows</div>
+                        <div className={styles.vizValue}>{tableRows.length}</div>
                     </div>
-                    <div className="viz-card">
-                        <div className="viz-title">Status</div>
-                        <div className="viz-value">{response?.status || "-"}</div>
+                    <div className={styles.vizCard}>
+                        <div className={styles.vizTitle}>Status</div>
+                        <div className={styles.vizValue}>{response?.status || "-"}</div>
                     </div>
                 </div>
             )}
@@ -224,9 +225,9 @@ export function ResponseViewer({
     );
 
     return (
-        <section className="response">
+        <section className={styles.response}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div className="response-meta" style={{ marginBottom: 0 }}>
+                <div className={styles.responseMeta} style={{ marginBottom: 0 }}>
                     <div>Status: {response?.status ? `${response.status} ${response.statusText}` : "-"}</div>
                     <div>Latency: {response?.duration ? `${response.duration} ms` : "-"}</div>
                     <div>Size: {response?.body ? `${response.body.length} bytes` : "-"}</div>
@@ -238,7 +239,7 @@ export function ResponseViewer({
                 </div>
             </div>
 
-            {error && <div className="error">{error}</div>}
+            {error && <div className={styles.error}>{error}</div>}
 
             {!isFullScreen && responseBodyContent}
 

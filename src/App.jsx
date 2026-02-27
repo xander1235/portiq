@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
+import styles from "./App.module.css";
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
@@ -25,6 +26,8 @@ import { Sidebar } from "./components/Sidebar/Sidebar.jsx";
 import { RequestEditor } from "./components/RequestPane/RequestEditor.jsx";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer.jsx";
 import { useRequestState } from "./hooks/useRequestState.js";
+import layoutStyles from "./components/Layout/Layout.module.css";
+import rightRailStyles from "./components/Layout/RightRail.module.css";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -167,7 +170,12 @@ function App() {
   const [exportTargetNode, setExportTargetNode] = useState(null);
   const [exportSelections, setExportSelections] = useState(new Set());
   const [exportCollapsedFolders, setExportCollapsedFolders] = useState(new Set());
-  const [exportInterpolate, setExportInterpolate] = useLocalStorage("ui_exportInterpolate", false);
+  const [exportInterpolate, setExportInterpolate] = useState(true);
+
+  // Manage Collections Tree State
+  const [manageItemSelections, setManageItemSelections] = useState(new Set());
+  const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set());
+  const [showEnvDropdown, setShowEnvDropdown] = useState(false);
 
   const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 260);
   const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
@@ -853,7 +861,7 @@ function App() {
     const methodColorClass = node.method ? node.method.toLowerCase() : 'get';
 
     return (
-      <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0' }} className="export-row">
+      <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0', paddingLeft: '24px' }} className="export-row">
         <label>
           <input type="checkbox" checked={isSelected} onChange={toggle} />
           <span className={`export-badge ${methodColorClass}`}>{node.method || 'GET'}</span>
@@ -867,6 +875,82 @@ function App() {
             <span className="export-tag">Auth</span>
           )}
         </div>
+      </div>
+    );
+  }
+
+  function renderManageTree(node, depth = 0) {
+    if (!node) return null;
+
+    const isNodeSelected = (n) => {
+      if (n.type === "request") return manageItemSelections.has(n.id);
+      if (!n.items || n.items.length === 0) return manageItemSelections.has(n.id);
+      return n.items.every(child => isNodeSelected(child));
+    };
+
+    const isSelected = isNodeSelected(node);
+
+    const toggle = () => {
+      const next = new Set(manageItemSelections);
+      if (isSelected) {
+        const removeIds = (n) => { next.delete(n.id); if (n.items) n.items.forEach(removeIds); };
+        removeIds(node);
+      } else {
+        const addIds = (n) => { next.add(n.id); if (n.items) n.items.forEach(addIds); };
+        addIds(node);
+      }
+      setManageItemSelections(next);
+    };
+
+    if (node.type === "folder" || node.id.startsWith("col-")) {
+      const isCollapsed = manageCollapsedFolders.has(node.id);
+      const toggleCollapse = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = new Set(manageCollapsedFolders);
+        if (isCollapsed) next.delete(node.id);
+        else next.add(node.id);
+        setManageCollapsedFolders(next);
+      };
+
+      return (
+        <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0', marginBottom: '8px' }}>
+          <div className="export-row" style={{ borderBottom: 'none', padding: '4px 0' }}>
+
+            <button
+              className="ghost icon-button compact"
+              style={{ width: '20px', height: '20px', padding: 0, marginRight: '4px', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s' }}
+              onClick={toggleCollapse}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            <label>
+              <input type="checkbox" checked={isSelected} onChange={toggle} />
+              <span style={{ fontWeight: '500', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                {node.name}
+              </span>
+            </label>
+          </div>
+          {!isCollapsed && node.items && node.items.length > 0 && (
+            <div style={{ paddingLeft: '8px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+              {node.items.map(child => renderManageTree(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const methodColorClass = node.method ? node.method.toLowerCase() : 'get';
+
+    return (
+      <div key={node.id} style={{ marginLeft: depth > 0 ? '16px' : '0', paddingLeft: '24px' }} className="export-row">
+        <label>
+          <input type="checkbox" checked={isSelected} onChange={toggle} />
+          <span className={`export-badge ${methodColorClass}`}>{node.method || 'GET'}</span>
+          <span className="export-title" title={node.name}>{node.name}</span>
+        </label>
       </div>
     );
   }
@@ -1467,10 +1551,10 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="topbar-left">
-          <div className="brand">AI API Client</div>
+    <div className={styles.app}>
+      <header className={styles.topbar}>
+        <div className={styles.topbarLeft}>
+          <div className={styles.brand}>AI API Client</div>
           <button
             className={activeSidebar === "Collections" ? "ghost active" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}
@@ -1483,37 +1567,220 @@ function App() {
           >
             History
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px' }}>
-            <select
-              className="input compact"
-              value={activeEnvId}
-              onChange={(e) => setActiveEnvId(e.target.value)}
-              style={{ padding: '4px 24px 4px 8px', maxWidth: '150px' }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', position: 'relative' }}>
+            <button
+              style={{
+                width: '180px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                textAlign: 'left',
+                cursor: 'pointer',
+                padding: '6px 12px',
+                height: '32px',
+                background: 'var(--panel)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                color: 'var(--text)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: showEnvDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
+                borderColor: showEnvDropdown ? 'var(--accent-2)' : 'var(--border)'
+              }}
+              onMouseOver={(e) => {
+                if (!showEnvDropdown) {
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                  e.currentTarget.style.background = 'var(--panel-3)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!showEnvDropdown) {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.background = 'var(--panel)';
+                }
+              }}
+              onClick={() => setShowEnvDropdown(prev => !prev)}
             >
-              <option value="" disabled>Select Environment</option>
-              {environments.map(env => (
-                <option key={env.id} value={env.id}>{env.name}</option>
-              ))}
-            </select>
-            <button className="ghost" onClick={() => setShowEnvModal(true)} title="Manage Environments">
-              Manage Environments
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 500 }}>
+                  {environments.find(e => e.id === activeEnvId)?.name || "No Environment"}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '18px',
+                height: '18px',
+                borderRadius: '4px',
+                background: 'rgba(255,255,255,0.05)',
+                transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                transform: showEnvDropdown ? 'rotate(180deg)' : 'rotate(0)'
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
             </button>
+            {showEnvDropdown && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowEnvDropdown(false)}></div>
+                <div
+                  className="menu"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    width: '250px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    padding: '6px',
+                    borderRadius: '10px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
+                    background: 'var(--panel)',
+                    zIndex: 100,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px'
+                  }}
+                >
+                  <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                    Environments
+                  </div>
+                  <button
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      color: !activeEnvId ? 'var(--accent-2)' : 'var(--text)',
+                      backgroundColor: !activeEnvId ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
+                      fontWeight: !activeEnvId ? 600 : 500,
+                      fontSize: '13px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
+                    }}
+                    onMouseOut={(e) => {
+                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => {
+                      setActiveEnvId(null);
+                      setShowEnvDropdown(false);
+                    }}
+                  >
+                    No Environment
+                    {!activeEnvId && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    )}
+                  </button>
+                  {environments.length > 0 && <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>}
+                  {environments.map((env) => {
+                    const isActive = env.id === activeEnvId;
+                    return (
+                      <button
+                        key={env.id}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          color: isActive ? 'var(--accent-2)' : 'var(--text)',
+                          backgroundColor: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
+                          fontWeight: isActive ? 600 : 500,
+                          fontSize: '13px',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          if (!isActive) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
+                        }}
+                        onMouseOut={(e) => {
+                          if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                        onClick={() => {
+                          setActiveEnvId(env.id);
+                          setShowEnvDropdown(false);
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                        </svg>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {env.name}
+                        </span>
+                        {isActive && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>
+                  <button
+                    className="ghost"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: 'var(--muted)',
+                      fontSize: '13px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                    }}
+                    onClick={() => {
+                      setShowEnvDropdown(false);
+                      setShowEnvModal(true);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Manage Environments
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
-        <div className="topbar-actions">
+        <div className={styles.topbarActions}>
           <input
-            className="input topbar-search"
+            className={`input ${styles.topbarSearch}`}
             placeholder="Search collections, tags, history"
             value={topSearch}
             onChange={(e) => setTopSearch(e.target.value)}
           />
           <button className="ghost" onClick={() => setShowWorkspace(true)}>Workspace: Default</button>
+          <button className="ghost" onClick={() => setShowGitHubSyncModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+            GitHub Sync
+          </button>
           <button className="ghost" onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>
 
       <div
-        className={showRightRail ? "layout" : "layout rail-collapsed"}
+        className={showRightRail ? layoutStyles.layout : `${layoutStyles.layout} ${layoutStyles.railCollapsed}`}
         style={{
           gridTemplateColumns: showRightRail
             ? `${leftWidth}px 10px 1fr 10px ${rightWidth}px`
@@ -1551,12 +1818,11 @@ function App() {
           setItemToMove={setItemToMove}
           setMoveTargetId={setMoveTargetId}
           setShowMoveModal={setShowMoveModal}
-          setShowGitHubSyncModal={setShowGitHubSyncModal}
         />
 
-        <div className="resizer" onMouseDown={() => setDraggingLeft(true)} />
+        <div className={layoutStyles.resizer} onMouseDown={() => setDraggingLeft(true)} />
 
-        <main className="main" style={{ gridTemplateRows: `${topHeight}px 10px 1fr` }}>
+        <main className={layoutStyles.main} style={{ gridTemplateRows: `${topHeight}px 10px 1fr` }}>
           <RequestEditor
             editingMainRequestName={editingMainRequestName}
             setEditingMainRequestName={setEditingMainRequestName}
@@ -1616,7 +1882,7 @@ function App() {
             testsOutput={testsOutput}
           />
 
-          <div className="resizer vertical" onMouseDown={() => setDraggingMain(true)} />
+          <div className={`${layoutStyles.resizer} ${layoutStyles.vertical}`} onMouseDown={() => setDraggingMain(true)} />
 
           <ResponseViewer
             response={response}
@@ -1653,19 +1919,19 @@ function App() {
           />
         </main>
 
-        <div className="resizer" onMouseDown={() => setDraggingRight(true)} />
+        <div className={layoutStyles.resizer} onMouseDown={() => setDraggingRight(true)} />
 
-        <aside className={showRightRail ? "right-rail" : "right-rail collapsed"}>
+        <aside className={showRightRail ? rightRailStyles.rightRail : `${rightRailStyles.rightRail} ${rightRailStyles.collapsed}`}>
           {showRightRail ? (
             <>
-              <div className="right-rail-header">
-                <div className="section-title">AI Assistant</div>
+              <div className={rightRailStyles.rightRailHeader}>
+                <div className={styles.sectionTitle}>AI Assistant</div>
                 <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
                   →
                 </button>
               </div>
-              <div className="card">
-                <div className="card-title">Request Builder</div>
+              <div className={rightRailStyles.card}>
+                <div className={rightRailStyles.cardTitle}>Request Builder</div>
                 <textarea
                   className="textarea small"
                   placeholder="Describe your request"
@@ -1673,13 +1939,13 @@ function App() {
                   onChange={(e) => setAiPrompt(e.target.value)}
                 />
                 <button className="primary" onClick={handleGenerateRequest}>Generate Request</button>
-                <div className="card-subtext">Template: {templateId ? templates.find((t) => t.id === templateId)?.label : "None"}</div>
+                <div className={rightRailStyles.cardSubtext}>Template: {templateId ? templates.find((t) => t.id === templateId)?.label : "None"}</div>
               </div>
-              <div className="card">
-                <div className="card-title">Response Intelligence</div>
-                <div className="card-text">Summary: {responseSummary.summary}</div>
+              <div className={rightRailStyles.card}>
+                <div className={rightRailStyles.cardTitle}>Response Intelligence</div>
+                <div className={rightRailStyles.cardText}>Summary: {responseSummary.summary}</div>
                 {responseSummary.hints.map((hint, index) => (
-                  <div className="card-text" key={index}>Hint: {hint}</div>
+                  <div className={rightRailStyles.cardText} key={index}>Hint: {hint}</div>
                 ))}
                 <button className="ghost" onClick={handleGenerateTests}>Generate Tests</button>
               </div>
@@ -1699,7 +1965,7 @@ function App() {
         </aside>
       </div>
 
-      <footer className="dock">
+      <footer className={rightRailStyles.dock}>
         <button className="ghost">Console</button>
         <button className="ghost">Tests</button>
         <button className="ghost">Timing</button>
@@ -1902,7 +2168,10 @@ function App() {
                             );
                           }}
                         />
-                        <button className="ghost env-select" onClick={() => setActiveCollectionId(col.id)}>
+                        <button className="ghost env-select" onClick={() => {
+                          setActiveCollectionId(col.id);
+                          setManageItemSelections(new Set());
+                        }}>
                           {col.name}
                         </button>
                       </label>
@@ -1939,11 +2208,54 @@ function App() {
                           onChange={(e) => updateCollectionName(e.target.value)}
                         />
                       </div>
-                      <div className="panel-body">
-                        Use the left panel to select collections. Nested folders and requests remain in the collection tree.
+                      <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.9rem', color: 'var(--text)' }}>
+                            Contents of {getActiveCollection()?.name || "Untitled"}
+                          </span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="ghost compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => {
+                              const activeCol = getActiveCollection();
+                              if (!activeCol) return;
+                              const allIds = new Set();
+                              const collectIds = (n) => { allIds.add(n.id); if (n.items) n.items.forEach(collectIds); };
+                              collectIds(activeCol);
+                              setManageItemSelections(allIds);
+                            }}>Select All</button>
+                            <button className="ghost compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => setManageItemSelections(new Set())}>None</button>
+                          </div>
+                        </div>
+
+                        <div className="export-list" style={{ flex: 1, minHeight: 0 }}>
+                          {getActiveCollection() ? renderManageTree(getActiveCollection()) : null}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                            {manageItemSelections.size} items selected
+                          </div>
+                          <button
+                            className="ghost"
+                            style={{ color: 'var(--accent-red)', borderColor: 'var(--border)' }}
+                            disabled={manageItemSelections.size === 0}
+                            onClick={() => {
+                              if (!window.confirm(`Are you sure you want to delete ${manageItemSelections.size} items?`)) return;
+                              manageItemSelections.forEach((id) => {
+                                if (id.startsWith('req-')) deleteRequest(id);
+                                else if (id.startsWith('fld-')) deleteFolder(id);
+                              });
+                              setManageItemSelections(new Set());
+                              if (manageItemSelections.has(currentRequestId)) {
+                                setCurrentRequestId("");
+                              }
+                            }}
+                          >
+                            Delete Selected Items
+                          </button>
+                        </div>
                       </div>
                       <div className="modal-footer">
-                        <button className="primary" onClick={() => setShowCollectionModal(false)}>Save</button>
+                        <button className="primary" onClick={() => setShowCollectionModal(false)}>Done</button>
                       </div>
                     </>
                   ) : (

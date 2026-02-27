@@ -1,0 +1,110 @@
+.response {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+.responseMeta {
+    display: flex;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+}
+
+.responseBody {
+    flex: 1;
+    overflow: auto;
+    background: var(--panel-2);
+    border-radius: 4px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.placeholder {
+    color: var(--muted);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.error {
+    background: rgba(255, 122, 89, 0.15);
+    border: 1px solid rgba(255, 122, 89, 0.35);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+}
+
+.code {
+    margin: 0;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.tab.active {
+    color: var(--text);
+    border-color: var(--accent-2);
+}
+
+.editor {
+    flex: 1;
+    overflow: auto;
+    background: var(--panel-2);
+    border-radius: 4px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.visualize {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.vizCard {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.vizTitle {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+
+.vizValue {
+    font-size: 1.1rem;
+    font-weight: 600;
+}

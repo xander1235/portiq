@@ -9,12 +9,15 @@ It provides an intuitive interface for testing, organizing, and managing your AP
 - **Organized Collections**: Nest requests deeply into folders. Drag and drop to reorder or move items easily.
 - **Dynamic Workspaces**: Collapsible sidebar, tabs, and adjustable layout panels for a clutter-free environment. All layout resizing and toggles automatically persist across restarts.
 - **Smart Environments**: Manage basic URL presets, auth tokens, and specific variables per environment.
-  - Mark sensitive variables as **Secrets** to hide their values.
-- **Beautiful Environment Management**:
+  - Mark sensitive variables as **Secrets** to hide their values locally.
+  - Default 'No Environment' mode to easily disable interpolation when not needed.
+- **Beautiful UI Components**:
   - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button.
   - Multi-line Variable Interpolation support via CodeMirror syntax highlighting.
-  - Command your data via an overhauled, modern two-pane Manage Environments grid modal.
-- **GitHub Sync**: Safely backup and restore your collections and environments directly to a private GitHub Gist.
+  - Custom, highly-polished premium dropdowns for Workspaces, Environments, Request Body Type, and Auth Type.
+  - Redesigned History cards for a compact, fast overview of past requests.
+- **Advanced GitHub Sync**: Safely backup and restore your collections, variables, and workspace state securely to a private `commu-sync` GitHub repository.
+  - Interactive Review Screen before pushing allows you to selectively **mask** variables. Masked variables leave your device as placeholders, completely protecting your secrets.
 - **Comprehensive Request Builder**: 
   - Visual editors for Query Params, Headers, and Auth.
   - Multi-format request body support (JSON, XML, form-data, urlencoded, raw).

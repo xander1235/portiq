@@ -1,5 +1,4 @@
 import { Octokit } from "@octokit/rest";
-import sodium from "libsodium-wrappers";
 import { getGitHubToken } from "./githubAuth.js";
 
 const SYNC_REPO_NAME = "commu-sync";
@@ -58,12 +57,39 @@ async function ensureSyncRepo(octokit) {
     }
 }
 
-export async function pushStateToGitHub() {
+export function previewEnvironmentsForSync() {
+    const item = localStorage.getItem("ui_environments");
+    if (!item) return [];
+
+    try {
+        const parsed = JSON.parse(item);
+        if (Array.isArray(parsed)) {
+            return parsed.map(env => {
+                return {
+                    id: env.id,
+                    name: env.name,
+                    vars: (env.vars || []).map(v => {
+                        const keyStr = (v.key || "").toLowerCase();
+                        const isLikelySecret = v.secret || /secret|token|password|key|auth|cred/i.test(keyStr);
+                        return {
+                            ...v,
+                            shouldMask: isLikelySecret
+                        };
+                    })
+                };
+            });
+        }
+    } catch {
+        // ignore
+    }
+    return [];
+}
+
+export async function pushStateToGitHub(maskedVarIds = new Set()) {
     const octokit = getOctokit();
     const { owner, repo } = await ensureSyncRepo(octokit);
 
     const stateToExport = {};
-    const secretsToPush = {}; // { secretName: rawValue }
 
     for (const key of SYNC_KEYS) {
         const item = localStorage.getItem(key);
@@ -71,21 +97,16 @@ export async function pushStateToGitHub() {
             try {
                 const parsed = JSON.parse(item);
 
-                // Intercept environments to mask secrets and queue them for GitHub Actions Secrets
                 if (key === "ui_environments" && Array.isArray(parsed)) {
                     for (const env of parsed) {
                         if (Array.isArray(env.vars)) {
-                            for (const v of env.vars) {
-                                if (v.secret) {
-                                    // Format a valid GitHub Action Secret name (e.g. COMMU_ENV_LOCAL_API_KEY)
-                                    const safeEnvName = (env.name || env.id).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-                                    const safeVarName = (v.key || "UNNAMED").toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-                                    const secretName = `COMMU_${safeEnvName}_${safeVarName}`;
-
-                                    secretsToPush[secretName] = v.value;
-                                    v.value = "<SECRET_STORED_IN_GITHUB>"; // Mask it in state.json
+                            env.vars.forEach((v, i) => {
+                                const varId = `${env.id}::${v.id || i}`;
+                                if (maskedVarIds.has(varId)) {
+                                    v.value = "<SECRET_STORED_LOCALLY>";
+                                    v.secret = true;
                                 }
-                            }
+                            });
                         }
                     }
                 }
@@ -110,7 +131,6 @@ export async function pushStateToGitHub() {
     } catch (e) {
         if (e.status !== 404) throw e;
     }
-
     await octokit.rest.repos.createOrUpdateFileContents({
         owner,
         repo,
@@ -120,47 +140,8 @@ export async function pushStateToGitHub() {
         ...(sha ? { sha } : {}),
     });
 
-    // Handle Secrets Upload if any exist
-    const secretKeys = Object.keys(secretsToPush);
-    if (secretKeys.length > 0) {
-        // 1. Get Repo Public Key
-        const { data: publicKeyData } = await octokit.rest.actions.getRepoPublicKey({
-            owner,
-            repo,
-        });
-
-        const keyId = publicKeyData.key_id;
-        const key = publicKeyData.key;
-
-        // 2. Wait for sodium to initialize once
-        await sodium.ready;
-
-        // 3. Encrypt and upload each secret
-        for (const secretName of secretKeys) {
-            const rawValue = secretsToPush[secretName];
-
-            // Convert Public Key and Secret to Uint8Array
-            const binkey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
-            const binsec = sodium.from_string(rawValue);
-
-            // Encrypt using libsodium
-            const encBytes = sodium.crypto_box_seal(binsec, binkey);
-            const encrypted_value = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
-
-            // PUT to GitHub Secrets API
-            await octokit.rest.actions.createOrUpdateRepoSecret({
-                owner,
-                repo,
-                secret_name: secretName,
-                encrypted_value,
-                key_id: keyId
-            });
-        }
-    }
-
     return true;
 }
-
 export async function pullStateFromGitHub() {
     const octokit = getOctokit();
     const { owner, repo } = await ensureSyncRepo(octokit);

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import styles from "./Sidebar.module.css";
 
 export function Sidebar({
     activeSidebar,
@@ -30,7 +31,6 @@ export function Sidebar({
     setItemToMove,
     setMoveTargetId,
     setShowMoveModal,
-    setShowGitHubSyncModal,
     loadHistoryItem
 }) {
     const [editingCollectionName, setEditingCollectionName] = useState(false);
@@ -45,6 +45,7 @@ export function Sidebar({
     const [editingRequestId, setEditingRequestId] = useState("");
     const [requestNameDraft, setRequestNameDraft] = useState("");
     const [collapsedHistoryDates, setCollapsedHistoryDates] = useState(new Set());
+    const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
 
     function matchesQuery(item, q) {
         if (!q) return true;
@@ -75,7 +76,7 @@ export function Sidebar({
                 if (item.type === "folder") {
                     return (
                         <div
-                            className="tree-node"
+                            className={styles.treeNode}
                             key={item.id}
                             draggable
                             onDragStart={(e) => {
@@ -111,7 +112,7 @@ export function Sidebar({
                                 setDragOverItemId(null);
                             }}
                         >
-                            <div className={`tree-folder ${dragOverItemId === item.id ? 'drag-over' : ''} ${draggedItemId === item.id ? 'dragging' : ''}`}>
+                            <div className={`${styles.treeFolder} ${dragOverItemId === item.id ? styles.dragOver : ''} ${draggedItemId === item.id ? styles.dragging : ''}`}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: 0 }}>
                                     <button
                                         className="ghost icon-button icon-plain"
@@ -149,7 +150,7 @@ export function Sidebar({
                                         />
                                     ) : (
                                         <button
-                                            className="ghost folder-name"
+                                            className={styles.folderName}
                                             onDoubleClick={() => {
                                                 setEditingFolderId(item.id);
                                                 setFolderNameDraft(item.name);
@@ -159,7 +160,7 @@ export function Sidebar({
                                         </button>
                                     )}
                                 </div>
-                                <div className="menu-wrap">
+                                <div className={styles.menuWrap}>
                                     <button
                                         className="ghost icon-button icon-plain"
                                         onClick={() => setOpenFolderMenuId((prev) => (prev === item.id ? "" : item.id))}
@@ -240,7 +241,7 @@ export function Sidebar({
                                 </div>
                             </div>
                             {!collapsedFolders.has(item.id) && (
-                                <div className="tree-children">{renderCollectionItems(item.items, depth + 1)}</div>
+                                <div className={styles.treeChildren}>{renderCollectionItems(item.items, depth + 1)}</div>
                             )}
                         </div>
                     );
@@ -250,7 +251,7 @@ export function Sidebar({
             ...(requests.length
                 ? requests.map((item) => (
                     <div
-                        className="tree-node"
+                        className={styles.treeNode}
                         key={item.id}
                         draggable
                         onDragStart={(e) => {
@@ -283,9 +284,9 @@ export function Sidebar({
                             setDragOverItemId(null);
                         }}
                     >
-                        <div className={`tree-request ${dragOverItemId === item.id ? 'drag-over' : ''} ${draggedItemId === item.id ? 'dragging' : ''}`} onClick={() => loadRequest(item)}>
-                            <div className="tree-request-header">
-                                <span className={`badge method-${item.method}`}>{item.method}</span>
+                        <div className={`${styles.treeRequest} ${dragOverItemId === item.id ? styles.dragOver : ''} ${draggedItemId === item.id ? styles.dragging : ''}`} onClick={() => loadRequest(item)}>
+                            <div className={styles.treeRequestHeader}>
+                                <span className={`${styles.methodBadge} ${item.method ? styles[item.method.toLowerCase()] : ''}`}>{item.method}</span>
                                 {editingRequestId === item.id ? (
                                     <input
                                         autoFocus
@@ -307,7 +308,7 @@ export function Sidebar({
                                     />
                                 ) : (
                                     <button
-                                        className="ghost tree-title"
+                                        className={styles.treeTitle}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
                                             setEditingRequestId(item.id);
@@ -317,7 +318,7 @@ export function Sidebar({
                                         {item.name}
                                     </button>
                                 )}
-                                <div className="menu-wrap">
+                                <div className={styles.menuWrap}>
                                     <button
                                         className="ghost icon-button icon-plain"
                                         onClick={(e) => {
@@ -377,11 +378,11 @@ export function Sidebar({
                                     )}
                                 </div>
                             </div>
-                            {item.description && <div className="tree-desc">{item.description}</div>}
+                            {item.description && <div className={styles.treeDesc}>{item.description}</div>}
                             {Array.isArray(item.tags) && item.tags.length > 0 && (
-                                <div className="tree-tags">
+                                <div className={styles.treeTags}>
                                     {item.tags.map((tag) => (
-                                        <span className="tag" key={`${item.id}-${tag}`}>{tag}</span>
+                                        <span className={styles.tag} key={`${item.id}-${tag}`}>{tag}</span>
                                     ))}
                                 </div>
                             )}
@@ -393,14 +394,14 @@ export function Sidebar({
     }
 
     return (
-        <aside className="sidebar">
-            <div className="sidebar-panel">
-                <div className="panel-title header-row">
+        <aside className={styles.sidebar}>
+            <div className={styles.sidebarPanel}>
+                <div className={`${styles.panelTitle} ${styles.headerRow}`}>
                     <span>{activeSidebar}</span>
                     {activeSidebar === "Collections" && (
                         <div style={{ display: 'flex', gap: '4px' }}>
                             <button className="ghost" onClick={() => setShowCollectionModal(true)}>Manage</button>
-                            <div className="menu-wrap">
+                            <div className={styles.menuWrap}>
                                 <button className="ghost" onClick={() => setShowImportMenu(prev => !prev)}>Import</button>
                                 {showImportMenu && (
                                     <div className="menu" style={{ right: 0, left: 'auto', minWidth: '150px' }}>
@@ -414,24 +415,167 @@ export function Sidebar({
                     )}
                 </div>
                 {activeSidebar === "Collections" && (
-                    <div className="panel-body">
-                        <div className="collection-section">
+                    <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <div className={styles.collectionSection}>
                             <div className="panel-row">
-                                <select
-                                    className="input compact"
-                                    value={activeCollectionId}
-                                    onChange={(e) => setActiveCollectionId(e.target.value)}
+                                <div className={styles.menuWrap} style={{ flex: 1, position: 'relative' }}>
+                                    <button
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            padding: '8px 12px',
+                                            height: '36px',
+                                            background: 'var(--panel)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '8px',
+                                            color: 'var(--text)',
+                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            boxShadow: showCollectionDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
+                                            borderColor: showCollectionDropdown ? 'var(--accent-2)' : 'var(--border)'
+                                        }}
+                                        onMouseOver={(e) => {
+                                            if (!showCollectionDropdown) {
+                                                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                                                e.currentTarget.style.background = 'var(--panel-3)';
+                                            }
+                                        }}
+                                        onMouseOut={(e) => {
+                                            if (!showCollectionDropdown) {
+                                                e.currentTarget.style.borderColor = 'var(--border)';
+                                                e.currentTarget.style.background = 'var(--panel)';
+                                            }
+                                        }}
+                                        onClick={() => setShowCollectionDropdown(prev => !prev)}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
+                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                            </svg>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 500 }}>
+                                                {collections.find(c => c.id === activeCollectionId)?.name || "Select Collection"}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '4px',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            transform: showCollectionDropdown ? 'rotate(180deg)' : 'rotate(0)'
+                                        }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                            </svg>
+                                        </div>
+                                    </button>
+                                    {showCollectionDropdown && (
+                                        <>
+                                            <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowCollectionDropdown(false)}></div>
+                                            <div
+                                                className="menu"
+                                                style={{
+                                                    width: '100%',
+                                                    top: 'calc(100% + 6px)',
+                                                    maxHeight: '300px',
+                                                    overflowY: 'auto',
+                                                    padding: '6px',
+                                                    borderRadius: '10px',
+                                                    boxShadow: '0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
+                                                    background: 'var(--panel)',
+                                                    zIndex: 100,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '2px'
+                                                }}
+                                            >
+                                                <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                                                    Your Collections
+                                                </div>
+                                                {collections.map((col) => {
+                                                    const isActive = col.id === activeCollectionId;
+                                                    return (
+                                                        <button
+                                                            key={col.id}
+                                                            style={{
+                                                                width: '100%',
+                                                                textAlign: 'left',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '10px',
+                                                                color: isActive ? 'var(--accent-2)' : 'var(--text)',
+                                                                backgroundColor: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
+                                                                fontWeight: isActive ? 600 : 500,
+                                                                fontSize: '13px',
+                                                                padding: '8px 10px',
+                                                                borderRadius: '6px',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                            onMouseOver={(e) => {
+                                                                if (!isActive) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
+                                                            }}
+                                                            onMouseOut={(e) => {
+                                                                if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                                                            }}
+                                                            onClick={() => {
+                                                                setActiveCollectionId(col.id);
+                                                                setShowCollectionDropdown(false);
+                                                            }}
+                                                        >
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>
+                                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                                            </svg>
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {col.name}
+                                                            </span>
+                                                            {isActive && (
+                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <button
+                                    className="ghost icon-button"
+                                    onClick={addCollection}
+                                    title="Create Collection"
+                                    aria-label="Create collection"
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '8px',
+                                        background: 'var(--panel)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--text)',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                                        e.currentTarget.style.background = 'var(--panel-3)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        e.currentTarget.style.borderColor = 'var(--border)';
+                                        e.currentTarget.style.background = 'var(--panel)';
+                                    }}
                                 >
-                                    {collections.map((col) => (
-                                        <option key={col.id} value={col.id}>{col.name}</option>
-                                    ))}
-                                </select>
-                                <button className="ghost icon-button" onClick={addCollection} title="Create Collection" aria-label="Create collection">
                                     +
                                 </button>
                             </div>
                         </div>
-                        <div className="collection-section">
+                        <div className={styles.collectionSection} style={{ flex: 1, minHeight: 0, paddingBottom: 0, marginBottom: 0, borderBottom: 'none' }}>
                             <div className="panel-row">
                                 {editingCollectionName ? (
                                     <input
@@ -453,7 +597,7 @@ export function Sidebar({
                                     />
                                 ) : (
                                     <button
-                                        className="ghost folder-name"
+                                        className={styles.folderName}
                                         onDoubleClick={() => {
                                             setEditingCollectionName(true);
                                             setCollectionNameDraft(getActiveCollection()?.name || "");
@@ -462,7 +606,7 @@ export function Sidebar({
                                         {getActiveCollection()?.name || "Untitled Collection"}
                                     </button>
                                 )}
-                                <div className="menu-wrap" style={{ marginLeft: 'auto' }}>
+                                <div className={styles.menuWrap} style={{ marginLeft: 'auto' }}>
                                     <button
                                         className="ghost icon-button"
                                         aria-label="Collection options"
@@ -513,7 +657,7 @@ export function Sidebar({
                                 </div>
                             </div>
                             <div
-                                className={`panel-list ${dragOverItemId === 'root' ? 'drag-over' : ''}`}
+                                className={`${styles.panelList} ${dragOverItemId === 'root' ? styles.dragOver : ''}`}
                                 onDragOver={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -537,7 +681,7 @@ export function Sidebar({
                                     const sourceId = e.dataTransfer.getData("text/plain");
                                     if (sourceId) moveItemInCollection(sourceId, null, true);
                                 }}
-                                style={{ minHeight: '100px', paddingBottom: '20px' }}
+                                style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: '20px' }}
                             >
                                 {renderCollectionItems(getActiveCollection()?.items || [])}
                             </div>
@@ -614,55 +758,73 @@ export function Sidebar({
                                         {!isCollapsed && items.map((item, idx) => {
                                             const d = new Date(item.timestamp);
                                             const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                            const methodColor = item.request?.method === "GET" ? "var(--accent)" :
-                                                item.request?.method === "POST" ? "var(--accent-2)" :
-                                                    item.request?.method === "DELETE" ? "#ff5555" : "var(--accent-3)";
-
-                                            // Make identical requests grouped locally look connected
+                                            const method = item.request?.method || "GET";
+                                            const methodColorClass = method.toLowerCase();
                                             const isLast = idx === items.length - 1;
 
                                             return (
                                                 <div key={idx} style={{
-                                                    borderBottom: isLast ? "none" : "1px solid var(--border)",
-                                                    padding: "10px 16px 10px 24px",
+                                                    margin: "0 10px 8px 10px",
+                                                    padding: "10px",
                                                     display: "flex",
                                                     flexDirection: "column",
-                                                    gap: "6px",
+                                                    gap: "8px",
                                                     cursor: "pointer",
                                                     background: "var(--panel-2)",
-                                                    transition: "background 0.1s ease",
+                                                    border: "1px solid var(--border)",
+                                                    borderRadius: "8px",
+                                                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                                                    transition: "all 0.15s ease",
                                                 }} onClick={() => {
                                                     loadHistoryItem(item);
                                                 }}
-                                                    onMouseOver={(e) => e.currentTarget.style.background = "var(--panel-3)"}
-                                                    onMouseOut={(e) => e.currentTarget.style.background = "var(--panel-2)"}
+                                                    onMouseOver={(e) => {
+                                                        e.currentTarget.style.background = "var(--panel-3)";
+                                                        e.currentTarget.style.borderColor = "var(--accent-2)";
+                                                        e.currentTarget.style.transform = "translateY(-1px)";
+                                                        e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        e.currentTarget.style.background = "var(--panel-2)";
+                                                        e.currentTarget.style.borderColor = "var(--border)";
+                                                        e.currentTarget.style.transform = "translateY(0)";
+                                                        e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+                                                    }}
                                                 >
-                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.80rem" }}>
-                                                        <span style={{ color: methodColor, fontWeight: 700 }}>{item.request?.method}</span>
-                                                        <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>{timeStr}</span>
+                                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                                        <span className={`${styles.methodBadge} ${styles[methodColorClass] || ''}`} style={{ opacity: 0.9 }}>
+                                                            {method}
+                                                        </span>
+                                                        <span style={{ color: "var(--muted)", fontSize: "0.7rem", fontWeight: 500 }}>
+                                                            {timeStr}
+                                                        </span>
                                                     </div>
+
                                                     <div style={{
-                                                        fontSize: "0.85rem",
-                                                        whiteSpace: "nowrap",
+                                                        fontSize: "0.75rem",
+                                                        fontWeight: 500,
+                                                        color: "var(--text)",
                                                         overflow: "hidden",
                                                         textOverflow: "ellipsis",
-                                                        color: "var(--text)"
+                                                        whiteSpace: "nowrap",
                                                     }} title={item.request?.url}>
                                                         {item.request?.url || "Unknown URL"}
                                                     </div>
-                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                                         <span style={{
-                                                            fontSize: "0.70rem",
-                                                            padding: "2px 6px",
+                                                            fontSize: "0.65rem",
+                                                            padding: "1px 5px",
                                                             borderRadius: "4px",
-                                                            background: item.response?.status >= 200 && item.response?.status < 300 ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
+                                                            background: item.response?.status >= 200 && item.response?.status < 300 ? "rgba(46, 211, 198, 0.1)" : "rgba(255, 85, 85, 0.1)",
                                                             color: item.response?.status >= 200 && item.response?.status < 300 ? "var(--accent-2)" : "#ff5555",
-                                                            fontWeight: 600
+                                                            fontWeight: 600,
+                                                            border: item.response?.status >= 200 && item.response?.status < 300 ? "1px solid rgba(46, 211, 198, 0.2)" : "1px solid rgba(255, 85, 85, 0.2)"
                                                         }}>
                                                             {item.response?.status} {item.response?.statusText}
                                                         </span>
-                                                        <span style={{ fontSize: "0.70rem", color: "var(--muted)" }}>
-                                                            {item.response?.time ? `${item.response.time}ms` : ""}
+                                                        <span style={{ fontSize: "0.65rem", color: "var(--muted)", fontWeight: 500 }}>
+                                                            {item.response?.time ? `${item.response.time} ms` : ""}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -675,16 +837,6 @@ export function Sidebar({
                     </div>
                 )}
             </div>
-            <div style={{ marginTop: 'auto', padding: '16px', borderTop: '1px solid var(--border)' }}>
-                <button
-                    className="ghost"
-                    style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    onClick={() => setShowGitHubSyncModal(true)}
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
-                    GitHub Sync
-                </button>
-            </div>
-        </aside>
+        </aside >
     );
 }

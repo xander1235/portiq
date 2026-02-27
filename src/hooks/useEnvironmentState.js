@@ -9,7 +9,7 @@ export function useEnvironmentState() {
             vars: [{ key: "baseUrl", value: "https://api.example.com", comment: "", enabled: true }]
         }
     ]);
-    const [activeEnvId, setActiveEnvId] = useLocalStorage("ui_activeEnvId", "env-default");
+    const [activeEnvId, setActiveEnvId] = useLocalStorage("ui_activeEnvId", null);
 
     const [showEnvModal, setShowEnvModal] = useState(false);
     const [selectedEnvIds, setSelectedEnvIds] = useState([]);
@@ -19,7 +19,8 @@ export function useEnvironmentState() {
 
     function getActiveEnv() {
         if (!Array.isArray(environments) || environments.length === 0) return null;
-        return environments.find((env) => env.id === activeEnvId) || environments[0];
+        if (activeEnvId === null) return null;
+        return environments.find((env) => env.id === activeEnvId) || null;
     }
 
     function getEnvVars() {
