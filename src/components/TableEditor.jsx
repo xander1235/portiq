@@ -231,7 +231,9 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
     );
 }
 
-export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, envVars, onUpdateEnvVar, isEnv }) {
+export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, envVars, onUpdateEnvVar, isEnv, isMaskable }) {
+    const [unmaskedRows, setUnmaskedRows] = React.useState({});
+
     function updateRow(index, field, value) {
         const next = rows.map((row, idx) => (idx === index ? { ...row, [field]: value } : row));
         onChange(next);
@@ -240,6 +242,7 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
     function addRow() {
         const newRow = { key: "", value: "", comment: "", enabled: true };
         if (isEnv) newRow.secret = false;
+        if (isMaskable) newRow.masked = true;
         onChange([...rows, newRow]);
     }
 
@@ -247,67 +250,116 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
         onChange(rows.filter((_, idx) => idx !== index));
     }
 
+    function toggleUnmask(index) {
+        setUnmaskedRows(prev => ({ ...prev, [index]: !prev[index] }));
+    }
+
+    const gridColumns = isEnv
+        ? "30px 1fr 1fr 40px 1fr 80px"
+        : isMaskable
+            ? "30px 1fr 1fr 40px 1fr 80px"
+            : "30px 1fr 1fr 1fr 80px";
+
     return (
         <div className="table-editor">
-            <div className="table-editor-header" style={{ gridTemplateColumns: isEnv ? "30px 1fr 1fr 40px 1fr 80px" : "30px 1fr 1fr 1fr 80px" }}>
+            <div className="table-editor-header" style={{ gridTemplateColumns: gridColumns }}>
                 <div />
                 <div>{keyPlaceholder}</div>
                 <div>{valuePlaceholder}</div>
-                {isEnv && <div style={{ textAlign: "center", fontSize: "16px" }} title="GitHub Secret">🔒</div>}
+                {isEnv && <div style={{ textAlign: "center", display: 'flex', justifyContent: 'center' }} title="GitHub Secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>}
+                {isMaskable && <div style={{ textAlign: "center", display: 'flex', justifyContent: 'center' }} title="Mask value"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>}
                 <div>Comment</div>
                 <div className="table-editor-actions">
                     <button className="ghost" onClick={addRow}>Add</button>
                 </div>
             </div>
             <div className="table-rows">
-                {rows.map((row, index) => (
-                    <div className="table-row" key={index} style={{ gridTemplateColumns: isEnv ? "30px 1fr 1fr 40px 1fr 80px" : "30px 1fr 1fr 1fr 80px" }}>
-                        <input
-                            type="checkbox"
-                            className="checkbox"
-                            checked={row.enabled !== false}
-                            onChange={(e) => updateRow(index, "enabled", e.target.checked)}
-                        />
-                        <input
-                            className="input table-input"
-                            value={row.key}
-                            placeholder={keyPlaceholder || "Key"}
-                            onChange={(e) => updateRow(index, "key", e.target.value)}
-                        />
-                        <EnvInput
-                            className="input table-input"
-                            value={row.value}
-                            placeholder={valuePlaceholder || "Value"}
-                            onChange={(val) => updateRow(index, "value", val)}
-                            envVars={envVars}
-                            onUpdateEnvVar={onUpdateEnvVar}
-                            style={{ width: "100%" }}
-                        />
-                        {isEnv && (
-                            <button
-                                className="ghost icon-button"
-                                style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: row.secret ? 'var(--accent)' : 'var(--muted)',
-                                    opacity: row.secret ? 1 : 0.5
-                                }}
-                                title="Toggle GitHub Secret"
-                                onClick={() => updateRow(index, "secret", !row.secret)}
-                            >
-                                {row.secret ? '🔒' : '🔓'}
+                {rows.map((row, index) => {
+                    const isMasked = isMaskable && row.masked !== false && !unmaskedRows[index];
+                    return (
+                        <div className="table-row" key={index} style={{ gridTemplateColumns: gridColumns }}>
+                            <input
+                                type="checkbox"
+                                className="checkbox"
+                                checked={row.enabled !== false}
+                                onChange={(e) => updateRow(index, "enabled", e.target.checked)}
+                            />
+                            <input
+                                className="input table-input"
+                                value={row.key}
+                                placeholder={keyPlaceholder || "Key"}
+                                onChange={(e) => updateRow(index, "key", e.target.value)}
+                            />
+                            {isMaskable ? (
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                        type={isMasked ? "password" : "text"}
+                                        className="input table-input"
+                                        value={row.value}
+                                        placeholder={valuePlaceholder || "Value"}
+                                        onChange={(e) => updateRow(index, "value", e.target.value)}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            ) : (
+                                <EnvInput
+                                    className="input table-input"
+                                    value={row.value}
+                                    placeholder={valuePlaceholder || "Value"}
+                                    onChange={(val) => updateRow(index, "value", val)}
+                                    envVars={envVars}
+                                    onUpdateEnvVar={onUpdateEnvVar}
+                                    style={{ width: "100%" }}
+                                />
+                            )}
+                            {isEnv && (
+                                <button
+                                    className="ghost icon-button"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: row.secret ? 'var(--accent)' : 'var(--muted)',
+                                        opacity: row.secret ? 1 : 0.5
+                                    }}
+                                    title="Toggle GitHub Secret"
+                                    onClick={() => updateRow(index, "secret", !row.secret)}
+                                >
+                                    {row.secret ? (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                    ) : (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5"></path></svg>
+                                    )}
+                                </button>
+                            )}
+                            {isMaskable && (
+                                <button
+                                    className="ghost icon-button"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '14px',
+                                        opacity: isMasked ? 0.7 : 1
+                                    }}
+                                    title={isMasked ? "Show value" : "Hide value"}
+                                    onClick={() => toggleUnmask(index)}
+                                >
+                                    {isMasked ? (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    ) : (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                    )}
+                                </button>
+                            )}
+                            <input
+                                className="input table-input"
+                                value={row.comment || ""}
+                                placeholder="Comment"
+                                onChange={(e) => updateRow(index, "comment", e.target.value)}
+                            />
+                            <button className="ghost icon-button" onClick={() => removeRow(index)} aria-label="Remove row">
+                                ×
                             </button>
-                        )}
-                        <input
-                            className="input table-input"
-                            value={row.comment || ""}
-                            placeholder="Comment"
-                            onChange={(e) => updateRow(index, "comment", e.target.value)}
-                        />
-                        <button className="ghost icon-button" onClick={() => removeRow(index)} aria-label="Remove row">
-                            ×
-                        </button>
-                    </div>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
+import { javascript } from '@codemirror/lang-javascript';
 import { lintGutter } from '@codemirror/lint';
 
 import { xmlLinter } from "../../utils/codemirror/xmlExtensions.js";
@@ -77,6 +78,8 @@ export function RequestEditor({
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
     const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
+    const [showBearerToken, setShowBearerToken] = useState(false);
+    const [showApiKeyValue, setShowApiKeyValue] = useState(false);
 
     return (
         <section className={styles.request}>
@@ -384,12 +387,17 @@ export function RequestEditor({
                             />
                         )}
                         {headersMode === "json" && (
-                            <textarea
-                                className={`${styles.textarea} ${styles.fixed}`}
-                                value={headersText}
-                                onChange={(e) => handleHeadersTextChange(e.target.value)}
-                                placeholder="Paste JSON headers here"
-                            />
+                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                <CodeMirror
+                                    value={headersText}
+                                    theme={vscodeDark}
+                                    extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                    onChange={(value) => handleHeadersTextChange(value)}
+                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
+                                    placeholder="Paste JSON headers here"
+                                />
+                            </div>
                         )}
                     </div>
                 )}
@@ -535,17 +543,33 @@ export function RequestEditor({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Token</span>
-                                        <input
-                                            type="text"
-                                            className="input"
-                                            placeholder="Token"
-                                            value={authConfig.bearer?.token || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                        />
+                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type={showBearerToken ? "text" : "password"}
+                                                className="input"
+                                                placeholder="Token"
+                                                value={authConfig.bearer?.token || ""}
+                                                onChange={(e) => {
+                                                    const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
+                                                    setAuthConfig(next);
+                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                }}
+                                                style={{ paddingRight: '36px' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="ghost icon-button"
+                                                onClick={() => setShowBearerToken(prev => !prev)}
+                                                title={showBearerToken ? "Hide token" : "Show token"}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                            >
+                                                {showBearerToken ? (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                ) : (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                                )}
+                                            </button>
+                                        </div>
                                     </label>
                                 </div>
                             )}
@@ -601,17 +625,33 @@ export function RequestEditor({
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Value</span>
-                                        <input
-                                            type="text"
-                                            className="input"
-                                            placeholder="Value"
-                                            value={authConfig.api_key?.value || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                        />
+                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type={showApiKeyValue ? "text" : "password"}
+                                                className="input"
+                                                placeholder="Value"
+                                                value={authConfig.api_key?.value || ""}
+                                                onChange={(e) => {
+                                                    const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
+                                                    setAuthConfig(next);
+                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                }}
+                                                style={{ paddingRight: '36px' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="ghost icon-button"
+                                                onClick={() => setShowApiKeyValue(prev => !prev)}
+                                                title={showApiKeyValue ? "Hide value" : "Show value"}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                            >
+                                                {showApiKeyValue ? (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                ) : (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                                )}
+                                            </button>
+                                        </div>
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Add to</span>
@@ -642,6 +682,7 @@ export function RequestEditor({
                                     valuePlaceholder="Credentials"
                                     envVars={getEnvVars()}
                                     onUpdateEnvVar={handleUpdateEnvVar}
+                                    isMaskable
                                 />
                             )}
                         </div>
@@ -747,26 +788,43 @@ export function RequestEditor({
                         {showTestInput && (
                             <div className={styles.testsInputInline}>
                                 <div className="panel-title">Test Input (JSON)</div>
-                                <textarea
-                                    className={`${styles.textarea} ${styles.compact}`}
-                                    value={testsInputText}
-                                    onChange={(e) => setTestsInputText(e.target.value)}
-                                />
+                                <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
+                                    <CodeMirror
+                                        value={testsInputText}
+                                        theme={vscodeDark}
+                                        extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                        onChange={(value) => setTestsInputText(value)}
+                                        basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                                        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
+                                    />
+                                </div>
                             </div>
                         )}
                         {testsMode === "pre" && (
-                            <textarea
-                                className={`${styles.textarea} ${styles.fixed}`}
-                                value={testsPreText}
-                                onChange={(e) => setTestsPreText(e.target.value)}
-                            />
+                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                <CodeMirror
+                                    value={testsPreText}
+                                    theme={vscodeDark}
+                                    extensions={[javascript(), search()]}
+                                    onChange={(value) => setTestsPreText(value)}
+                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
+                                    placeholder="// Pre-request script (JavaScript)"
+                                />
+                            </div>
                         )}
                         {testsMode === "post" && (
-                            <textarea
-                                className={`${styles.textarea} ${styles.fixed}`}
-                                value={testsPostText}
-                                onChange={(e) => setTestsPostText(e.target.value)}
-                            />
+                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                <CodeMirror
+                                    value={testsPostText}
+                                    theme={vscodeDark}
+                                    extensions={[javascript(), search()]}
+                                    onChange={(value) => setTestsPostText(value)}
+                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
+                                    placeholder="// Post-response script (JavaScript)"
+                                />
+                            </div>
                         )}
                         {showTestOutput && (
                             <div className={styles.testsOutput}>
@@ -790,3 +848,5 @@ export function RequestEditor({
         </section>
     );
 }
+
+

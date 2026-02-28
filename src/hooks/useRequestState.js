@@ -23,6 +23,7 @@ export function useRequestState() {
 
     const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
+    const [collectionActiveRequestIds, setCollectionActiveRequestIds] = useLocalStorage("ui_collectionActiveRequestIds", {});
 
     const [collections, setCollections] = useLocalStorage("ui_collections", [
         {
@@ -154,7 +155,23 @@ export function useRequestState() {
     }
 
     function loadRequest(req) {
-        if (!req) return;
+        if (!req) {
+            setRequestName("New Request");
+            setCurrentRequestId("");
+            setMethod("GET");
+            setUrl("");
+            setHeadersText("");
+            setBodyText("");
+            setTestsPreText("");
+            setTestsPostText("");
+            setHeadersRows([{ key: "", value: "", enabled: true }]);
+            setParamsRows([{ key: "", value: "", enabled: true }]);
+            setAuthRows([{ key: "", value: "", enabled: false }]);
+            setAuthType("none");
+            setBodyType("json");
+            setBodyRows([{ key: "", value: "", enabled: true }]);
+            return;
+        };
         setRequestName(req.name || "New Request");
         setCurrentRequestId(req.id || "");
         setMethod(req.method || "GET");
@@ -183,6 +200,49 @@ export function useRequestState() {
         });
 
         setBodyRows(req.bodyRows || [{ key: "", value: "", enabled: true }]);
+
+        if (activeCollectionId && req.id) {
+            setCollectionActiveRequestIds(prev => ({ ...prev, [activeCollectionId]: req.id }));
+        }
+    }
+
+    function syncDraftToCollection() {
+        if (!currentRequestId || !activeCollectionId) return;
+
+        const draft = {
+            method,
+            url,
+            headersText,
+            bodyText,
+            testsPreText,
+            testsPostText,
+            testsInputText,
+            paramsRows,
+            headersRows,
+            authRows,
+            authType,
+            authConfig,
+            bodyType,
+            bodyRows,
+            name: requestName
+        };
+
+        const updateItems = (items) =>
+            items.map((item) => {
+                if (item.type === "folder") {
+                    return { ...item, items: updateItems(item.items || []) };
+                }
+                if (item.type === "request" && item.id === currentRequestId) {
+                    return { ...item, ...draft };
+                }
+                return item;
+            });
+
+        setCollections((prev) =>
+            prev.map((col) =>
+                col.id === activeCollectionId ? { ...col, items: updateItems(col.items || []) } : col
+            )
+        );
     }
 
     function updateRequestState(requestId, field, value) {
@@ -472,8 +532,40 @@ export function useRequestState() {
                     headersRows: (req.headers || []).map(h => ({ key: h.name, value: h.value, enabled: true })),
                     paramsRows: (req.queryParams || []).map(q => ({ key: q.name, value: q.value, enabled: true })),
                     authRows: [{ key: "", value: "", enabled: false }],
-                    bodyRows: [{ key: "", value: "", enabled: true }]
+                    bodyRows: [{ key: "", value: "", enabled: true }],
+                    authType: "none",
+                    authConfig: {
+                        bearer: { token: "" },
+                        basic: { username: "", password: "" },
+                        api_key: { key: "", value: "", add_to: "header" }
+                    }
                 };
+
+                // Extract auth from HTTPie headers
+                const authHeader = (req.headers || []).find(h => h.name?.toLowerCase() === "authorization");
+                if (authHeader && authHeader.value) {
+                    const authValue = authHeader.value;
+                    if (authValue.toLowerCase().startsWith("bearer ")) {
+                        parsedReq.authType = "bearer";
+                        parsedReq.authConfig.bearer.token = authValue.substring(7);
+                        // Remove the auth header from headersRows since it's now in authConfig
+                        parsedReq.headersRows = parsedReq.headersRows.filter(
+                            h => h.key?.toLowerCase() !== "authorization"
+                        );
+                    } else if (authValue.toLowerCase().startsWith("basic ")) {
+                        try {
+                            const decoded = atob(authValue.substring(6));
+                            const [username, ...rest] = decoded.split(":");
+                            parsedReq.authType = "basic";
+                            parsedReq.authConfig.basic = { username, password: rest.join(":") };
+                            parsedReq.headersRows = parsedReq.headersRows.filter(
+                                h => h.key?.toLowerCase() !== "authorization"
+                            );
+                        } catch (e) {
+                            // If decoding fails, keep as custom auth header
+                        }
+                    }
+                }
 
                 if (req.body?.type === "text" && req.body?.text?.value) {
                     parsedReq.bodyType = "json";
@@ -516,8 +608,49 @@ export function useRequestState() {
                         headersRows: (pmReq.header || []).map(h => ({ key: h.key, value: h.value, enabled: true })),
                         paramsRows: (pmReq.url?.query || []).map(q => ({ key: q.key, value: q.value, enabled: true })),
                         authRows: [{ key: "", value: "", enabled: false }],
-                        bodyRows: [{ key: "", value: "", enabled: true }]
+                        bodyRows: [{ key: "", value: "", enabled: true }],
+                        authType: "none",
+                        authConfig: {
+                            bearer: { token: "" },
+                            basic: { username: "", password: "" },
+                            api_key: { key: "", value: "", add_to: "header" }
+                        }
                     };
+
+                    // Extract Postman auth settings
+                    const pmAuth = pmReq.auth;
+                    if (pmAuth) {
+                        const authType = pmAuth.type;
+                        if (authType === "bearer") {
+                            const tokenEntry = (pmAuth.bearer || []).find(e => e.key === "token");
+                            parsedReq.authType = "bearer";
+                            parsedReq.authConfig = {
+                                ...parsedReq.authConfig,
+                                bearer: { token: tokenEntry?.value || "" }
+                            };
+                        } else if (authType === "basic") {
+                            const userEntry = (pmAuth.basic || []).find(e => e.key === "username");
+                            const passEntry = (pmAuth.basic || []).find(e => e.key === "password");
+                            parsedReq.authType = "basic";
+                            parsedReq.authConfig = {
+                                ...parsedReq.authConfig,
+                                basic: { username: userEntry?.value || "", password: passEntry?.value || "" }
+                            };
+                        } else if (authType === "apikey") {
+                            const keyEntry = (pmAuth.apikey || []).find(e => e.key === "key");
+                            const valEntry = (pmAuth.apikey || []).find(e => e.key === "value");
+                            const inEntry = (pmAuth.apikey || []).find(e => e.key === "in");
+                            parsedReq.authType = "api_key";
+                            parsedReq.authConfig = {
+                                ...parsedReq.authConfig,
+                                api_key: {
+                                    key: keyEntry?.value || "",
+                                    value: valEntry?.value || "",
+                                    add_to: (inEntry?.value === "query") ? "query" : "header"
+                                }
+                            };
+                        }
+                    }
 
                     if (pmReq.body) {
                         const mode = pmReq.body.mode;
@@ -587,6 +720,9 @@ export function useRequestState() {
         moveItemInCollection,
         duplicateItem,
         getAllFolders,
-        parseImportData
+        parseImportData,
+        syncDraftToCollection,
+        collectionActiveRequestIds,
+        setCollectionActiveRequestIds
     };
 }

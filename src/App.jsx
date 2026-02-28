@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import CodeMirror from '@uiw/react-codemirror';
@@ -8,7 +8,7 @@ import { xml as xmlLang } from '@codemirror/lang-xml';
 import { linter, lintGutter } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
-import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse } from "./services/ai.js";
+import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse, fetchModels } from "./services/ai.js";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format.js";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table.js";
 
@@ -31,13 +31,6 @@ import rightRailStyles from "./components/Layout/RightRail.module.css";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
-const templates = [
-  { id: "crud", label: "CRUD (REST)" },
-  { id: "graphql", label: "GraphQL" },
-  { id: "auth", label: "Auth / Token" },
-  { id: "webhook", label: "Webhook Receiver" },
-  { id: "search", label: "Search / Query" }
-];
 
 function findArrayPaths(value, prefix = "$") {
   const paths = [];
@@ -103,13 +96,56 @@ function App() {
     moveItemInCollection,
     duplicateItem,
     getAllFolders,
-    parseImportData
+    parseImportData,
+    syncDraftToCollection,
+    collectionActiveRequestIds
   } = useRequestState();
 
   const [activeRequestTab, setActiveRequestTab] = useLocalStorage("ui_activeRequestTab", "Body");
   const [activeResponseTab, setActiveResponseTab] = useLocalStorage("ui_activeResponseTab", "Pretty");
   const [aiPrompt, setAiPrompt] = useLocalStorage("ui_aiPrompt", "");
-  const [templateId, setTemplateId] = useLocalStorage("ui_templateId", "");
+  const [aiChatHistory, setAiChatHistory] = useLocalStorage("ui_aiChatHistory", [
+    { role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }
+  ]);
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const chatEndRef = useRef(null);
+
+
+  const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
+  const [activeModel, setActiveModel] = useLocalStorage("ui_activeModel", "gpt-4o-mini");
+  const [availableModels, setAvailableModels] = useState([]);
+  const [aiApiKeyOpenAI, setAiApiKeyOpenAI] = useLocalStorage("ui_aiApiKeyOpenAI", "");
+  const [aiApiKeyAnthropic, setAiApiKeyAnthropic] = useLocalStorage("ui_aiApiKeyAnthropic", "");
+  const [aiApiKeyGemini, setAiApiKeyGemini] = useLocalStorage("ui_aiApiKeyGemini", "");
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAvail = async () => {
+      let key = "";
+      if (aiProvider === "openai") key = aiApiKeyOpenAI;
+      else if (aiProvider === "anthropic") key = aiApiKeyAnthropic;
+      else if (aiProvider === "gemini") key = aiApiKeyGemini;
+
+      if (!key) {
+        if (isMounted) setAvailableModels([]);
+        return;
+      }
+
+      const models = await fetchModels(aiProvider, key);
+      if (isMounted) {
+        setAvailableModels(models);
+        // Auto-select cheapest/default if nothing selected or current not in list
+        if (models.length > 0 && !models.includes(activeModel)) {
+          if (aiProvider === "openai") setActiveModel(models.includes("gpt-4o-mini") ? "gpt-4o-mini" : models[0]);
+          else if (aiProvider === "anthropic") setActiveModel(models.includes("claude-3-5-haiku-latest") ? "claude-3-5-haiku-latest" : models[0]);
+          else if (aiProvider === "gemini") setActiveModel(models.includes("gemini-1.5-flash") ? "gemini-1.5-flash" : models[0]);
+          else setActiveModel(models[0]);
+        }
+      }
+    };
+    fetchAvail();
+    return () => { isMounted = false; };
+  }, [aiProvider, aiApiKeyOpenAI, aiApiKeyAnthropic, aiApiKeyGemini]); // Intentionally omitting activeModel to avoid loops
 
   const [response, setResponse] = useState(null);
   const [responseSummary, setResponseSummary] = useState({ summary: "No response yet.", hints: [] });
@@ -119,6 +155,12 @@ function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
   const [isSending, setIsSending] = useState(false);
+
+  useEffect(() => {
+    if (showRightRail && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [aiChatHistory, isAiTyping, showRightRail]);
 
   const [history, setHistory] = useLocalStorage("ui_history", []);
   const [historyRetentionDays, setHistoryRetentionDays] = useLocalStorage("ui_historyRetentionDays", 7);
@@ -197,6 +239,46 @@ function App() {
   const [derivedExpr, setDerivedExpr] = useState("");
   const [derivedFields, setDerivedFields] = useState([]);
 
+  function handleCollectionSwitch(id) {
+    syncDraftToCollection();
+    setActiveCollectionId(id);
+  }
+
+  function handleRequestClick(req) {
+    syncDraftToCollection();
+    loadRequest(req);
+  }
+
+  // Effect to load the last active request when switching collections
+  useEffect(() => {
+    const lastRequestId = collectionActiveRequestIds[activeCollectionId];
+    if (lastRequestId) {
+      if (currentRequestId !== lastRequestId) {
+        const col = getActiveCollection();
+        const findReq = (items) => {
+          for (const item of items) {
+            if (item.id === lastRequestId) return item;
+            if (item.type === "folder" && item.items) {
+              const res = findReq(item.items);
+              if (res) return res;
+            }
+          }
+          return null;
+        };
+        const req = findReq(col?.items || []);
+        if (req) {
+          loadRequest(req);
+        } else {
+          loadRequest(null);
+        }
+      }
+    } else {
+      if (currentRequestId) {
+        loadRequest(null);
+      }
+    }
+  }, [activeCollectionId]);
+
   const parsedJson = useMemo(() => {
     if (response?.json) return response.json;
     if (response?.body) {
@@ -252,10 +334,11 @@ function App() {
   // Handle clicking outside to close menus
   useEffect(() => {
     function handleClickOutside(e) {
-      if (!e.target.closest(".menu-wrap") && !e.target.closest(".menu")) {
-        setOpenFolderMenuId("");
-        setShowCollectionMenu(false);
-        setShowImportMenu(false);
+      if (e.target && typeof e.target.closest === "function") {
+        if (!e.target.closest(".menu-wrap") && !e.target.closest(".menu")) {
+          setShowCollectionMenu(false);
+          setShowImportMenu(false);
+        }
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -337,7 +420,6 @@ function App() {
         if (state.bodyRows) setBodyRows(state.bodyRows);
         if (state.activeRequestTab) setActiveRequestTab(state.activeRequestTab);
         if (state.activeResponseTab) setActiveResponseTab(state.activeResponseTab);
-        if (state.templateId) setTemplateId(state.templateId);
         if (Array.isArray(state.collections) && state.collections.length > 0) {
           setCollections(state.collections);
         }
@@ -378,7 +460,6 @@ function App() {
       bodyRows,
       activeRequestTab,
       activeResponseTab,
-      templateId,
       collections,
       activeCollectionId,
       environments,
@@ -411,7 +492,6 @@ function App() {
     bodyRows,
     activeRequestTab,
     activeResponseTab,
-    templateId,
     collections,
     activeCollectionId,
     environments,
@@ -442,7 +522,6 @@ function App() {
         bodyRows,
         activeRequestTab,
         activeResponseTab,
-        templateId,
         collections,
         activeCollectionId,
         environments,
@@ -475,7 +554,6 @@ function App() {
     bodyRows,
     activeRequestTab,
     activeResponseTab,
-    templateId,
     collections,
     activeCollectionId,
     environments,
@@ -554,7 +632,7 @@ function App() {
     if (!importCollisionData) return;
     const finalCol = { ...importCollisionData, name: importCollisionNameDraft.trim() || `${importCollisionData.name} Copy` };
     setCollections((prev) => [...prev, finalCol]);
-    setActiveCollectionId(finalCol.id);
+    handleCollectionSwitch(finalCol.id);
     setShowImportCollisionModal(false);
     setImportCollisionData(null);
   }
@@ -577,7 +655,7 @@ function App() {
             return;
           }
           setCollections((prev) => [...prev, parsedCol]);
-          setActiveCollectionId(parsedCol.id);
+          handleCollectionSwitch(parsedCol.id);
         } catch (err) {
           alert("Failed to parse JSON file. Error: " + err.message);
         }
@@ -602,7 +680,7 @@ function App() {
         return;
       }
       setCollections((prev) => [...prev, parsedCol]);
-      setActiveCollectionId(parsedCol.id);
+      handleCollectionSwitch(parsedCol.id);
       setShowImportTextModal(false);
       setImportTextDraft("");
     } catch (err) {
@@ -626,7 +704,7 @@ function App() {
           return;
         }
         setCollections((prev) => [...prev, parsedCol]);
-        setActiveCollectionId(parsedCol.id);
+        handleCollectionSwitch(parsedCol.id);
         setShowImportApiModal(false);
         setImportApiDraft("");
       })
@@ -1038,11 +1116,15 @@ function App() {
     });
 
     let reqBody = bodyText;
+    let isMultipart = false;
     if (bodyType === "json") {
       reqBody = stripJsonComments(val(bodyText));
-    } else if (bodyType === "form" || bodyType === "multipart") {
+    } else if (bodyType === "form") {
       const data = rowsToObject(bodyRows, snippetInterpolate);
       reqBody = new URLSearchParams(data).toString();
+    } else if (bodyType === "multipart") {
+      isMultipart = true;
+      reqBody = null; // we'll use -F flags instead
     } else {
       reqBody = val(bodyText);
     }
@@ -1070,10 +1152,17 @@ function App() {
 
     if (snippetLanguage === "curl") {
       let curl = `curl -X ${reqMethod} '${reqUrl}'`;
+      // For multipart, skip Content-Type header (curl adds it automatically with -F)
       Object.entries(headerObj).forEach(([k, v]) => {
+        if (isMultipart && k.toLowerCase() === "content-type") return;
         curl += ` \\\n  -H '${k}: ${v}'`;
       });
-      if (reqBody && reqMethod !== "GET") {
+      if (isMultipart && reqMethod !== "GET") {
+        const data = rowsToObject(bodyRows, snippetInterpolate);
+        Object.entries(data).forEach(([k, v]) => {
+          curl += ` \\\n  -F '${k}=${v}'`;
+        });
+      } else if (reqBody && reqMethod !== "GET") {
         curl += ` \\\n  -d '${reqBody.replace(/'/g, "'\\''")}'`;
       }
       return curl;
@@ -1225,9 +1314,7 @@ function App() {
   }
 
   function buildTemplatePrompt() {
-    const selected = templates.find((item) => item.id === templateId);
-    if (!selected) return aiPrompt;
-    return `Template: ${selected.label}. ${aiPrompt || ""}`.trim();
+    return aiPrompt || "";
   }
 
   async function handleLoadHistory(item) {
@@ -1281,8 +1368,14 @@ function App() {
         body = new URLSearchParams(data).toString();
       }
       if (bodyType === "multipart") {
+        const boundary = `----CommuBoundary${Date.now()}`;
         const data = rowsToObject(bodyRows);
-        body = new URLSearchParams(data).toString();
+        const parts = Object.entries(data).map(([key, value]) =>
+          `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}`
+        );
+        body = parts.join("\r\n") + `\r\n--${boundary}--\r\n`;
+        // Override Content-Type header with the boundary
+        headers["Content-Type"] = `multipart/form-data; boundary=${boundary}`;
       }
       if (bodyType === "xml") {
         body = interpolate(bodyText);
@@ -1394,6 +1487,189 @@ function App() {
     setActiveRequestTab("Tests");
     setTestsPostText(tests.join("\n"));
   }
+
+  async function handleAiChatSubmit() {
+    if (!aiPrompt.trim()) return;
+    const userMsg = { role: "user", text: aiPrompt };
+    const newHistory = [...aiChatHistory, userMsg];
+    setAiChatHistory(newHistory);
+    const currentPrompt = aiPrompt;
+    setAiPrompt("");
+    setIsAiTyping(true);
+
+    const aiSettings = {
+      provider: aiProvider,
+      model: activeModel,
+      keys: {
+        openai: aiApiKeyOpenAI,
+        anthropic: aiApiKeyAnthropic,
+        gemini: aiApiKeyGemini
+      }
+    };
+    const currentState = { method, url, headersText, bodyText };
+
+    try {
+      if (currentPrompt.toLowerCase().includes("test")) {
+        const tests = await generateTestsFromResponse({ method, url }, response);
+        setActiveRequestTab("Tests");
+        setTestsPostText(tests.join("\n"));
+        setIsAiTyping(false);
+        setAiChatHistory([...newHistory, { role: "assistant", text: "I've generated tests based on the response and added them to your Tests > Post-response script tab." }]);
+      } else {
+        const finalPrompt = currentPrompt;
+        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings);
+        console.log("[AI DEBUG] Raw AI output:", JSON.stringify(output, null, 2));
+
+        let assistantMsg = output.message || "I have updated the workspace.";
+
+        if (output.operations && Array.isArray(output.operations)) {
+          console.log("[AI DEBUG] Found", output.operations.length, "operations");
+          output.operations.forEach(op => {
+            console.log("[AI DEBUG] Processing operation:", op.type, JSON.stringify(op.payload));
+            if (op.type === "UPDATE_CURRENT_REQUEST") {
+              if (op.payload.method) setMethod(op.payload.method);
+              if (op.payload.url) setUrl(op.payload.url);
+              if (op.payload.headersText) setHeadersText(op.payload.headersText);
+              if (op.payload.bodyText) setBodyText(op.payload.bodyText);
+            } else if (op.type === "UPDATE_REQUEST_BY_ID") {
+              setCollections(prev => prev.map(col => ({
+                ...col,
+                requests: col.requests.map(req => req.id === op.payload.id ? { ...req, ...op.payload.updates } : req)
+              })));
+            } else if (op.type === "CREATE_REQUEST") {
+              const newReqId = "req-" + Date.now().toString() + "-" + Math.random().toString(36).substr(2, 5);
+              let targetColId = op.payload.collectionId;
+              let targetColName = op.payload.newCollectionName || "";
+
+              let newHeadersRows = [{ key: "", value: "", enabled: true }];
+              if (op.payload.headersText) {
+                try {
+                  const parsed = JSON.parse(op.payload.headersText);
+                  newHeadersRows = objectToRows(parsed);
+                } catch (e) {
+                  // headersText might be "key: value" format, try parsing that
+                  try {
+                    const headerObj = {};
+                    op.payload.headersText.split('\n').forEach(line => {
+                      const idx = line.indexOf(':');
+                      if (idx > 0) {
+                        headerObj[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
+                      }
+                    });
+                    if (Object.keys(headerObj).length > 0) {
+                      newHeadersRows = objectToRows(headerObj);
+                    }
+                  } catch (e2) { }
+                }
+              }
+
+              // Resolve target collection
+              if (op.payload.newCollectionName) {
+                const existing = collections.find(c => c.name.toLowerCase() === op.payload.newCollectionName.toLowerCase());
+                if (existing) {
+                  targetColId = existing.id;
+                  targetColName = existing.name;
+                } else {
+                  targetColId = "col-" + Date.now().toString() + "-" + Math.random().toString(36).substr(2, 5);
+                  targetColName = op.payload.newCollectionName;
+                }
+              } else if (!targetColId || !collections.find(c => c.id === targetColId)) {
+                targetColId = activeCollectionId || (collections.length > 0 ? collections[0].id : null);
+              }
+
+              if (!targetColName && targetColId) {
+                targetColName = collections.find(c => c.id === targetColId)?.name || "your workspace";
+              }
+
+              // Build request object matching the real data model (type: "request" inside col.items)
+              const newRequest = {
+                type: "request",
+                id: newReqId,
+                name: op.payload.name || "New AI Request",
+                description: "",
+                tags: [],
+                method: op.payload.method || "GET",
+                url: op.payload.url || "",
+                headersText: "",
+                bodyText: op.payload.bodyText || "",
+                testsPreText: "",
+                testsPostText: "",
+                testsInputText: "",
+                bodyType: "json",
+                paramsRows: [{ key: "", value: "", enabled: true }],
+                headersRows: newHeadersRows,
+                authRows: [{ key: "", value: "", enabled: false }],
+                bodyRows: [{ key: "", value: "", enabled: true }]
+              };
+
+              setCollections(prev => {
+                let updated = [...prev];
+
+                // Create the new collection if it doesn't exist yet
+                if (op.payload.newCollectionName && !updated.find(c => c.id === targetColId)) {
+                  updated.push({
+                    id: targetColId,
+                    name: targetColName,
+                    items: []
+                  });
+                }
+
+                if (!targetColId) return updated;
+
+                // Add the request into the collection's items array
+                return updated.map(col => {
+                  if (col.id === targetColId) {
+                    return {
+                      ...col,
+                      items: [...(col.items || []), newRequest]
+                    };
+                  }
+                  return col;
+                });
+              });
+
+              // Automatically navigate to the newly created request
+              if (targetColId) {
+                setTimeout(() => {
+                  setActiveCollectionId(targetColId);
+                  handleRequestClick(newRequest);
+                }, 150);
+              }
+
+              console.log("[AI DEBUG] Created request", newReqId, "in collection", targetColId, targetColName);
+              assistantMsg += `\n\n*(Note: I've placed this new request into your **${targetColName}** collection, and opened it for you!)*`;
+            }
+          });
+        }
+
+        setIsAiTyping(false);
+        const finalHistory = [...newHistory];
+        if (output._usage?.input) {
+          finalHistory[finalHistory.length - 1] = {
+            ...finalHistory[finalHistory.length - 1],
+            usage: { input: output._usage.input }
+          };
+        }
+
+        setAiChatHistory([...finalHistory, {
+          role: "assistant",
+          text: assistantMsg,
+          model: output._model || activeModel,
+          usage: output._usage?.output ? { output: output._usage.output } : null
+        }]);
+      }
+    } catch (err) {
+      setIsAiTyping(false);
+      setAiChatHistory([...newHistory, { role: "assistant", text: `AI Error: ${err.message}` }]);
+    }
+  }
+
+  const handleChatKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleAiChatSubmit();
+    }
+  };
 
   function runTests() {
     setTestsOutput([]);
@@ -1799,7 +2075,7 @@ function App() {
           setShowImportApiModal={setShowImportApiModal}
           collections={collections}
           activeCollectionId={activeCollectionId}
-          setActiveCollectionId={setActiveCollectionId}
+          setActiveCollectionId={handleCollectionSwitch}
           addCollection={addCollection}
           getActiveCollection={getActiveCollection}
           updateCollectionName={updateCollectionName}
@@ -1813,7 +2089,7 @@ function App() {
           duplicateItem={duplicateItem}
           deleteRequest={deleteRequest}
           updateRequestName={updateRequestName}
-          loadRequest={loadRequest}
+          loadRequest={handleRequestClick}
           loadHistoryItem={handleLoadHistory}
           setItemToMove={setItemToMove}
           setMoveTargetId={setMoveTargetId}
@@ -1923,42 +2199,105 @@ function App() {
 
         <aside className={showRightRail ? rightRailStyles.rightRail : `${rightRailStyles.rightRail} ${rightRailStyles.collapsed}`}>
           {showRightRail ? (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <div className={rightRailStyles.rightRailHeader}>
-                <div className={styles.sectionTitle}>AI Assistant</div>
+                <div className={styles.sectionTitle}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  AI Assistant
+                </div>
                 <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
                   →
                 </button>
               </div>
-              <div className={rightRailStyles.card}>
-                <div className={rightRailStyles.cardTitle}>Request Builder</div>
-                <textarea
-                  className="textarea small"
-                  placeholder="Describe your request"
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                />
-                <button className="primary" onClick={handleGenerateRequest}>Generate Request</button>
-                <div className={rightRailStyles.cardSubtext}>Template: {templateId ? templates.find((t) => t.id === templateId)?.label : "None"}</div>
+
+              {responseSummary && responseSummary.summary !== "No response yet." && (
+                <div className={rightRailStyles.card} style={{ padding: '8px', marginBottom: '12px', flexShrink: 0 }}>
+                  <div className={rightRailStyles.cardTitle} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Response Intelligence</div>
+                  <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>{responseSummary.summary}</div>
+                  {responseSummary.hints.length > 0 && <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: 0 }}>Hint: {responseSummary.hints[0]}</div>}
+                </div>
+              )}
+
+              <div className={rightRailStyles.chatContainer}>
+                <div className={rightRailStyles.messages}>
+                  {aiChatHistory.map((msg, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                      <div className={`${rightRailStyles.message} ${msg.role === 'user' ? rightRailStyles.messageUser : rightRailStyles.messageAssistant}`}>
+                        {msg.text}
+                      </div>
+
+                      {/* Meta for assistant (model and output tokens) or user (input tokens) */}
+                      {(msg.model || msg.usage) && (
+                        <div className={rightRailStyles.messageMeta}>
+                          {msg.model && (
+                            <span className={rightRailStyles.modelBadge}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
+                              {msg.model}
+                            </span>
+                          )}
+                          {msg.usage && msg.usage.input && (
+                            <span title="Input tokens" style={{ color: 'var(--accent)' }}>↑ {msg.usage.input.toLocaleString()} tokens</span>
+                          )}
+                          {msg.usage && msg.usage.output && (
+                            <span title="Output tokens">↓ {msg.usage.output.toLocaleString()} tokens</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {isAiTyping && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <div className={`${rightRailStyles.message} ${rightRailStyles.messageAssistant} ${rightRailStyles.typingIndicator}`}>
+                        <span></span><span></span><span></span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div style={{ padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className={rightRailStyles.inputWrapper} style={{ padding: 0, margin: 0 }}>
+                    <textarea
+                      className={rightRailStyles.chatInput}
+                      placeholder="Ask AI to generate requests or tests..."
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      onKeyDown={handleChatKeyDown}
+                      rows={1}
+                    />
+                    <button className={rightRailStyles.sendButton} onClick={handleAiChatSubmit} title="Send Message">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <select
+                      style={{ fontSize: '0.65rem', padding: '2px 4px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', maxWidth: '100%', cursor: 'pointer' }}
+                      value={activeModel}
+                      onChange={(e) => setActiveModel(e.target.value)}
+                      title="Select AI Model"
+                    >
+                      {availableModels.length > 0 ? (
+                        availableModels.map(m => <option key={m} value={m}>{m}</option>)
+                      ) : (
+                        <option value={activeModel}>{activeModel} (Offline)</option>
+                      )}
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className={rightRailStyles.card}>
-                <div className={rightRailStyles.cardTitle}>Response Intelligence</div>
-                <div className={rightRailStyles.cardText}>Summary: {responseSummary.summary}</div>
-                {responseSummary.hints.map((hint, index) => (
-                  <div className={rightRailStyles.cardText} key={index}>Hint: {hint}</div>
-                ))}
-                <button className="ghost" onClick={handleGenerateTests}>Generate Tests</button>
-              </div>
-            </>
+            </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
               <button
                 className="ghost icon-button"
                 onClick={() => setShowRightRail(true)}
                 title="Expand AI Assistant"
-                style={{ fontSize: '1.2rem', padding: '8px' }}
+                style={{ padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                ✨
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
               </button>
             </div>
           )}
@@ -1975,6 +2314,40 @@ function App() {
         <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">Settings</div>
+
+            <h4 style={{ margin: '16px 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>AI Configuration</h4>
+            <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label>AI Provider</label>
+              <select className="input" style={{ width: '180px' }} value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
+              </select>
+            </div>
+
+
+            {aiProvider === 'openai' && (
+              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label>OpenAI API Key</label>
+                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyOpenAI} onChange={(e) => setAiApiKeyOpenAI(e.target.value)} placeholder="sk-..." />
+              </div>
+            )}
+            {aiProvider === 'anthropic' && (
+              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label>Anthropic API Key</label>
+                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyAnthropic} onChange={(e) => setAiApiKeyAnthropic(e.target.value)} placeholder="sk-ant-..." />
+              </div>
+            )}
+            {aiProvider === 'gemini' && (
+              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label>Gemini API Key</label>
+                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyGemini} onChange={(e) => setAiApiKeyGemini(e.target.value)} placeholder="AIza..." />
+              </div>
+            )}
+
+            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>Preferences</h4>
+
             <div className="modal-row">
               <label>
                 <input type="checkbox" defaultChecked /> Enable AI request generation
@@ -1990,6 +2363,7 @@ function App() {
                 <input type="checkbox" /> Redact secrets before AI
               </label>
             </div>
+
 
             <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
 
@@ -2169,7 +2543,7 @@ function App() {
                           }}
                         />
                         <button className="ghost env-select" onClick={() => {
-                          setActiveCollectionId(col.id);
+                          handleCollectionSwitch(col.id);
                           setManageItemSelections(new Set());
                         }}>
                           {col.name}

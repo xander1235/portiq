@@ -100,30 +100,12 @@ export function ResponseViewer({
                     )}
                 </div>
             )}
-            {activeResponseTab === "Headers" && (
-                <div className="headers-view" style={{ overflow: 'auto', padding: '16px' }}>
-                    {response?.headers && Object.keys(response.headers).length > 0 ? (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <th style={{ padding: '8px', color: 'var(--muted)' }}>Header</th>
-                                    <th style={{ padding: '8px', color: 'var(--muted)' }}>Value</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {Object.entries(response.headers).map(([key, value]) => (
-                                    <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <td style={{ padding: '8px', fontWeight: 500 }}>{key}</td>
-                                        <td style={{ padding: '8px', wordBreak: 'break-all', fontFamily: 'monospace' }}>{value}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div style={{ color: 'var(--muted)' }}>No headers available.</div>
-                    )}
-                </div>
-            )}
+            {activeResponseTab === "Headers" && (() => {
+                const headersJson = response?.headers && Object.keys(response.headers).length > 0
+                    ? JSON.stringify(response.headers, null, 2)
+                    : "No headers available.";
+                return renderCodeMirror(headersJson, [json()]);
+            })()}
             {activeResponseTab === "Table" && (
                 <div className="table-view">
                     <div className="table-toolbar">
