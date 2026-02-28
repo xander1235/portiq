@@ -1952,7 +1952,8 @@ function App() {
     <div className={styles.app}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
-          <div className={styles.brand}>AI API Client</div>
+          <img src="/src/assets/logo.png" alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '8px' }} />
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700' }}>commu</div>
           <button
             className={activeSidebar === "Collections" ? "ghost active" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}

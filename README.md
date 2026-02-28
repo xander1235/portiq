@@ -1,8 +1,12 @@
-# AI API Client (Commu)
+<p align="center">
+  <img src="src/assets/logo.png" width="200" alt="Commu Logo" />
+</p>
+
+# Commu
 
 A modern, fast, and beautifully designed desktop API client built with **React**, **Vite**, and **Electron**. 
 
-It provides an intuitive interface for testing, organizing, and managing your API requests with built-in environments, collection management, and an AI-powered assistant.
+Commu (AI API Client) provides an intuitive interface for testing, organizing, and managing your API requests with built-in productivity features:
 
 ## ✨ Features
 
