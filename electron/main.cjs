@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, protocol, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
@@ -15,6 +15,10 @@ function initDb() {
   db = new Database(dbPath);
   db.prepare("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)").run();
 }
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+]);
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -42,12 +46,23 @@ function createWindow() {
     win.loadURL("http://localhost:5173");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    win.loadURL("app://index.html");
   }
 }
 
 
 app.whenReady().then(() => {
+  protocol.registerFileProtocol('app', (request, callback) => {
+    let requestUrl = request.url.replace('app://', '');
+    requestUrl = decodeURIComponent(requestUrl.split('?')[0].split('#')[0]);
+
+    if (requestUrl === '' || requestUrl === '/' || requestUrl === 'index.html') {
+      return callback({ path: path.join(__dirname, '../dist/index.html') });
+    }
+
+    return callback({ path: path.join(__dirname, '../dist', requestUrl) });
+  });
+
   initDb();
   createWindow();
 
