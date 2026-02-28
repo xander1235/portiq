@@ -8,6 +8,26 @@ A modern, fast, and beautifully designed desktop API client built with **React**
 
 Commu (AI API Client) provides an intuitive interface for testing, organizing, and managing your API requests with built-in productivity features:
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" width="800" alt="Dashboard" />
+</p>
+
+<div align="center">
+  <h3>✨ Modern • 🤖 AI-Powered • 🔒 Secure</h3>
+</div>
+
+---
+
+<p align="center">
+  <img src="docs/screenshots/request.png" width="45%" alt="Request Editor" />
+  <img src="docs/screenshots/ai_assistant.png" width="45%" alt="AI Assistant" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/environments.png" width="45%" alt="Environment Management" />
+  <img src="docs/screenshots/settings.png" width="45%" alt="Settings and Data" />
+</p>
+
 ## ✨ Features
 
 - **Organized Collections**: Nest requests deeply into folders. Drag and drop to reorder or move items easily.
