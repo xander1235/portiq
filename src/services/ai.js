@@ -157,10 +157,33 @@ async function callLLM(provider, model, apiKey, systemPrompt, userMessage, forma
 }
 
 export async function generateRequestFromPrompt(prompt, currentState, collections, aiSettings, chatHistory = []) {
-  const { provider, model, keys } = aiSettings;
+  const { provider, model, keys, semanticSearchEnabled } = aiSettings;
   const apiKey = keys[provider];
 
-  const relevantRequests = searchRequestsContext(prompt, collections);
+  let relevantRequests = searchRequestsContext(prompt, collections);
+
+  if (semanticSearchEnabled) {
+    try {
+      // Dynamic import of SemanticSearch so we don't block boot entirely if not used
+      const { SemanticSearch } = await import('../utils/semanticSearch');
+      const semanticResults = await SemanticSearch.search(prompt);
+      if (semanticResults && semanticResults.length > 0) {
+        const { flattenCollections } = await import('../utils/fuzzySearch');
+        const flatReqs = flattenCollections(collections);
+        const semanticReqObjects = [];
+        semanticResults.forEach(sr => {
+          const found = flatReqs.find(r => r.id === sr.id);
+          if (found) semanticReqObjects.push(found);
+        });
+
+        // Combine semantic and fuzzy search (semantic at top), deduplicate the objects by ID
+        const combined = [...semanticReqObjects, ...relevantRequests];
+        relevantRequests = combined.filter((v, i, a) => a.findIndex(v2 => (v2.id === v.id)) === i).slice(0, 10);
+      }
+    } catch (err) {
+      console.error("Semantic search error via AI service", err);
+    }
+  }
 
   let historyText = "No previous conversation";
 
@@ -194,27 +217,31 @@ ${historyText}
 # Current Active Request State
 Method: ${currentState.method}
 URL: ${currentState.url}
-Headers: ${currentState.headersText}
-Body: ${currentState.bodyText}
+Headers: ${currentState.headersText ? currentState.headersText.substring(0, 500) : ""}
+Body: ${currentState.bodyText ? currentState.bodyText.substring(0, 500) + (currentState.bodyText.length > 500 ? "...[TRUNCATED]" : "") : ""}
 
-# Relevant Workspace Requests (Searched via keywords)
-${JSON.stringify(relevantRequests, null, 2)}
+#// Relevant Workspace Requests (Searched via keywords)
+${JSON.stringify(relevantRequests.map(r => ({ id: r.id, name: r.name, method: r.method, url: r.url, description: r.description })), null, 2)}
 
 # Objective
 Analyze the user's prompt and decide what actions need to be taken. 
-CRITICAL RULE: If the user asks to "find", "load", "open" or "get" an existing request, you MUST look through the "Relevant Workspace Requests" provided above and return an \`UPDATE_CURRENT_REQUEST\` operation that precisely copies its Method, URL, Headers, and Body into the current state. Do NOT hallucinate or guess a new endpoint. If nothing matches, apologize in the message.
-IMPORTANT: If the user explicitly asks to find or load a request, completely IGNORE any "Template: " prefix in their prompt. Do NOT try to modify the found request to match the Template. Just load the found request exactly as it is.
+CRITICAL RULE: If the user asks to "find", "load", "open", "get" or "search for" an existing request, you MUST look through the "Relevant Workspace Requests" provided above.
+- ALWAYS return a \`SUGGEST_ENDPOINTS\` operation containing the IDs of the matching request(s) (even if there is only 1 match). DO NOT use \`UPDATE_CURRENT_REQUEST\` for finding/loading requests, because the user explicitly needs a clickable button to open the request without destroying their current work.
+- If the user asks to MODIFY the CURRENT request you are looking at, then use \`UPDATE_CURRENT_REQUEST\`.
+- Do NOT hallucinate or guess a new endpoint. If nothing matches at all, apologize in the message.
+IMPORTANT: If the user explicitly asks to find or load a request, completely IGNORE any "Template: " prefix in their prompt. Do NOT try to modify the found request to match the Template. Just suggest the found request exactly as it is.
 
 You must output STRICT JSON that matches this schema:
 {
   "message": "A friendly textual reply explaining what you did",
   "operations": [
     {
-      "type": "UPDATE_CURRENT_REQUEST" | "UPDATE_REQUEST_BY_ID" | "CREATE_REQUEST",
+      "type": "UPDATE_CURRENT_REQUEST" | "UPDATE_REQUEST_BY_ID" | "CREATE_REQUEST" | "SUGGEST_ENDPOINTS",
       "payload": {
         // For UPDATE_CURRENT_REQUEST: "method", "url", "headersText", "bodyText"
         // For UPDATE_REQUEST_BY_ID: "id", "updates": { ... }
         // For CREATE_REQUEST: "collectionId" (optional), "newCollectionName" (optional), "name", "method", "url", "headersText", "bodyText"
+        // For SUGGEST_ENDPOINTS: "endpointIds": ["matching-id-1", "matching-id-2"]
       }
     }
   ]
@@ -225,7 +252,19 @@ Return ONLY valid JSON. Your response must be parseable.
 
   // Make the LLM API Call
   const response = await callLLM(provider, model, apiKey, systemPrompt, prompt);
-  // response is { result, usage, model }
+  // Rehydrate SUGGEST_ENDPOINTS with full bodies dynamically since the LLM didn't send them
+  if (response.result.operations) {
+    response.result.operations.forEach(op => {
+      if (op.type === "SUGGEST_ENDPOINTS" && op.payload && op.payload.endpointIds) {
+        op.payload.endpoints = [];
+        op.payload.endpointIds.forEach(id => {
+          const found = relevantRequests.find(r => r.id === id);
+          if (found) op.payload.endpoints.push(found);
+        });
+      }
+    });
+  }
+
   return { ...response.result, _usage: response.usage, _model: response.model };
 }
 

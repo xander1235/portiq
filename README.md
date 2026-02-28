@@ -60,13 +60,43 @@ npm run dev
 
 ## 📦 Building for Production
 
-To compile the React front-end using Vite before packaging the Electron app:
+This project leverages Vite and Electron Builder. You can compile the project and generate native application binaries for various platforms.
 
+### Desktop Apps (Mac, Windows, Linux)
+First, ensure you build the React frontend:
 ```bash
 npm run build
 ```
 
-*(Note: Additional Electron packager/builder dependencies may be required to generate final `.app` or `.exe` distribution files depending on your target platform.)*
+Then, use `electron-builder` to package the app for your target OS:
+
+- **macOS (Intel & Apple Silicon)**
+  ```bash
+  # Builds both x64 and arm64 targets
+  npx electron-builder --mac --x64 --arm64
+  ```
+- **Windows**
+  ```bash
+  npx electron-builder --win
+  ```
+- **Linux**
+  ```bash
+  npx electron-builder --linux
+  ```
+
+### Website / Web App
+To host the app as a standard website (without Electron's native filesystem APIs):
+```bash
+npm run build
+# The resulting static site will be located in the /dist folder, ready to be deployed.
+```
+
+### Mobile Apps (iOS & Android)
+Because this is currently architected as an Electron desktop environment, direct compilation to iOS and Android requires porting the web build (`/dist`) via a wrapper framework like **Capacitor** or **Cordova**. 
+1. Build the web app: `npm run build`
+2. Initialize Capacitor: `npx cap init`
+3. Add native platforms: `npx cap add ios` / `npx cap add android`
+4. Sync & Build: `npx cap sync` and then open Xcode/Android Studio to compile to device.
 
 ## 🛠 Tech Stack
 
@@ -74,3 +104,15 @@ npm run build
 - **Desktop Environment**: Electron
 - **Database / Storage**: `better-sqlite3` (for local persistence)
 - **Styling**: Custom CSS with responsive grid layouts and Flexbox.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from the community! Whether it's adding a feature, fixing a bug, or improving documentation, your help is appreciated.
+
+Please read our [Contributing Guidelines](CONTRIBUTING.md) to understand how you can help out. Also, make sure to review our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## 📄 License
+
+This project is open-source and licensed under the [MIT License](LICENSE).

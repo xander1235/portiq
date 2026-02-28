@@ -17,11 +17,14 @@ import { useEnvironmentState } from "./hooks/useEnvironmentState.js";
 import { xmlLinter } from "./utils/codemirror/xmlExtensions.js";
 import { customJsonLinter } from "./utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions.js";
+import { SemanticSearch } from "./utils/semanticSearch.js";
+import { flattenCollections } from "./utils/fuzzySearch.js";
 
 import { TableEditor } from "./components/TableEditor.jsx";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal.jsx";
 import { ExportModal } from "./components/Modals/ExportModal.jsx";
 import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal.jsx";
+
 import { Sidebar } from "./components/Sidebar/Sidebar.jsx";
 import { RequestEditor } from "./components/RequestPane/RequestEditor.jsx";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer.jsx";
@@ -59,6 +62,89 @@ function getValueByPath(root, path) {
   });
   return parts.reduce((acc, key) => (acc == null ? acc : acc[key]), root);
 }
+
+const SnippetLanguageSelector = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const options = [
+    { id: "curl", name: "cURL", desc: "Command line utility", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg> },
+    { id: "raw", name: "Raw HTTP", desc: "Plain HTTP text", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
+    { id: "python", name: "Python", desc: "Requests library", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4-4 4"></path><path d="M10 16h4"></path><circle cx="12" cy="12" r="10"></circle></svg> },
+    { id: "node", name: "Node.js", desc: "Native fetch API", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> },
+    { id: "go", name: "Go", desc: "net/http package", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> },
+    { id: "c", name: "C", desc: "libcurl binding", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 16V8l6 8V8"></path></svg> },
+    { id: "csharp", name: "C#", desc: "HttpClient", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path></svg> },
+  ];
+
+  const selected = options.find(o => o.id === value) || options[0];
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', minWidth: '240px', zIndex: 10 }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '10px 14px', background: 'var(--panel)', border: '1px solid var(--border)',
+          borderRadius: '8px', cursor: 'pointer', userSelect: 'none', transition: 'box-shadow 0.2s, border-color 0.2s',
+          ...(isOpen ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px var(--accent-alpha, rgba(var(--accent-rgb), 0.2))' } : {})
+        }}
+      >
+        <span style={{ color: 'var(--accent)', display: 'flex', background: 'var(--bg)', padding: '6px', borderRadius: '6px', border: '1px solid var(--border)' }}>{selected.icon}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)', lineHeight: 1 }}>{selected.name}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1 }}>{selected.desc}</span>
+        </div>
+        <svg style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '8px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden', padding: '6px', zIndex: 100
+        }}>
+          {options.map((opt) => (
+            <div
+              key={opt.id}
+              onClick={() => { onChange(opt.id); setIsOpen(false); }}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = opt.id === value ? 'var(--bg)' : 'transparent'; }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', transition: 'background 0.1s',
+                background: opt.id === value ? 'var(--bg)' : 'transparent',
+                border: '1px solid transparent',
+                ...(opt.id === value ? { borderColor: 'var(--border)' } : {})
+              }}
+            >
+              <span style={{ color: opt.id === value ? 'var(--accent)' : 'var(--text-muted)', display: 'flex' }}>{opt.icon}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: opt.id === value ? 'var(--text)' : 'var(--text-muted)', lineHeight: 1 }}>{opt.name}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1 }}>{opt.desc}</span>
+              </div>
+              {opt.id === value && (
+                <span style={{ color: 'var(--accent)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function App() {
   const {
@@ -117,7 +203,8 @@ function App() {
   const [aiApiKeyOpenAI, setAiApiKeyOpenAI] = useLocalStorage("ui_aiApiKeyOpenAI", "");
   const [aiApiKeyAnthropic, setAiApiKeyAnthropic] = useLocalStorage("ui_aiApiKeyAnthropic", "");
   const [aiApiKeyGemini, setAiApiKeyGemini] = useLocalStorage("ui_aiApiKeyGemini", "");
-
+  const [aiSemanticSearchEnabled, setAiSemanticSearchEnabled] = useLocalStorage("ui_aiSemanticSearchEnabled", false);
+  const [semanticProgress, setSemanticProgress] = useState(null);
   useEffect(() => {
     let isMounted = true;
     const fetchAvail = async () => {
@@ -131,7 +218,7 @@ function App() {
         return;
       }
 
-      const models = await fetchModels(aiProvider, key);
+      const models = await fetchModels(aiProvider, key) || [];
       if (isMounted) {
         setAvailableModels(models);
         // Auto-select cheapest/default if nothing selected or current not in list
@@ -147,6 +234,28 @@ function App() {
     return () => { isMounted = false; };
   }, [aiProvider, aiApiKeyOpenAI, aiApiKeyAnthropic, aiApiKeyGemini]); // Intentionally omitting activeModel to avoid loops
 
+  useEffect(() => {
+    if (aiSemanticSearchEnabled) {
+      SemanticSearch.init((payload, type) => {
+        if (type === 'PROGRESS' && payload.status === 'progress') {
+          setSemanticProgress(`Downloading model... ${Math.round(payload.progress || 0)}%`);
+        } else if (type === 'INDEX_PROGRESS') {
+          setSemanticProgress(`Indexing ${payload.count}/${payload.total}...`);
+        }
+      }).then(() => {
+        setSemanticProgress('Syncing index...');
+        return SemanticSearch.indexAll(flattenCollections(collections));
+      }).then(() => {
+        setSemanticProgress('Ready & Synced');
+        setTimeout(() => setSemanticProgress(null), 3000);
+      }).catch(err => {
+        setSemanticProgress('Error: ' + err.message);
+      });
+    } else {
+      setSemanticProgress(null);
+    }
+  }, [aiSemanticSearchEnabled, collections]);
+
   const [response, setResponse] = useState(null);
   const [responseSummary, setResponseSummary] = useState({ summary: "No response yet.", hints: [] });
   const [error, setError] = useState("");
@@ -155,6 +264,7 @@ function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
   const [isSending, setIsSending] = useState(false);
+  const [isAiModelDropdownOpen, setIsAiModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -203,9 +313,8 @@ function App() {
   const [topSearch, setTopSearch] = useState("");
 
   const [showSnippetModal, setShowSnippetModal] = useState(false);
-  const [snippetLanguage, setSnippetLanguage] = useLocalStorage("ui_snippetLang", "curl");
-  const [snippetInterpolate, setSnippetInterpolate] = useLocalStorage("ui_snippetInterpolate", false);
-  const [snippetSearch, setSnippetSearch] = useState("");
+  const [snippetLanguage, setSnippetLanguage] = useState("curl");
+  const [snippetInterpolate, setSnippetInterpolate] = useState(false);
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showGitHubSyncModal, setShowGitHubSyncModal] = useState(false);
@@ -1101,6 +1210,8 @@ function App() {
     return base.includes("?") ? `${base}&${query}` : `${base}?${query}`;
   }
 
+
+
   function generateSnippet() {
     const val = (v) => snippetInterpolate ? v : interpolate(v);
     const reqMethod = method || "GET";
@@ -1488,13 +1599,18 @@ function App() {
     setTestsPostText(tests.join("\n"));
   }
 
-  async function handleAiChatSubmit() {
-    if (!aiPrompt.trim()) return;
-    const userMsg = { role: "user", text: aiPrompt };
+  async function handleAiChatSubmit(overridePrompt) {
+    const textToSubmit = typeof overridePrompt === 'string' ? overridePrompt : aiPrompt;
+    if (!textToSubmit.trim()) return;
+
+    const userMsg = { role: "user", text: textToSubmit };
     const newHistory = [...aiChatHistory, userMsg];
     setAiChatHistory(newHistory);
-    const currentPrompt = aiPrompt;
-    setAiPrompt("");
+
+    const currentPrompt = textToSubmit;
+    if (typeof overridePrompt !== 'string') {
+      setAiPrompt("");
+    }
     setIsAiTyping(true);
 
     const aiSettings = {
@@ -1504,7 +1620,8 @@ function App() {
         openai: aiApiKeyOpenAI,
         anthropic: aiApiKeyAnthropic,
         gemini: aiApiKeyGemini
-      }
+      },
+      semanticSearchEnabled: aiSemanticSearchEnabled
     };
     const currentState = { method, url, headersText, bodyText };
 
@@ -1521,6 +1638,7 @@ function App() {
         console.log("[AI DEBUG] Raw AI output:", JSON.stringify(output, null, 2));
 
         let assistantMsg = output.message || "I have updated the workspace.";
+        let suggestedEndpoints = null;
 
         if (output.operations && Array.isArray(output.operations)) {
           console.log("[AI DEBUG] Found", output.operations.length, "operations");
@@ -1536,7 +1654,10 @@ function App() {
                 ...col,
                 requests: col.requests.map(req => req.id === op.payload.id ? { ...req, ...op.payload.updates } : req)
               })));
+            } else if (op.type === "SUGGEST_ENDPOINTS") {
+              suggestedEndpoints = op.payload.endpoints;
             } else if (op.type === "CREATE_REQUEST") {
+              // ... existing CREATE_REQUEST block
               const newReqId = "req-" + Date.now().toString() + "-" + Math.random().toString(36).substr(2, 5);
               let targetColId = op.payload.collectionId;
               let targetColName = op.payload.newCollectionName || "";
@@ -1654,6 +1775,7 @@ function App() {
         setAiChatHistory([...finalHistory, {
           role: "assistant",
           text: assistantMsg,
+          suggestedEndpoints,
           model: output._model || activeModel,
           usage: output._usage?.output ? { output: output._usage.output } : null
         }]);
@@ -2217,6 +2339,20 @@ function App() {
                   <div className={rightRailStyles.cardTitle} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Response Intelligence</div>
                   <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>{responseSummary.summary}</div>
                   {responseSummary.hints.length > 0 && <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: 0 }}>Hint: {responseSummary.hints[0]}</div>}
+                  {response?.status >= 400 && response?.status < 600 && (
+                    <button
+                      className="ghost compact"
+                      style={{ marginTop: '8px', width: '100%', justifyContent: 'center', display: 'flex', gap: '6px', backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)' }}
+                      onClick={() => {
+                        const errorMsg = typeof response?.data === 'object' ? JSON.stringify(response.data).substring(0, 100) : (response?.statusText || "Unknown error");
+                        handleAiChatSubmit(`This request failed with status ${response.status} and error '${errorMsg}'. Please fix my request.`);
+                      }}
+                      disabled={isAiTyping}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 9.36l-7.15 7.15a2 2 0 0 1-2.83-2.83l7.15-7.15a6 6 0 0 1 9.36-7.94l-3.77 3.77z" /></svg>
+                      Fix this Request
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2226,6 +2362,36 @@ function App() {
                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                       <div className={`${rightRailStyles.message} ${msg.role === 'user' ? rightRailStyles.messageUser : rightRailStyles.messageAssistant}`}>
                         {msg.text}
+
+                        {msg.suggestedEndpoints && msg.suggestedEndpoints.length > 0 && (
+                          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Did you mean:</div>
+                            {msg.suggestedEndpoints.map((ep, i) => (
+                              <button
+                                key={i}
+                                className="ghost"
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: '8px',
+                                  justifyContent: 'flex-start', padding: '8px 12px',
+                                  border: '1px solid var(--border)', borderRadius: '6px',
+                                  background: 'var(--bg)', textAlign: 'left', width: '100%'
+                                }}
+                                onClick={() => {
+                                  if (ep.method) setMethod(ep.method);
+                                  if (ep.url) setUrl(ep.url);
+                                  if (ep.headersText) setHeadersText(ep.headersText);
+                                  if (ep.bodyText) setBodyText(ep.bodyText);
+                                }}
+                              >
+                                <span style={{ fontWeight: 600, color: 'var(--accent)', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--accent-alpha, rgba(var(--accent-rgb), 0.1))', borderRadius: '4px' }}>{ep.method || "GET"}</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{ep.name || "Request"}</span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{ep.url}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Meta for assistant (model and output tokens) or user (input tokens) */}
@@ -2272,19 +2438,64 @@ function App() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <select
-                      style={{ fontSize: '0.65rem', padding: '2px 4px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', maxWidth: '100%', cursor: 'pointer' }}
-                      value={activeModel}
-                      onChange={(e) => setActiveModel(e.target.value)}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+                    <div
+                      style={{
+                        fontSize: '0.65rem', padding: '4px 8px', background: 'var(--bg)', color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '4px', userSelect: 'none',
+                        transition: 'background 0.2s, color 0.2s',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                      onClick={() => setIsAiModelDropdownOpen(!isAiModelDropdownOpen)}
                       title="Select AI Model"
                     >
-                      {availableModels.length > 0 ? (
-                        availableModels.map(m => <option key={m} value={m}>{m}</option>)
-                      ) : (
-                        <option value={activeModel}>{activeModel} (Offline)</option>
-                      )}
-                    </select>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
+                      {activeModel}
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '4px', transform: isAiModelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><polyline points="6 15 12 9 18 15"></polyline></svg>
+                    </div>
+
+                    {isAiModelDropdownOpen && (
+                      <>
+                        <div
+                          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                          onClick={() => setIsAiModelDropdownOpen(false)}
+                        />
+                        <div style={{
+                          position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px', zIndex: 100,
+                          background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '8px',
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.2)', padding: '6px', minWidth: '180px',
+                          display: 'flex', flexDirection: 'column', gap: '2px'
+                        }}>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {aiProvider} Models
+                          </div>
+                          {availableModels.length > 0 ? (
+                            availableModels.map(m => (
+                              <button
+                                key={m}
+                                className="ghost"
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: '8px',
+                                  padding: '6px 8px', borderRadius: '4px', textAlign: 'left',
+                                  fontSize: '0.75rem', color: m === activeModel ? 'var(--accent)' : 'var(--text)',
+                                  background: m === activeModel ? 'var(--bg)' : 'transparent',
+                                  border: 'none', cursor: 'pointer', width: '100%'
+                                }}
+                                onClick={() => { setActiveModel(m); setIsAiModelDropdownOpen(false); }}
+                              >
+                                {m === activeModel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                <span style={{ marginLeft: m === activeModel ? 0 : '20px' }}>{m}</span>
+                              </button>
+                            ))
+                          ) : (
+                            <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Offline</div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2348,6 +2559,20 @@ function App() {
             <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
             <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>Preferences</h4>
 
+            <div className="modal-row" style={{ display: 'flex', flexDirection: 'column' }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={aiSemanticSearchEnabled}
+                  onChange={(e) => setAiSemanticSearchEnabled(e.target.checked)}
+                /> Enable AI Semantic Search (Local RAG)
+              </label>
+              {aiSemanticSearchEnabled && semanticProgress && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '24px', marginTop: '4px' }}>
+                  {semanticProgress}
+                </span>
+              )}
+            </div>
             <div className="modal-row">
               <label>
                 <input type="checkbox" defaultChecked /> Enable AI request generation
@@ -2405,60 +2630,6 @@ function App() {
         </div>
       )}
 
-      {showSnippetModal && (
-        <div className="modal-backdrop" onClick={() => setShowSnippetModal(false)}>
-          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} style={{ width: '800px', maxWidth: '90vw' }}>
-            <div className="modal-title">
-              <div>Export Code Snippet</div>
-              <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
-              <select
-                className="input"
-                value={snippetLanguage}
-                onChange={(e) => setSnippetLanguage(e.target.value)}
-                style={{ flex: 1 }}
-              >
-                <option value="curl">cURL</option>
-                <option value="raw">Raw HTTP</option>
-                <option value="python">Python (Requests)</option>
-                <option value="node">Node.js (Fetch)</option>
-                <option value="go">Go (Native)</option>
-                <option value="c">C (libcurl)</option>
-                <option value="csharp">C# (HttpClient)</option>
-              </select>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                <input
-                  type="checkbox"
-                  checked={snippetInterpolate}
-                  onChange={(e) => setSnippetInterpolate(e.target.checked)}
-                />
-                Replace values with placeholders
-              </label>
-            </div>
-
-            <textarea
-              className="textarea"
-              readOnly
-              value={generateSnippet()}
-              style={{ minHeight: '350px', whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px', background: 'var(--panel)' }}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-              <button className="ghost" onClick={() => setShowSnippetModal(false)}>Close</button>
-              <button
-                className="primary"
-                onClick={() => {
-                  navigator.clipboard.writeText(generateSnippet());
-                }}
-              >
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <ExportModal
         showExportModal={showExportModal}
@@ -2643,6 +2814,49 @@ function App() {
           </div>
         )
       }
+
+      {showSnippetModal && (
+        <div className="modal-backdrop" onClick={() => setShowSnippetModal(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} style={{ width: '800px', maxWidth: '90vw' }}>
+            <div className="modal-title">
+              <div>Export Code Snippet</div>
+              <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
+              <SnippetLanguageSelector
+                value={snippetLanguage}
+                onChange={(val) => setSnippetLanguage(val)}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <input
+                  type="checkbox"
+                  checked={snippetInterpolate}
+                  onChange={(e) => setSnippetInterpolate(e.target.checked)}
+                />
+                Replace values with placeholders
+              </label>
+            </div>
+
+            <textarea
+              className="textarea"
+              readOnly
+              value={generateSnippet()}
+              style={{ minHeight: '350px', whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px', background: 'var(--panel)' }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button className="ghost" onClick={() => setShowSnippetModal(false)}>Close</button>
+              <button
+                className="primary"
+                onClick={() => navigator.clipboard.writeText(generateSnippet())}
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showImportCollisionModal && (
         <div className="modal-backdrop" onClick={() => { setShowImportCollisionModal(false); setImportCollisionData(null); }}>

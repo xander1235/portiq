@@ -1,15 +1,26 @@
 import Fuse from "fuse.js";
 
-/**
- * Perform a fuzzy search across all requests in all collections.
- * @param {string} prompt The user's input prompt containing keywords.
- * @param {Array} collections The full collections array containing folders and requests.
- * @returns {Array} Top 5 matching request objects with minimal context.
- */
-export function searchRequestsContext(prompt, collections) {
-    // Flatten all requests from all collections into a single array
+export function flattenCollections(collections) {
     const allRequests = [];
+
+    const extractRequests = (items, collectionId, collectionName) => {
+        if (!items || !Array.isArray(items)) return;
+        items.forEach(item => {
+            if (item.type === "request") {
+                allRequests.push({
+                    collectionId,
+                    collectionName,
+                    ...item
+                });
+            } else if (item.type === "folder" && item.items) {
+                extractRequests(item.items, collectionId, collectionName);
+            }
+        });
+    };
+
     collections.forEach(col => {
+        extractRequests(col.items, col.id, col.name);
+        // Fallback or legacy support just in case
         if (col.requests && Array.isArray(col.requests)) {
             col.requests.forEach(req => {
                 allRequests.push({
@@ -21,23 +32,33 @@ export function searchRequestsContext(prompt, collections) {
         }
     });
 
+    return allRequests;
+}
+
+export function searchRequestsContext(prompt, collections) {
+    // Flatten all requests from all collections into a single array
+    const allRequests = flattenCollections(collections);
+
     if (allRequests.length === 0) return [];
 
     const fuse = new Fuse(allRequests, {
         keys: ["name", "url", "method"],
-        threshold: 0.4,
+        threshold: 0.3,
         ignoreLocation: true,
-        includeScore: true,
-        useExtendedSearch: true
+        includeScore: true
     });
 
-    // Tokenize the prompt to search each word independently (OR logic in extended search)
-    // E.g. "find the user api" -> "'find | 'the | 'user | 'api"
-    const cleanedPrompt = prompt.replace(/[^\w\s-]/gi, '').trim();
-    const tokens = cleanedPrompt.split(/\s+/).filter(t => t.length > 2);
-    const searchQuery = tokens.map(t => `'${t}`).join(" | ") || prompt;
+    // Remove conversational filler words so they don't skew the fuzzy search
+    const stopWords = ['find', 'load', 'open', 'get', 'fetch', 'show', 'the', 'a', 'an', 'request', 'endpoint', 'api'];
+    const cleanedPrompt = prompt.replace(/[^\w\s-]/gi, '').toLowerCase().trim();
+    const tokens = cleanedPrompt.split(/\s+/).filter(t => t.length > 1 && !stopWords.includes(t));
 
-    const results = fuse.search(searchQuery);
+    const searchQuery = tokens.join(" ") || prompt;
+
+    let results = fuse.search(searchQuery);
+
+    // Filter out bad matches (lower score is better in fuse.js)
+    results = results.filter(res => res.score < 0.4);
 
     return results.slice(0, 5).map(res => {
         const r = res.item;
