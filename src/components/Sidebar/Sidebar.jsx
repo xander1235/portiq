@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import styles from "./Sidebar.module.css";
+import { ProtocolPicker, PROTOCOLS } from "../ProtocolPicker.jsx";
 
 export function Sidebar({
     activeSidebar,
@@ -19,6 +20,7 @@ export function Sidebar({
     updateCollectionName,
     addFolderToCollection,
     addRequestToCollection,
+    updateRequestState,
     duplicateCollection,
     exportCollection,
     moveItemInCollection,
@@ -46,6 +48,8 @@ export function Sidebar({
     const [requestNameDraft, setRequestNameDraft] = useState("");
     const [collapsedHistoryDates, setCollapsedHistoryDates] = useState(new Set());
     const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
+    const [protocolPickerTarget, setProtocolPickerTarget] = useState(null); // { folderId } or "root" when creating request
+    const [changeProtocolRequestId, setChangeProtocolRequestId] = useState(""); // request id when changing protocol via ⋮ menu
 
     function matchesQuery(item, q) {
         if (!q) return true;
@@ -230,7 +234,7 @@ export function Sidebar({
                                             <button
                                                 className="ghost"
                                                 onClick={() => {
-                                                    addRequestToCollection(item.id);
+                                                    setProtocolPickerTarget({ folderId: item.id });
                                                     setOpenFolderMenuId("");
                                                 }}
                                             >
@@ -286,7 +290,16 @@ export function Sidebar({
                     >
                         <div className={`${styles.treeRequest} ${dragOverItemId === item.id ? styles.dragOver : ''} ${draggedItemId === item.id ? styles.dragging : ''}`} onClick={() => loadRequest(item)}>
                             <div className={styles.treeRequestHeader}>
-                                <span className={`${styles.methodBadge} ${item.method ? styles[item.method.toLowerCase()] : ''}`}>{item.method}</span>
+                                {item.protocol && item.protocol !== "http" ? (
+                                    <span style={{
+                                        fontSize: "0.65rem", fontWeight: 700, padding: "1px 5px",
+                                        borderRadius: "3px", textTransform: "uppercase", flexShrink: 0,
+                                        color: ({ graphql: "#e535ab", websocket: "#f59e0b", grpc: "#00bcd4", sse: "#a78bfa", mcp: "#f472b6", dag: "#fb923c" })[item.protocol] || "var(--text-muted)",
+                                        background: `${({ graphql: "#e535ab", websocket: "#f59e0b", grpc: "#00bcd4", sse: "#a78bfa", mcp: "#f472b6", dag: "#fb923c" })[item.protocol] || "var(--text-muted)"}15`,
+                                    }}>{{ graphql: "GQL", websocket: "WS", grpc: "gRPC", sse: "SSE", mcp: "MCP", dag: "DAG" }[item.protocol] || item.protocol.toUpperCase()}</span>
+                                ) : (
+                                    <span className={`${styles.methodBadge} ${item.method ? styles[item.method.toLowerCase()] : ''}`}>{item.method}</span>
+                                )}
                                 {editingRequestId === item.id ? (
                                     <input
                                         autoFocus
@@ -373,6 +386,17 @@ export function Sidebar({
                                                 }}
                                             >
                                                 Delete
+                                            </button>
+                                            <div style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
+                                            <button
+                                                className="ghost"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setChangeProtocolRequestId(item.id);
+                                                    setOpenFolderMenuId("");
+                                                }}
+                                            >
+                                                Change Protocol
                                             </button>
                                         </div>
                                     )}
@@ -628,7 +652,7 @@ export function Sidebar({
                                             <button
                                                 className="ghost"
                                                 onClick={() => {
-                                                    addRequestToCollection();
+                                                    setProtocolPickerTarget({ folderId: null });
                                                     setShowCollectionMenu(false);
                                                 }}
                                             >
@@ -837,6 +861,62 @@ export function Sidebar({
                     </div>
                 )}
             </div>
+
+            {/* Protocol picker popup for Create Request */}
+            {protocolPickerTarget && (
+                <div
+                    style={{
+                        position: "fixed", inset: 0, zIndex: 9999,
+                        background: "rgba(0,0,0,0.35)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        backdropFilter: "blur(2px)",
+                    }}
+                    onClick={() => setProtocolPickerTarget(null)}
+                >
+                    <ProtocolPicker
+                        onSelect={(proto) => {
+                            const folderId = protocolPickerTarget.folderId;
+                            const PROTO_DEFAULTS = {
+                                graphql: { method: "POST", name: "New GraphQL Request" },
+                                websocket: { method: "GET", name: "New WebSocket Connection", url: "ws://localhost:8080" },
+                                grpc: { method: "POST", name: "New gRPC Request" },
+                                sse: { method: "GET", name: "New SSE Stream", url: "http://localhost:3000/events" },
+                                mcp: { method: "POST", name: "New MCP Request", url: "http://localhost:3000/mcp" },
+                                dag: { method: "GET", name: "New DAG Flow" },
+                            };
+                            const defaults = PROTO_DEFAULTS[proto] || {};
+                            const newReq = addRequestToCollection(folderId, (req) => {
+                                req.protocol = proto;
+                                Object.assign(req, defaults);
+                            });
+                            if (newReq) loadRequest(newReq);
+                            setProtocolPickerTarget(null);
+                        }}
+                        onClose={() => setProtocolPickerTarget(null)}
+                    />
+                </div>
+            )}
+
+            {/* Protocol picker popup for Change Protocol on existing request */}
+            {changeProtocolRequestId && (
+                <div
+                    style={{
+                        position: "fixed", inset: 0, zIndex: 9999,
+                        background: "rgba(0,0,0,0.35)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        backdropFilter: "blur(2px)",
+                    }}
+                    onClick={() => setChangeProtocolRequestId("")}
+                >
+                    <ProtocolPicker
+                        onSelect={(proto) => {
+                            updateRequestState(changeProtocolRequestId, "protocol", proto);
+                            setChangeProtocolRequestId("");
+                        }}
+                        onClose={() => setChangeProtocolRequestId("")}
+                    />
+                </div>
+            )}
         </aside >
     );
 }

@@ -23,6 +23,7 @@ export function useRequestState() {
 
     const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
+    const [protocol, setProtocol] = useLocalStorage("ui_protocol", "http");
     const [collectionActiveRequestIds, setCollectionActiveRequestIds] = useLocalStorage("ui_collectionActiveRequestIds", {});
 
     const [collections, setCollections] = useLocalStorage("ui_collections", [
@@ -112,6 +113,7 @@ export function useRequestState() {
             name,
             description: "",
             tags: [],
+            protocol: "http",
             method: "GET",
             url: "",
             headersText: "",
@@ -126,12 +128,14 @@ export function useRequestState() {
             bodyRows: [{ key: "", value: "", enabled: true }]
         };
 
+        // Allow the caller to customise the request (e.g. set protocol) before it is inserted
+        setupNewRequest(req);
+
         if (!folderId) {
             const nextItems = Array.isArray(col.items) ? [...col.items, req] : [req];
             setCollections((prev) =>
                 prev.map((item) => (item.id === col.id ? { ...item, items: nextItems } : item))
             );
-            setupNewRequest(req);
             return req;
         }
 
@@ -150,7 +154,6 @@ export function useRequestState() {
         setCollections((prev) =>
             prev.map((item) => (item.id === col.id ? { ...item, items: insertIntoFolder(item.items || []) } : item))
         );
-        setupNewRequest(req);
         return req;
     }
 
@@ -158,6 +161,7 @@ export function useRequestState() {
         if (!req) {
             setRequestName("New Request");
             setCurrentRequestId("");
+            setProtocol("http");
             setMethod("GET");
             setUrl("");
             setHeadersText("");
@@ -174,6 +178,7 @@ export function useRequestState() {
         };
         setRequestName(req.name || "New Request");
         setCurrentRequestId(req.id || "");
+        setProtocol(req.protocol || "http");
         setMethod(req.method || "GET");
         setUrl(req.url || "");
         setHeadersText(req.headersText || "");
@@ -210,6 +215,7 @@ export function useRequestState() {
         if (!currentRequestId || !activeCollectionId) return;
 
         const draft = {
+            protocol,
             method,
             url,
             headersText,
@@ -700,6 +706,7 @@ export function useRequestState() {
         authConfig, setAuthConfig,
         bodyType, setBodyType,
         bodyRows, setBodyRows,
+        protocol, setProtocol,
         requestName, setRequestName,
         currentRequestId, setCurrentRequestId,
         collections, setCollections,
