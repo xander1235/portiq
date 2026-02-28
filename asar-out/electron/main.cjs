@@ -43,8 +43,14 @@ function createWindow() {
     win.webContents.openDevTools({ mode: "detach" });
   } else {
     win.loadFile(path.join(__dirname, "../dist/index.html"));
+    win.webContents.openDevTools({ mode: "detach" });
+
+    win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      console.log(`[DOM Console] ${message} (${sourceId}:${line})`);
+    });
   }
 }
+
 
 app.whenReady().then(() => {
   initDb();
@@ -128,29 +134,4 @@ ipcMain.handle("db:loadState", async (_event, key) => {
   if (!db) initDb();
   const row = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
   return row ? row.value : null;
-});
-
-ipcMain.handle("db:clearAll", async () => {
-  const dir = app.getPath("userData");
-  const dbPath = path.join(dir, "appdata.sqlite");
-  try {
-    if (db) {
-      db.close();
-      db = null;
-    }
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-    }
-    // Also remove WAL/SHM files if they exist
-    if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
-    if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
-    initDb();
-    return { ok: true };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle("db:getDataPath", async () => {
-  return app.getPath("userData");
 });

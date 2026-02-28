@@ -2607,6 +2607,60 @@ function App() {
               />
             </div>
 
+            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--danger, #ef4444)' }}>Data Management</h4>
+
+            <div className="modal-row" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Your data is stored locally on this device. Clearing data will permanently delete all collections, history, environments, and settings.
+              </p>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  className="ghost"
+                  style={{
+                    color: 'var(--danger, #ef4444)',
+                    borderColor: 'var(--danger, #ef4444)',
+                    fontSize: '0.8rem',
+                    padding: '6px 12px'
+                  }}
+                  onClick={async () => {
+                    const confirmed = window.confirm(
+                      'Are you sure you want to delete ALL app data?\n\nThis will permanently remove:\n• All collections and requests\n• All request history\n• All environments and variables\n• All settings and API keys\n\nThis action cannot be undone.'
+                    );
+                    if (confirmed) {
+                      const secondConfirm = window.confirm(
+                        'FINAL WARNING: This will erase everything. The app will reload with a fresh state.\n\nContinue?'
+                      );
+                      if (secondConfirm) {
+                        try {
+                          await window.api.clearAllData();
+                          window.location.reload();
+                        } catch (err) {
+                          alert('Failed to clear data: ' + err.message);
+                        }
+                      }
+                    }
+                  }}
+                >
+                  🗑️ Clear All App Data
+                </button>
+                <button
+                  className="ghost"
+                  style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                  onClick={async () => {
+                    try {
+                      const p = await window.api.getDataPath();
+                      alert('Your app data is stored at:\n\n' + p + '\n\nYou can manually delete this folder for a complete cleanup after uninstalling.');
+                    } catch {
+                      alert('Data path: ~/Library/Application Support/Commu/');
+                    }
+                  }}
+                >
+                  📂 Show Data Location
+                </button>
+              </div>
+            </div>
+
             <button className="primary" onClick={() => setShowSettings(false)} style={{ marginTop: '16px', width: '100%' }}>Close</button>
           </div>
         </div>

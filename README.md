@@ -111,6 +111,28 @@ Because this is currently architected as an Electron desktop environment, direct
 
 ---
 
+## 🗑️ Uninstalling
+
+### Clearing Data from Within the App
+
+Go to **Settings → Data Management** and click **"Clear All App Data"** to wipe all collections, history, environments, and settings before uninstalling.
+
+### Complete Cleanup by Platform
+
+**macOS**: Drag Commu to Trash, then remove the data folder:
+```bash
+rm -rf ~/Library/Application\ Support/Commu/
+```
+
+**Windows**: Use "Add or Remove Programs" — the uninstaller will prompt you to optionally delete app data.
+
+**Linux**: Remove the app, then delete the data folder:
+```bash
+rm -rf ~/.config/Commu/
+```
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions from the community! Whether it's adding a feature, fixing a bug, or improving documentation, your help is appreciated.

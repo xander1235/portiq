@@ -31,7 +31,13 @@
       "icon": "build/icon.png"
     },
     "win": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true
     },
     "linux": {
       "icon": "build/icon.png"
