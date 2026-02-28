@@ -1,2 +1,0 @@
-[436:0228/183228.542880:WARNING:runtime_features.cc(730)] AttributionReportingCrossAppWeb cannot be enabled in this configuration. Use --enable-features=ConversionMeasurement,AttributionReportingCrossAppWeb in addition.
-[347:0228/183230.470839:ERROR:service_worker_storage.cc(2016)] Failed to delete the database: Database IO error
