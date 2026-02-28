@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "package": "vite build && electron-builder build --mac"
   },
+  "description": "Commu - The modern AI-powered API Client",
+  "author": "Commu Contributors",
   "build": {
     "appId": "com.commu.app",
     "productName": "Commu",
@@ -20,7 +22,14 @@
       "output": "dist"
     },
     "mac": {
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
     }
   },
   "dependencies": {
