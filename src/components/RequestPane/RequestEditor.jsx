@@ -332,24 +332,40 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Token</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <input
-                                                type={showBearerToken ? "text" : "password"}
-                                                className="input"
-                                                placeholder="Token"
-                                                value={authConfig.bearer?.token || ""}
-                                                onChange={(e) => {
-                                                    const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                style={{ paddingRight: '36px' }}
-                                            />
+                                            {showBearerToken ? (
+                                                <EnvInput
+                                                    className="input"
+                                                    placeholder="Token"
+                                                    value={authConfig.bearer?.token || ""}
+                                                    onChange={(val) => {
+                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: val } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    style={{ flex: 1, paddingRight: '36px' }}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder="Token"
+                                                    value={authConfig.bearer?.token || ""}
+                                                    onChange={(e) => {
+                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    style={{ paddingRight: '36px' }}
+                                                />
+                                            )}
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
                                                 onClick={() => setShowBearerToken(prev => !prev)}
                                                 title={showBearerToken ? "Hide token" : "Show token"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showBearerToken ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
@@ -366,30 +382,34 @@ export function RequestEditor({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Username</span>
-                                        <input
-                                            type="text"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Username"
                                             value={authConfig.basic?.username || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, username: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, basic: { ...authConfig.basic, username: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Password</span>
-                                        <input
-                                            type="password"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Password"
                                             value={authConfig.basic?.password || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, password: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                 </div>
@@ -399,39 +419,57 @@ export function RequestEditor({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Key</span>
-                                        <input
-                                            type="text"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Key"
                                             value={authConfig.api_key?.key || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, key: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, key: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Value</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <input
-                                                type={showApiKeyValue ? "text" : "password"}
-                                                className="input"
-                                                placeholder="Value"
-                                                value={authConfig.api_key?.value || ""}
-                                                onChange={(e) => {
-                                                    const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                style={{ paddingRight: '36px' }}
-                                            />
+                                            {showApiKeyValue ? (
+                                                <EnvInput
+                                                    className="input"
+                                                    placeholder="Value"
+                                                    value={authConfig.api_key?.value || ""}
+                                                    onChange={(val) => {
+                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: val } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    style={{ flex: 1, paddingRight: '36px' }}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder="Value"
+                                                    value={authConfig.api_key?.value || ""}
+                                                    onChange={(e) => {
+                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    style={{ paddingRight: '36px' }}
+                                                />
+                                            )}
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
                                                 onClick={() => setShowApiKeyValue(prev => !prev)}
                                                 title={showApiKeyValue ? "Hide value" : "Show value"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showApiKeyValue ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>

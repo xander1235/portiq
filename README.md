@@ -36,8 +36,8 @@ Commu (AI API Client) provides an intuitive interface for testing, organizing, a
   - Mark sensitive variables as **Secrets** to hide their values locally.
   - Default 'No Environment' mode to easily disable interpolation when not needed.
 - **Beautiful UI Components**:
-  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button.
-  - Multi-line Variable Interpolation support with **pixel-perfect character cursor alignment** in the URL and Table editors.
+  - **Unified Variable Interpolation**: Real-time highlighting and pixel-perfect character cursor alignment for `{{variable}}` patterns across all inputs, including URL, Table editors (Headers/Params), and all Authentication fields.
+  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button for immediate context.
   - Custom, highly-polished premium dropdowns for Workspaces, Environments, Request Body Type, and Auth Type.
   - Redesigned History cards for a compact, fast overview of past requests.
   - **Dynamic Model Names**: AI model lists automatically trim redundant date suffixes (e.g. `claude-3-5` instead of `claude-3-5-20240620`) for a cleaner look. 
