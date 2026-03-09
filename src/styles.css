@@ -1,5 +1,38 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap");
 
+@import "tailwindcss";
+
+@source "./src/**/*.{js,ts,jsx,tsx}";
+@source "./index.html";
+
+@theme {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent-2);
+  --color-primary-foreground: #000000;
+  --color-secondary: var(--panel-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--panel-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--accent-red);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent-2);
+  --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
 :root {
   --bg: #0f1115;
   --panel: #151924;
@@ -15,6 +48,16 @@
   --muted: #a2a9b8;
   --text-muted: var(--muted);
   --border: #2a3042;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 * {
@@ -187,6 +230,143 @@ select {
 .cm-lintRange-error {
   background-image: none !important;
   border-bottom: 2px dotted #e74c3c !important;
+}
+
+/* ── CodeMirror Search / Replace Panel ── */
+.cm-panels {
+  border-color: var(--border) !important;
+  background: transparent !important;
+}
+
+.cm-panel.cm-search {
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 6px 28px 6px 10px !important;
+  margin: 4px 6px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25) !important;
+  font-family: "Space Grotesk", system-ui, sans-serif !important;
+  font-size: 0.75rem !important;
+  color: var(--text) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+  position: relative !important;
+}
+
+/* Search panel labels */
+.cm-panel.cm-search label {
+  color: var(--muted) !important;
+  font-size: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+
+/* Text inputs */
+.cm-panel.cm-search input[type="text"],
+.cm-panel.cm-search .cm-textfield {
+  background: var(--bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 5px !important;
+  color: var(--text) !important;
+  padding: 3px 8px !important;
+  font-family: "IBM Plex Mono", monospace !important;
+  font-size: 0.75rem !important;
+  outline: none !important;
+  transition: border-color 0.15s, box-shadow 0.15s !important;
+  flex: 1 1 140px !important;
+  min-width: 100px !important;
+  max-width: 240px !important;
+  height: 26px !important;
+}
+
+.cm-panel.cm-search input[type="text"]:focus,
+.cm-panel.cm-search .cm-textfield:focus {
+  border-color: var(--accent-2) !important;
+  box-shadow: 0 0 0 1.5px rgba(46, 211, 198, 0.15) !important;
+}
+
+/* Checkbox inputs */
+.cm-panel.cm-search input[type="checkbox"] {
+  accent-color: var(--accent-2) !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: pointer !important;
+}
+
+/* Buttons */
+.cm-panel.cm-search button {
+  background: rgba(46, 211, 198, 0.06) !important;
+  border: 1px solid rgba(46, 211, 198, 0.18) !important;
+  border-radius: 5px !important;
+  color: var(--accent-2) !important;
+  padding: 2px 8px !important;
+  font-family: "Space Grotesk", system-ui, sans-serif !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: background 0.15s, border-color 0.15s !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  height: 24px !important;
+}
+
+.cm-panel.cm-search button:hover {
+  background: rgba(46, 211, 198, 0.14) !important;
+  border-color: rgba(46, 211, 198, 0.35) !important;
+}
+
+.cm-panel.cm-search button:active {
+  background: rgba(46, 211, 198, 0.22) !important;
+}
+
+/* Close button (×) */
+.cm-panel.cm-search button[name="close"] {
+  background: transparent !important;
+  border: none !important;
+  color: var(--muted) !important;
+  font-size: 0.95rem !important;
+  padding: 0 4px !important;
+  border-radius: 4px !important;
+  line-height: 1 !important;
+  position: absolute !important;
+  top: 6px !important;
+  right: 6px !important;
+  height: auto !important;
+}
+
+.cm-panel.cm-search button[name="close"]:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+}
+
+/* Search match highlights */
+.cm-searchMatch {
+  background-color: rgba(241, 196, 15, 0.2) !important;
+  border-radius: 2px !important;
+  outline: 1px solid rgba(241, 196, 15, 0.4) !important;
+}
+
+.cm-searchMatch-selected {
+  background-color: rgba(46, 211, 198, 0.3) !important;
+  outline: 1px solid rgba(46, 211, 198, 0.6) !important;
+}
+
+.cm-selectionMatch {
+  background-color: rgba(46, 211, 198, 0.12) !important;
+}
+
+/* Replace br spacing with small inline gap */
+.cm-panel.cm-search br {
+  content: "" !important;
+  display: inline-block !important;
+  width: 3px !important;
 }
 
 .url {
@@ -405,24 +585,6 @@ select {
   box-shadow: none;
 }
 
-.menu-wrap {
-  position: relative;
-}
-
-.menu {
-  position: absolute;
-  right: 0;
-  top: 36px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  z-index: 5;
-  min-width: 140px;
-}
 
 .field-label {
   color: var(--muted);

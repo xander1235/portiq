@@ -1,4 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import styles from "./Sidebar.module.css";
 import { ProtocolPicker, PROTOCOLS } from "../ProtocolPicker.jsx";
 
@@ -40,13 +49,36 @@ export function Sidebar({
     const [showCollectionMenu, setShowCollectionMenu] = useState(false);
     const [draggedItemId, setDraggedItemId] = useState(null);
     const [dragOverItemId, setDragOverItemId] = useState(null);
-    const [collapsedFolders, setCollapsedFolders] = useState(new Set());
+    const [collapsedFolders, setCollapsedFolders] = useState(() => {
+        try {
+            const saved = localStorage.getItem("vaaya_collapsedFolders");
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch (e) {
+            return new Set();
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem("vaaya_collapsedFolders", JSON.stringify(Array.from(collapsedFolders)));
+    }, [collapsedFolders]);
+
     const [editingFolderId, setEditingFolderId] = useState("");
     const [folderNameDraft, setFolderNameDraft] = useState("");
     const [openFolderMenuId, setOpenFolderMenuId] = useState("");
     const [editingRequestId, setEditingRequestId] = useState("");
     const [requestNameDraft, setRequestNameDraft] = useState("");
-    const [collapsedHistoryDates, setCollapsedHistoryDates] = useState(new Set());
+    const [collapsedHistoryDates, setCollapsedHistoryDates] = useState(() => {
+        try {
+            const saved = localStorage.getItem("vaaya_collapsedHistoryDates");
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch (e) {
+            return new Set();
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem("vaaya_collapsedHistoryDates", JSON.stringify(Array.from(collapsedHistoryDates)));
+    }, [collapsedHistoryDates]);
     const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
     const [protocolPickerTarget, setProtocolPickerTarget] = useState(null); // { folderId } or "root" when creating request
     const [changeProtocolRequestId, setChangeProtocolRequestId] = useState(""); // request id when changing protocol via ⋮ menu
@@ -165,83 +197,21 @@ export function Sidebar({
                                     )}
                                 </div>
                                 <div className={styles.menuWrap}>
-                                    <button
-                                        className="ghost icon-button icon-plain"
-                                        onClick={() => setOpenFolderMenuId((prev) => (prev === item.id ? "" : item.id))}
-                                        aria-label="Folder options"
-                                    >
-                                        ⋮
-                                    </button>
-                                    {openFolderMenuId === item.id && (
-                                        <div className="menu">
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    setEditingFolderId(item.id);
-                                                    setFolderNameDraft(item.name);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Rename
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    duplicateItem(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Duplicate
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    setItemToMove(item);
-                                                    setMoveTargetId("root");
-                                                    setShowMoveModal(true);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Move
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    deleteFolder(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Delete
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    exportCollection(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Export
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    addFolderToCollection(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Create Folder
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    setProtocolPickerTarget({ folderId: item.id });
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Create Request
-                                            </button>
-                                        </div>
-                                    )}
+                                    <DropdownMenu open={openFolderMenuId === item.id} onOpenChange={(open) => setOpenFolderMenuId(open ? item.id : "")}>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground" onClick={(e) => e.stopPropagation()}>⋮</Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-40 bg-panel border-border text-foreground" onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingFolderId(item.id); setFolderNameDraft(item.name); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Rename</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); duplicateItem(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Duplicate</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setItemToMove(item); setMoveTargetId("root"); setShowMoveModal(true); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Move</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); deleteFolder(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs text-red-500 focus:bg-red-500/10 focus:text-red-500">Delete</DropdownMenuItem>
+                                            <DropdownMenuSeparator className="bg-border" />
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); exportCollection(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Export</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); addFolderToCollection(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Create Folder</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setProtocolPickerTarget({ folderId: item.id }); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Create Request</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             </div>
                             {!collapsedFolders.has(item.id) && (
@@ -332,74 +302,19 @@ export function Sidebar({
                                     </button>
                                 )}
                                 <div className={styles.menuWrap}>
-                                    <button
-                                        className="ghost icon-button icon-plain"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setOpenFolderMenuId((prev) => (prev === item.id ? "" : item.id));
-                                        }}
-                                        aria-label="Request options"
-                                    >
-                                        ⋮
-                                    </button>
-                                    {openFolderMenuId === item.id && (
-                                        <div className="menu">
-                                            <button
-                                                className="ghost"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setEditingRequestId(item.id);
-                                                    setRequestNameDraft(item.name);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Rename
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    duplicateItem(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Duplicate
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setItemToMove(item);
-                                                    setMoveTargetId("root");
-                                                    setShowMoveModal(true);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Move
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    deleteRequest(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Delete
-                                            </button>
-                                            <div style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
-                                            <button
-                                                className="ghost"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setChangeProtocolRequestId(item.id);
-                                                    setOpenFolderMenuId("");
-                                                }}
-                                            >
-                                                Change Protocol
-                                            </button>
-                                        </div>
-                                    )}
+                                    <DropdownMenu open={openFolderMenuId === item.id} onOpenChange={(open) => setOpenFolderMenuId(open ? item.id : "")}>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground" onClick={(e) => e.stopPropagation()}>⋮</Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-40 bg-panel border-border text-foreground" onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingRequestId(item.id); setRequestNameDraft(item.name); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Rename</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); duplicateItem(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Duplicate</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setItemToMove(item); setMoveTargetId("root"); setShowMoveModal(true); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Move</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); deleteRequest(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs text-red-500 focus:bg-red-500/10 focus:text-red-500">Delete</DropdownMenuItem>
+                                            <DropdownMenuSeparator className="bg-border" />
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setChangeProtocolRequestId(item.id); setOpenFolderMenuId(""); }} className="cursor-pointer text-xs">Change Protocol</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             </div>
                             {item.description && <div className={styles.treeDesc}>{item.description}</div>}
@@ -420,183 +335,76 @@ export function Sidebar({
     return (
         <aside className={styles.sidebar}>
             <div className={styles.sidebarPanel}>
-                <div className={`${styles.panelTitle} ${styles.headerRow}`}>
-                    <span>{activeSidebar}</span>
+                <div className={`${styles.panelTitle} ${styles.headerRow} flex items-center justify-between`}>
+                    <span className="font-semibold">{activeSidebar}</span>
                     {activeSidebar === "Collections" && (
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            <button className="ghost" onClick={() => setShowCollectionModal(true)}>Manage</button>
-                            <div className={styles.menuWrap}>
-                                <button className="ghost" onClick={() => setShowImportMenu(prev => !prev)}>Import</button>
-                                {showImportMenu && (
-                                    <div className="menu" style={{ right: 0, left: 'auto', minWidth: '150px' }}>
-                                        <button className="ghost" onClick={() => { importCollection(); setShowImportMenu(false); }}>From File</button>
-                                        <button className="ghost" onClick={() => { setShowImportTextModal(true); setShowImportMenu(false); }}>From Text</button>
-                                        <button className="ghost" onClick={() => { setShowImportApiModal(true); setShowImportMenu(false); }}>From API URL</button>
-                                    </div>
-                                )}
-                            </div>
+                        <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setShowCollectionModal(true)}>Manage</Button>
+                            <DropdownMenu open={showImportMenu} onOpenChange={setShowImportMenu}>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs px-2">Import</Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40 bg-panel border-border text-foreground">
+                                    <DropdownMenuItem onClick={() => { importCollection(); setShowImportMenu(false); }} className="cursor-pointer text-xs">From File</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => { setShowImportTextModal(true); setShowImportMenu(false); }} className="cursor-pointer text-xs">From Text</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => { setShowImportApiModal(true); setShowImportMenu(false); }} className="cursor-pointer text-xs">From API URL</DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     )}
                 </div>
                 {activeSidebar === "Collections" && (
                     <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                         <div className={styles.collectionSection}>
-                            <div className="panel-row">
-                                <div className={styles.menuWrap} style={{ flex: 1, position: 'relative' }}>
-                                    <button
-                                        style={{
-                                            width: '100%',
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            padding: '8px 12px',
-                                            height: '36px',
-                                            background: 'var(--panel)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            color: 'var(--text)',
-                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                            boxShadow: showCollectionDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
-                                            borderColor: showCollectionDropdown ? 'var(--accent-2)' : 'var(--border)'
-                                        }}
-                                        onMouseOver={(e) => {
-                                            if (!showCollectionDropdown) {
-                                                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                                e.currentTarget.style.background = 'var(--panel-3)';
-                                            }
-                                        }}
-                                        onMouseOut={(e) => {
-                                            if (!showCollectionDropdown) {
-                                                e.currentTarget.style.borderColor = 'var(--border)';
-                                                e.currentTarget.style.background = 'var(--panel)';
-                                            }
-                                        }}
-                                        onClick={() => setShowCollectionDropdown(prev => !prev)}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
-                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                                            </svg>
-                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 500 }}>
-                                                {collections.find(c => c.id === activeCollectionId)?.name || "Select Collection"}
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            width: '20px',
-                                            height: '20px',
-                                            borderRadius: '4px',
-                                            background: 'rgba(255,255,255,0.05)',
-                                            transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                            transform: showCollectionDropdown ? 'rotate(180deg)' : 'rotate(0)'
-                                        }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <div className="panel-row flex items-center gap-2">
+                                <DropdownMenu open={showCollectionDropdown} onOpenChange={setShowCollectionDropdown}>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" className="flex-1 justify-between h-9 bg-panel border-border shadow-sm">
+                                            <div className="flex items-center gap-2 truncate">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
+                                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                                </svg>
+                                                <span className="truncate text-[13px] font-medium">
+                                                    {collections.find(c => c.id === activeCollectionId)?.name || "Select Collection"}
+                                                </span>
+                                            </div>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
                                                 <polyline points="6 9 12 15 18 9"></polyline>
                                             </svg>
-                                        </div>
-                                    </button>
-                                    {showCollectionDropdown && (
-                                        <>
-                                            <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowCollectionDropdown(false)}></div>
-                                            <div
-                                                className="menu"
-                                                style={{
-                                                    width: '100%',
-                                                    top: 'calc(100% + 6px)',
-                                                    maxHeight: '300px',
-                                                    overflowY: 'auto',
-                                                    padding: '6px',
-                                                    borderRadius: '10px',
-                                                    boxShadow: '0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
-                                                    background: 'var(--panel)',
-                                                    zIndex: 100,
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    gap: '2px'
-                                                }}
-                                            >
-                                                <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
-                                                    Your Collections
-                                                </div>
-                                                {collections.map((col) => {
-                                                    const isActive = col.id === activeCollectionId;
-                                                    return (
-                                                        <button
-                                                            key={col.id}
-                                                            style={{
-                                                                width: '100%',
-                                                                textAlign: 'left',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '10px',
-                                                                color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                                                                backgroundColor: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                                                                fontWeight: isActive ? 600 : 500,
-                                                                fontSize: '13px',
-                                                                padding: '8px 10px',
-                                                                borderRadius: '6px',
-                                                                border: 'none',
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.15s ease'
-                                                            }}
-                                                            onMouseOver={(e) => {
-                                                                if (!isActive) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
-                                                            }}
-                                                            onMouseOut={(e) => {
-                                                                if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
-                                                            }}
-                                                            onClick={() => {
-                                                                setActiveCollectionId(col.id);
-                                                                setShowCollectionDropdown(false);
-                                                            }}
-                                                        >
-                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>
-                                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                                                            </svg>
-                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                {col.name}
-                                                            </span>
-                                                            {isActive && (
-                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                                                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                                                </svg>
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                                <button
-                                    className="ghost icon-button"
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="w-[300px] bg-panel border-border p-2">
+                                        <DropdownMenuLabel className="text-[11px] font-semibold uppercase text-muted-foreground">Your Collections</DropdownMenuLabel>
+                                        {collections.map((col) => {
+                                            const isActive = col.id === activeCollectionId;
+                                            return (
+                                                <DropdownMenuItem
+                                                    key={col.id}
+                                                    onClick={() => {
+                                                        setActiveCollectionId(col.id);
+                                                        setShowCollectionDropdown(false);
+                                                    }}
+                                                    className={`flex items-center gap-2 cursor-pointer ${isActive ? 'bg-accent-2/10 text-accent-2' : ''}`}
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+                                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                                    </svg>
+                                                    <span className="truncate">{col.name}</span>
+                                                    {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                                </DropdownMenuItem>
+                                            );
+                                        })}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9 shrink-0 bg-panel border-border text-xl"
                                     onClick={addCollection}
                                     title="Create Collection"
-                                    aria-label="Create collection"
-                                    style={{
-                                        width: '36px',
-                                        height: '36px',
-                                        borderRadius: '8px',
-                                        background: 'var(--panel)',
-                                        border: '1px solid var(--border)',
-                                        color: 'var(--text)',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                        e.currentTarget.style.background = 'var(--panel-3)';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        e.currentTarget.style.borderColor = 'var(--border)';
-                                        e.currentTarget.style.background = 'var(--panel)';
-                                    }}
                                 >
                                     +
-                                </button>
+                                </Button>
                             </div>
                         </div>
                         <div className={styles.collectionSection} style={{ flex: 1, minHeight: 0, paddingBottom: 0, marginBottom: 0, borderBottom: 'none' }}>
@@ -631,53 +439,19 @@ export function Sidebar({
                                     </button>
                                 )}
                                 <div className={styles.menuWrap} style={{ marginLeft: 'auto' }}>
-                                    <button
-                                        className="ghost icon-button"
-                                        aria-label="Collection options"
-                                        onClick={() => setShowCollectionMenu((prev) => !prev)}
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
-                                    </button>
-                                    {showCollectionMenu && (
-                                        <div className="menu">
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    addFolderToCollection();
-                                                    setShowCollectionMenu(false);
-                                                }}
-                                            >
-                                                Create Folder
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    setProtocolPickerTarget({ folderId: null });
-                                                    setShowCollectionMenu(false);
-                                                }}
-                                            >
-                                                Create Request
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    duplicateCollection(activeCollectionId);
-                                                    setShowCollectionMenu(false);
-                                                }}
-                                            >
-                                                Duplicate Collection
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                onClick={() => {
-                                                    exportCollection(activeCollectionId);
-                                                    setShowCollectionMenu(false);
-                                                }}
-                                            >
-                                                Export Collection
-                                            </button>
-                                        </div>
-                                    )}
+                                    <DropdownMenu open={showCollectionMenu} onOpenChange={setShowCollectionMenu}>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground mr-2">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-48 bg-panel border-border text-foreground">
+                                            <DropdownMenuItem onClick={() => { addFolderToCollection(); setShowCollectionMenu(false); }} className="cursor-pointer text-xs">Create Folder</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => { setProtocolPickerTarget({ folderId: null }); setShowCollectionMenu(false); }} className="cursor-pointer text-xs">Create Request</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => { duplicateCollection(activeCollectionId); setShowCollectionMenu(false); }} className="cursor-pointer text-xs">Duplicate Collection</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => { exportCollection(activeCollectionId); setShowCollectionMenu(false); }} className="cursor-pointer text-xs">Export Collection</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             </div>
                             <div

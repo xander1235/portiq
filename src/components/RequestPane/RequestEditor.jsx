@@ -9,13 +9,22 @@ import { lintGutter } from '@codemirror/lint';
 import { xmlLinter } from "../../utils/codemirror/xmlExtensions.js";
 import { customJsonLinter } from "../../utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "../../utils/codemirror/environmentExtensions.js";
-import { search } from '@codemirror/search';
+import { search, openSearchPanel } from '@codemirror/search';
+import { keymap } from '@codemirror/view';
+
+const searchWithReplace = () => [
+    search({ top: true }),
+    keymap.of([{ key: "Mod-r", run: (view) => { openSearchPanel(view); return true; } }])
+];
 
 import { TableEditor } from "../TableEditor.jsx";
 import { EnvInput } from "../TableEditor.jsx";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import { prettifyXml } from "../../services/format.js";
 import styles from "./RequestEditor.module.css";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function RequestEditor({
     editingMainRequestName,
@@ -121,21 +130,20 @@ export function RequestEditor({
                 </button>
             </div>
             <div className={styles.requestBar}>
-                <select
-                    className="input method"
-                    value={method}
-                    onChange={(e) => {
-                        setMethod(e.target.value);
-                        if (currentRequestId) {
-                            updateRequestMethod(currentRequestId, e.target.value);
-                        }
-                    }}
-                >
-                    <option>GET</option>
-                    <option>POST</option>
-                    <option>PUT</option>
-                    <option>DELETE</option>
-                </select>
+                <Select value={method} onValueChange={(val) => {
+                    setMethod(val);
+                    if (currentRequestId) updateRequestMethod(currentRequestId, val);
+                }}>
+                    <SelectTrigger className="w-[100px] h-[36px] bg-panel-2 border-border text-foreground font-semibold">
+                        <SelectValue placeholder="Method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="GET" className="font-semibold text-[var(--ok)]">GET</SelectItem>
+                        <SelectItem value="POST" className="font-semibold text-[var(--warn)]">POST</SelectItem>
+                        <SelectItem value="PUT" className="font-semibold text-[var(--info)]">PUT</SelectItem>
+                        <SelectItem value="DELETE" className="font-semibold text-[var(--error)]">DELETE</SelectItem>
+                    </SelectContent>
+                </Select>
                 <EnvInput
                     className={`input ${styles.url}`}
                     value={url}
@@ -181,131 +189,21 @@ export function RequestEditor({
                     )}
                     {activeRequestTab === "Body" && (
                         <>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    style={{
-                                        width: '180px',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        textAlign: 'left',
-                                        cursor: 'pointer',
-                                        padding: '4px 10px',
-                                        height: '28px',
-                                        background: 'var(--panel)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text)',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: showBodyTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
-                                        borderColor: showBodyTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!showBodyTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                            e.currentTarget.style.background = 'var(--panel-3)';
-                                        }
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!showBodyTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'var(--border)';
-                                            e.currentTarget.style.background = 'var(--panel)';
-                                        }
-                                    }}
-                                    onClick={() => setShowBodyTypeDropdown(prev => !prev)}
-                                >
-                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {
-                                            bodyType === "json" ? "JSON" :
-                                                bodyType === "xml" ? "XML" :
-                                                    bodyType === "form" ? "x-www-form-urlencoded" :
-                                                        bodyType === "multipart" ? "form-data (simple)" :
-                                                            bodyType === "raw" ? "Raw" : "Select Type"
-                                        }
-                                    </span>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '16px',
-                                        height: '16px',
-                                        borderRadius: '3px',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        transition: 'transform 0.3s ease',
-                                        transform: showBodyTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
-                                    }}>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </div>
-                                </button>
-                                {showBodyTypeDropdown && (
-                                    <>
-                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowBodyTypeDropdown(false)}></div>
-                                        <div className="menu" style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 4px)',
-                                            left: 0,
-                                            width: '200px',
-                                            zIndex: 100,
-                                            background: 'var(--panel)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            padding: '4px',
-                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
-                                        }}>
-                                            {[
-                                                { value: "json", label: "JSON" },
-                                                { value: "xml", label: "XML" },
-                                                { value: "form", label: "x-www-form-urlencoded" },
-                                                { value: "multipart", label: "form-data (simple)" },
-                                                { value: "raw", label: "Raw" }
-                                            ].map((opt) => {
-                                                const isActive = bodyType === opt.value;
-                                                return (
-                                                    <button
-                                                        key={opt.value}
-                                                        style={{
-                                                            width: '100%',
-                                                            textAlign: 'left',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            fontSize: '12px',
-                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                                                            fontWeight: isActive ? 600 : 400,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            transition: 'background 0.1s'
-                                                        }}
-                                                        onMouseOver={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
-                                                        }}
-                                                        onMouseOut={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                                                        }}
-                                                        onClick={() => {
-                                                            setBodyType(opt.value);
-                                                            setContentType(opt.value);
-                                                            setShowBodyTypeDropdown(false);
-                                                        }}
-                                                    >
-                                                        {opt.label}
-                                                        {isActive && (
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                                                <polyline points="20 6 9 17 4 12"></polyline>
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                            <Select value={bodyType} onValueChange={(val) => {
+                                setBodyType(val);
+                                setContentType(val);
+                            }}>
+                                <SelectTrigger className="w-[180px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="json">JSON</SelectItem>
+                                    <SelectItem value="xml">XML</SelectItem>
+                                    <SelectItem value="form">x-www-form-urlencoded</SelectItem>
+                                    <SelectItem value="multipart">form-data (simple)</SelectItem>
+                                    <SelectItem value="raw">Raw</SelectItem>
+                                </SelectContent>
+                            </Select>
                             {(bodyType === "json" || bodyType === "xml") && (
                                 <button
                                     className="ghost compact"
@@ -391,7 +289,7 @@ export function RequestEditor({
                                 <CodeMirror
                                     value={headersText}
                                     theme={vscodeDark}
-                                    extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                    extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
                                     onChange={(value) => handleHeadersTextChange(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -405,131 +303,21 @@ export function RequestEditor({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Type</span>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    style={{
-                                        width: '200px',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        textAlign: 'left',
-                                        cursor: 'pointer',
-                                        padding: '4px 10px',
-                                        height: '28px',
-                                        background: 'var(--panel)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text)',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: showAuthTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
-                                        borderColor: showAuthTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!showAuthTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                            e.currentTarget.style.background = 'var(--panel-3)';
-                                        }
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!showAuthTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'var(--border)';
-                                            e.currentTarget.style.background = 'var(--panel)';
-                                        }
-                                    }}
-                                    onClick={() => setShowAuthTypeDropdown(prev => !prev)}
-                                >
-                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {
-                                            authType === "none" ? "No Auth" :
-                                                authType === "bearer" ? "Bearer Token" :
-                                                    authType === "basic" ? "Basic Auth" :
-                                                        authType === "api_key" ? "API Key" :
-                                                            authType === "custom" ? "Custom (Legacy)" : "Select Auth Type"
-                                        }
-                                    </span>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '16px',
-                                        height: '16px',
-                                        borderRadius: '3px',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        transition: 'transform 0.3s ease',
-                                        transform: showAuthTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
-                                    }}>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </div>
-                                </button>
-                                {showAuthTypeDropdown && (
-                                    <>
-                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowAuthTypeDropdown(false)}></div>
-                                        <div className="menu" style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 4px)',
-                                            left: 0,
-                                            width: '200px',
-                                            zIndex: 100,
-                                            background: 'var(--panel)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            padding: '4px',
-                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
-                                        }}>
-                                            {[
-                                                { value: "none", label: "No Auth" },
-                                                { value: "bearer", label: "Bearer Token" },
-                                                { value: "basic", label: "Basic Auth" },
-                                                { value: "api_key", label: "API Key" },
-                                                { value: "custom", label: "Custom (Legacy)" }
-                                            ].map((opt) => {
-                                                const isActive = authType === opt.value;
-                                                return (
-                                                    <button
-                                                        key={opt.value}
-                                                        style={{
-                                                            width: '100%',
-                                                            textAlign: 'left',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            fontSize: '12px',
-                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                                                            fontWeight: isActive ? 600 : 400,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            transition: 'background 0.1s'
-                                                        }}
-                                                        onMouseOver={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
-                                                        }}
-                                                        onMouseOut={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                                                        }}
-                                                        onClick={() => {
-                                                            setAuthType(opt.value);
-                                                            if (currentRequestId) updateRequestState(currentRequestId, "authType", opt.value);
-                                                            setShowAuthTypeDropdown(false);
-                                                        }}
-                                                    >
-                                                        {opt.label}
-                                                        {isActive && (
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                                                <polyline points="20 6 9 17 4 12"></polyline>
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                            <Select value={authType} onValueChange={(val) => {
+                                setAuthType(val);
+                                if (currentRequestId) updateRequestState(currentRequestId, "authType", val);
+                            }}>
+                                <SelectTrigger className="w-[200px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Auth Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No Auth</SelectItem>
+                                    <SelectItem value="bearer">Bearer Token</SelectItem>
+                                    <SelectItem value="basic">Basic Auth</SelectItem>
+                                    <SelectItem value="api_key">API Key</SelectItem>
+                                    <SelectItem value="custom">Custom (Legacy)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
@@ -691,20 +479,21 @@ export function RequestEditor({
                 {activeRequestTab === "Body" && (() => {
                     const bodyActions = (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <select
-                                className="input compact"
-                                value={bodyType}
-                                onChange={(e) => {
-                                    setBodyType(e.target.value);
-                                    setContentType(e.target.value);
-                                }}
-                            >
-                                <option value="json">JSON</option>
-                                <option value="xml">XML</option>
-                                <option value="form">x-www-form-urlencoded</option>
-                                <option value="multipart">form-data (simple)</option>
-                                <option value="raw">Raw</option>
-                            </select>
+                            <Select value={bodyType} onValueChange={(val) => {
+                                setBodyType(val);
+                                setContentType(val);
+                            }}>
+                                <SelectTrigger className="w-[180px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="json">JSON</SelectItem>
+                                    <SelectItem value="xml">XML</SelectItem>
+                                    <SelectItem value="form">x-www-form-urlencoded</SelectItem>
+                                    <SelectItem value="multipart">form-data (simple)</SelectItem>
+                                    <SelectItem value="raw">Raw</SelectItem>
+                                </SelectContent>
+                            </Select>
                             {(bodyType === "json" || bodyType === "xml") && (
                                 <button
                                     className="ghost compact"
@@ -747,10 +536,10 @@ export function RequestEditor({
                                             theme={vscodeDark}
                                             extensions={
                                                 bodyType === "json"
-                                                    ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
+                                                    ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                                     : bodyType === "xml"
-                                                        ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
-                                                        : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
+                                                        ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
+                                                        : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                             }
                                             onChange={(value) => setBodyText(value)}
                                             basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
@@ -792,7 +581,7 @@ export function RequestEditor({
                                     <CodeMirror
                                         value={testsInputText}
                                         theme={vscodeDark}
-                                        extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                        extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
                                         onChange={(value) => setTestsInputText(value)}
                                         basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                         style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -805,7 +594,7 @@ export function RequestEditor({
                                 <CodeMirror
                                     value={testsPreText}
                                     theme={vscodeDark}
-                                    extensions={[javascript(), search()]}
+                                    extensions={[javascript(), ...searchWithReplace()]}
                                     onChange={(value) => setTestsPreText(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -818,7 +607,7 @@ export function RequestEditor({
                                 <CodeMirror
                                     value={testsPostText}
                                     theme={vscodeDark}
-                                    extensions={[javascript(), search()]}
+                                    extensions={[javascript(), ...searchWithReplace()]}
                                     onChange={(value) => setTestsPostText(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}

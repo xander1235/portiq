@@ -26,7 +26,17 @@ import { EnvironmentModal } from "./components/Modals/EnvironmentModal.jsx";
 import { ExportModal } from "./components/Modals/ExportModal.jsx";
 import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal.jsx";
 import { SettingsModal } from "./components/Modals/SettingsModal.jsx";
-import { AIChatPanel } from "./components/AIChatPanel.jsx";
+import { RightRail } from "./components/RightRail/RightRail.jsx";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 
 import { Sidebar } from "./components/Sidebar/Sidebar.jsx";
 import { RequestEditor } from "./components/RequestPane/RequestEditor.jsx";
@@ -208,6 +218,8 @@ function App() {
     { role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }
   ]);
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [activeRightTab, setActiveRightTab] = useLocalStorage("ui_activeRightTab", "ai");
   const chatEndRef = useRef(null);
 
 
@@ -276,7 +288,7 @@ function App() {
   const [activeSidebar, setActiveSidebar] = useLocalStorage("ui_activeSidebar", "Collections");
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage("ui_sidebarCollapsed", false);
   const [isSending, setIsSending] = useState(false);
 
   // Protocol system state (per-request protocol is in useRequestState; these are protocol-specific UI state)
@@ -1673,7 +1685,16 @@ function App() {
   }
 
   async function handleGenerateTests() {
-    const tests = await generateTestsFromResponse({ method, url }, response);
+    const aiSettings = {
+      provider: aiProvider,
+      model: activeModel,
+      keys: {
+        openai: aiApiKeyOpenAI,
+        anthropic: aiApiKeyAnthropic,
+        gemini: aiApiKeyGemini
+      }
+    };
+    const tests = await generateTestsFromResponse({ method, url }, response, aiSettings);
     setActiveRequestTab("Tests");
     setTestsPostText(tests.join("\n"));
   }
@@ -1702,22 +1723,18 @@ function App() {
       },
       semanticSearchEnabled: aiSemanticSearchEnabled
     };
-    const currentState = { method, url, headersText, bodyText };
+    const currentState = { method, url, headersText, bodyText, protocol };
+    const responseData = response ? { status: response.status, statusText: response.statusText, headers: response.headers, body: response.body || (response.json ? JSON.stringify(response.json) : "") } : null;
 
     try {
-      if (currentPrompt.toLowerCase().includes("test")) {
-        const tests = await generateTestsFromResponse({ method, url }, response);
-        setActiveRequestTab("Tests");
-        setTestsPostText(tests.join("\n"));
-        setIsAiTyping(false);
-        setAiChatHistory([...newHistory, { role: "assistant", text: "I've generated tests based on the response and added them to your Tests > Post-response script tab." }]);
-      } else {
+      {
         const finalPrompt = currentPrompt;
-        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings);
+        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings, aiChatHistory, responseData);
         console.log("[AI DEBUG] Raw AI output:", JSON.stringify(output, null, 2));
 
         let assistantMsg = output.message || "I have updated the workspace.";
         let suggestedEndpoints = null;
+        let shouldSend = false;
 
         if (output.operations && Array.isArray(output.operations)) {
           console.log("[AI DEBUG] Found", output.operations.length, "operations");
@@ -1735,8 +1752,25 @@ function App() {
               })));
             } else if (op.type === "SUGGEST_ENDPOINTS") {
               suggestedEndpoints = op.payload.endpoints;
+            } else if (op.type === "SEND_REQUEST") {
+              shouldSend = true;
+            } else if (op.type === "GENERATE_TESTS") {
+              if (op.payload && op.payload.tests && Array.isArray(op.payload.tests)) {
+                setActiveRequestTab("Tests");
+                setTestsPostText(op.payload.tests.join("\n"));
+                assistantMsg += "\n\n*(Tests have been added to your Tests > Post-response script tab.)*";
+              }
+            } else if (op.type === "DELETE_REQUEST") {
+              if (op.payload && op.payload.requestId) {
+                deleteRequest(op.payload.requestId);
+                assistantMsg += "\n\n*(Request has been deleted from your workspace.)*";
+              }
+            } else if (op.type === "MOVE_REQUEST") {
+              if (op.payload && op.payload.requestId && op.payload.targetCollectionId) {
+                moveItemInCollection(op.payload.requestId, op.payload.targetFolderId || op.payload.targetCollectionId, true);
+                assistantMsg += "\n\n*(Request has been moved.)*";
+              }
             } else if (op.type === "CREATE_REQUEST") {
-              // ... existing CREATE_REQUEST block
               const newReqId = "req-" + Date.now().toString() + "-" + Math.random().toString(36).substr(2, 5);
               let targetColId = op.payload.collectionId;
               let targetColName = op.payload.newCollectionName || "";
@@ -1747,7 +1781,6 @@ function App() {
                   const parsed = JSON.parse(op.payload.headersText);
                   newHeadersRows = objectToRows(parsed);
                 } catch (e) {
-                  // headersText might be "key: value" format, try parsing that
                   try {
                     const headerObj = {};
                     op.payload.headersText.split('\n').forEach(line => {
@@ -1763,7 +1796,6 @@ function App() {
                 }
               }
 
-              // Resolve target collection
               if (op.payload.newCollectionName) {
                 const existing = collections.find(c => c.name.toLowerCase() === op.payload.newCollectionName.toLowerCase());
                 if (existing) {
@@ -1781,7 +1813,6 @@ function App() {
                 targetColName = collections.find(c => c.id === targetColId)?.name || "your workspace";
               }
 
-              // Build request object matching the real data model (type: "request" inside col.items)
               const newRequest = {
                 type: "request",
                 id: newReqId,
@@ -1804,31 +1835,18 @@ function App() {
 
               setCollections(prev => {
                 let updated = [...prev];
-
-                // Create the new collection if it doesn't exist yet
                 if (op.payload.newCollectionName && !updated.find(c => c.id === targetColId)) {
-                  updated.push({
-                    id: targetColId,
-                    name: targetColName,
-                    items: []
-                  });
+                  updated.push({ id: targetColId, name: targetColName, items: [] });
                 }
-
                 if (!targetColId) return updated;
-
-                // Add the request into the collection's items array
                 return updated.map(col => {
                   if (col.id === targetColId) {
-                    return {
-                      ...col,
-                      items: [...(col.items || []), newRequest]
-                    };
+                    return { ...col, items: [...(col.items || []), newRequest] };
                   }
                   return col;
                 });
               });
 
-              // Automatically navigate to the newly created request
               if (targetColId) {
                 setTimeout(() => {
                   setActiveCollectionId(targetColId);
@@ -1858,6 +1876,12 @@ function App() {
           model: output._model || activeModel,
           usage: output._usage?.output ? { output: output._usage.output } : null
         }]);
+
+        if (shouldSend) {
+          setTimeout(() => {
+            handleProtocolSend();
+          }, 300);
+        }
       }
     } catch (err) {
       setIsAiTyping(false);
@@ -2029,231 +2053,93 @@ function App() {
 
   return (
     <div className={styles.app}>
-      <header className={styles.topbar}>
-        <div className={styles.topbarLeft}>
-          <img src={logo} alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '8px' }} />
-          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700' }}>commu</div>
-          <button
-            className={activeSidebar === "Collections" ? "ghost active" : "ghost"}
+      <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, #141a28, #10131c)" }}>
+        <div className="flex items-center gap-2">
+          <img src={logo} alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>commu</div>
+          <Button
+            variant={activeSidebar === "Collections" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}
+            size="sm"
           >
             Collections
-          </button>
-          <button
-            className={activeSidebar === "History" ? "ghost active" : "ghost"}
+          </Button>
+          <Button
+            variant={activeSidebar === "History" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("History")}
+            size="sm"
           >
             History
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', position: 'relative' }}>
-            <button
-              style={{
-                width: '180px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                textAlign: 'left',
-                cursor: 'pointer',
-                padding: '6px 12px',
-                height: '32px',
-                background: 'var(--panel)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                color: 'var(--text)',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: showEnvDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
-                borderColor: showEnvDropdown ? 'var(--accent-2)' : 'var(--border)'
-              }}
-              onMouseOver={(e) => {
-                if (!showEnvDropdown) {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                  e.currentTarget.style.background = 'var(--panel-3)';
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!showEnvDropdown) {
-                  e.currentTarget.style.borderColor = 'var(--border)';
-                  e.currentTarget.style.background = 'var(--panel)';
-                }
-              }}
-              onClick={() => setShowEnvDropdown(prev => !prev)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                </svg>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 500 }}>
-                  {environments.find(e => e.id === activeEnvId)?.name || "No Environment"}
-                </span>
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '18px',
-                height: '18px',
-                borderRadius: '4px',
-                background: 'rgba(255,255,255,0.05)',
-                transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: showEnvDropdown ? 'rotate(180deg)' : 'rotate(0)'
-              }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-            </button>
-            {showEnvDropdown && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowEnvDropdown(false)}></div>
-                <div
-                  className="menu"
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    left: 0,
-                    width: '250px',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    padding: '6px',
-                    borderRadius: '10px',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
-                    background: 'var(--panel)',
-                    zIndex: 100,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px'
-                  }}
-                >
-                  <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
-                    Environments
-                  </div>
-                  <button
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      color: !activeEnvId ? 'var(--accent-2)' : 'var(--text)',
-                      backgroundColor: !activeEnvId ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                      fontWeight: !activeEnvId ? 600 : 500,
-                      fontSize: '13px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
-                    }}
-                    onMouseOut={(e) => {
-                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    onClick={() => {
-                      setActiveEnvId(null);
-                      setShowEnvDropdown(false);
-                    }}
-                  >
-                    No Environment
-                    {!activeEnvId && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    )}
-                  </button>
-                  {environments.length > 0 && <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>}
-                  {environments.map((env) => {
-                    const isActive = env.id === activeEnvId;
-                    return (
-                      <button
-                        key={env.id}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                          backgroundColor: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                          fontWeight: isActive ? 600 : 500,
-                          fontSize: '13px',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseOver={(e) => {
-                          if (!isActive) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
-                        }}
-                        onMouseOut={(e) => {
-                          if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        onClick={() => {
-                          setActiveEnvId(env.id);
-                          setShowEnvDropdown(false);
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                        </svg>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {env.name}
-                        </span>
-                        {isActive && (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                        )}
-                      </button>
-                    );
-                  })}
-                  <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>
-                  <button
-                    className="ghost"
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      color: 'var(--muted)',
-                      fontSize: '13px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                    }}
-                    onClick={() => {
-                      setShowEnvDropdown(false);
-                      setShowEnvModal(true);
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3"></circle>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </Button>
+
+          <div style={{ marginLeft: '8px' }}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-[200px] justify-between h-8 bg-panel border-border">
+                  <div className="flex items-center gap-2 truncate">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
                     </svg>
-                    Manage Environments
-                  </button>
-                </div>
-              </>
-            )}
+                    <span className="truncate">{environments.find(e => e.id === activeEnvId)?.name || "No Environment"}</span>
+                  </div>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[250px] bg-panel border-border p-2">
+                <DropdownMenuLabel className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">Environments</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => setActiveEnvId(null)}
+                  className={`flex items-center gap-2 cursor-pointer ${!activeEnvId ? 'text-accent-2 bg-accent-2/10' : ''}`}
+                >
+                  No Environment
+                  {!activeEnvId && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                </DropdownMenuItem>
+                {environments.length > 0 && <DropdownMenuSeparator className="bg-border" />}
+                {environments.map((env) => {
+                  const isActive = env.id === activeEnvId;
+                  return (
+                    <DropdownMenuItem
+                      key={env.id}
+                      onClick={() => setActiveEnvId(env.id)}
+                      className={`flex items-center gap-2 cursor-pointer ${isActive ? 'text-accent-2 bg-accent-2/10' : ''}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                      </svg>
+                      <span className="truncate">{env.name}</span>
+                      {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator className="bg-border" />
+                <DropdownMenuItem onClick={() => setShowEnvModal(true)} className="flex items-center gap-2 text-muted-foreground cursor-pointer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  Manage Environments
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-        <div className={styles.topbarActions}>
-          <input
-            className={`input ${styles.topbarSearch}`}
+        <div className="flex items-center gap-2">
+          <Input
+            className="w-[240px] h-8 bg-panel-2 border-border text-sm"
             placeholder="Search collections, tags, history"
             value={topSearch}
             onChange={(e) => setTopSearch(e.target.value)}
           />
-          <button className="ghost" onClick={() => setShowWorkspace(true)}>Workspace: Default</button>
-          <button className="ghost" onClick={() => setShowGitHubSyncModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Button variant="ghost" size="sm" onClick={() => setShowWorkspace(true)}>Workspace: Default</Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowGitHubSyncModal(true)} className="gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
             GitHub Sync
-          </button>
-          <button className="ghost" onClick={() => setShowSettings(true)}>Settings</button>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>Settings</Button>
         </div>
       </header>
 
@@ -2452,12 +2338,15 @@ function App() {
             handleAddDerivedField={handleAddDerivedField}
             handleSort={handleSort}
             responseSummary={responseSummary}
+            isSending={isSending}
           />
         </main>
 
         <div className={layoutStyles.resizer} onMouseDown={() => setDraggingRight(true)} />
 
-        <AIChatPanel
+        <RightRail
+          activeRightTab={activeRightTab}
+          setActiveRightTab={setActiveRightTab}
           showRightRail={showRightRail}
           setShowRightRail={setShowRightRail}
           responseSummary={responseSummary}
@@ -2477,14 +2366,10 @@ function App() {
           setActiveModel={setActiveModel}
           availableModels={availableModels}
           chatEndRef={chatEndRef}
+          history={history}
+          testsOutput={testsOutput}
         />
       </div>
-
-      <footer className={rightRailStyles.dock}>
-        <button className="ghost">Console</button>
-        <button className="ghost">Tests</button>
-        <button className="ghost">Timing</button>
-      </footer>
 
       {showSettings && (
         <SettingsModal

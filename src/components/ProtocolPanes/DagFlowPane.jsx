@@ -14,15 +14,15 @@ const XFORM_CLR = "#2dd4bf";
 const YES_CLR = "#22c55e";
 const NO_CLR = "#ff5555";
 const STATUS = {
-  idle:    { color: "#64748b", bg: "#64748b15", label: "Idle" },
-  pending: { color: "#a78bfa", bg: "#a78bfa15", label: "…" },
-  running: { color: "#f59e0b", bg: "#f59e0b18", label: "Run" },
-  success: { color: "#22c55e", bg: "#22c55e15", label: "Done" },
-  error:   { color: "#ff5555", bg: "#ff555515", label: "Err" },
-  skipped: { color: "#64748b", bg: "#64748b10", label: "Skip" },
+  idle: { color: "#64748b", bg: "#64748b10", label: "Idle" },
+  pending: { color: "#a78bfa", bg: "#a78bfa10", label: "…" },
+  running: { color: "#f59e0b", bg: "#f59e0b10", label: "Run" },
+  success: { color: "#22c55e", bg: "#22c55e10", label: "Done" },
+  error: { color: "#ff5555", bg: "#ff555510", label: "Err" },
+  skipped: { color: "#64748b", bg: "#64748b08", label: "Skip" },
 };
-const METHODS = ["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"];
-const METHOD_COLORS = { GET:"#22c55e", POST:"#f59e0b", PUT:"#3b82f6", PATCH:"#a78bfa", DELETE:"#ff5555", HEAD:"#64748b", OPTIONS:"#64748b" };
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+const METHOD_COLORS = { GET: "#22c55e", POST: "#f59e0b", PUT: "#3b82f6", PATCH: "#a78bfa", DELETE: "#ff5555", HEAD: "#64748b", OPTIONS: "#64748b" };
 const STORAGE_KEY = "commu_dag_flow_state_v1";
 const REQUEST_TABS = ["Params", "Headers", "Auth", "Body", "Tests"];
 const RESPONSE_TABS = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
@@ -68,7 +68,7 @@ const uid = (pfx = "n") => `${pfx}-${Date.now()}-${Math.random().toString(36).sl
 function evaluateCondition(expr, ctx, iteration) {
   if (!expr || !expr.trim()) return true;
   try {
-    const fn = new Function("status","body","headers","ctx","iteration", `return (${expr});`);
+    const fn = new Function("status", "body", "headers", "ctx", "iteration", `return (${expr});`);
     return !!fn(ctx?.response?.status, ctx?.response?.data, ctx?.response?.headers, ctx, iteration);
   } catch { return false; }
 }
@@ -78,7 +78,7 @@ function runTransformScript(script, inCtx) {
   const emissions = [];
   const emit = (data) => emissions.push(typeof data === "object" && data !== null ? { ...data } : { _value: data });
   try {
-    const fn = new Function("ctx","status","body","headers","emit","reqBody","reqHeaders","params", script);
+    const fn = new Function("ctx", "status", "body", "headers", "emit", "reqBody", "reqHeaders", "params", script);
     fn(inCtx, inCtx?.response?.status, inCtx?.response?.data,
       inCtx?.response?.headers, emit,
       inCtx?.request?.body, inCtx?.request?.headers, inCtx?.request?.params);
@@ -246,9 +246,11 @@ function CtxSection({ title, value, isError }) {
   if (value === undefined || value === null || value === "") return null;
   const d = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
   return (<div><div style={{ fontSize: "0.72rem", fontWeight: 600, color: isError ? "#ff5555" : "var(--text-muted)", marginBottom: "3px" }}>{title}</div>
-    <div style={{ padding: "6px 8px", borderRadius: "6px", background: "var(--bg)", border: `1px solid ${isError ? "#ff555530" : "var(--border)"}`,
+    <div style={{
+      padding: "6px 8px", borderRadius: "6px", background: "var(--bg)", border: `1px solid ${isError ? "#ff555530" : "var(--border)"}`,
       fontFamily: "var(--font-mono, monospace)", fontSize: "0.72rem", color: isError ? "#ff5555" : "var(--text)",
-      whiteSpace: "pre-wrap", maxHeight: "160px", overflow: "auto", wordBreak: "break-all" }}>{d}</div></div>);
+      whiteSpace: "pre-wrap", maxHeight: "160px", overflow: "auto", wordBreak: "break-all"
+    }}>{d}</div></div>);
 }
 
 const OVERLAY = { position: "fixed", inset: 0, zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" };
@@ -343,8 +345,8 @@ function TransformConfigModal({ node, context, onUpdateConfig, onUpdateLabel, on
       </div>
       <div style={{ padding: "6px 10px", borderRadius: "8px", background: "var(--bg)", border: "1px solid var(--border)" }}>
         <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", lineHeight: "1.6" }}>
-          <b style={{ color: XFORM_CLR }}>Globals:</b> <code>ctx</code> · <code>status</code> · <code>body</code> · <code>headers</code> · <code>emit(data)</code><br/>
-          <code>reqBody</code> · <code>reqHeaders</code> · <code>params</code><br/>
+          <b style={{ color: XFORM_CLR }}>Globals:</b> <code>ctx</code> · <code>status</code> · <code>body</code> · <code>headers</code> · <code>emit(data)</code><br />
+          <code>reqBody</code> · <code>reqHeaders</code> · <code>params</code><br />
           Call <code>emit(obj)</code> one or more times. Each call sends a separate output to all downstream nodes.
           If no <code>emit()</code> is called, incoming context is forwarded as-is.
         </div>
@@ -354,9 +356,11 @@ function TransformConfigModal({ node, context, onUpdateConfig, onUpdateLabel, on
           <Lbl text={`Emissions (${emissions.length})`} />
           <div style={{ maxHeight: "160px", overflow: "auto", marginTop: "4px" }}>
             {emissions.map((em, i) => (
-              <div key={i} style={{ padding: "5px 8px", borderRadius: "5px", background: "var(--bg)", border: "1px solid var(--border)",
+              <div key={i} style={{
+                padding: "5px 8px", borderRadius: "5px", background: "var(--bg)", border: "1px solid var(--border)",
                 fontFamily: "var(--font-mono, monospace)", fontSize: "0.68rem", color: "var(--text)", marginBottom: "3px",
-                whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                whiteSpace: "pre-wrap", wordBreak: "break-all"
+              }}>
                 <span style={{ color: XFORM_CLR, fontSize: "0.6rem", fontWeight: 600 }}>#{i + 1} </span>
                 {typeof em === "object" ? JSON.stringify(em, null, 2) : String(em)}
               </div>
@@ -542,12 +546,12 @@ function RequestResponseModal({
   }, [paramsRows]);
 
   const getEnvVars = useCallback(() => [], []);
-  const handleUpdateEnvVar = useCallback(() => {}, []);
-  const updateRequestName = useCallback(() => {}, []);
-  const updateRequestMethod = useCallback(() => {}, []);
-  const updateRequestState = useCallback(() => {}, []);
-  const setShowSnippetModal = useCallback(() => {}, []);
-  const setContentType = useCallback(() => {}, []);
+  const handleUpdateEnvVar = useCallback(() => { }, []);
+  const updateRequestName = useCallback(() => { }, []);
+  const updateRequestMethod = useCallback(() => { }, []);
+  const updateRequestState = useCallback(() => { }, []);
+  const setShowSnippetModal = useCallback(() => { }, []);
+  const setContentType = useCallback(() => { }, []);
 
   const handleHeadersRowsChange = useCallback((rows) => {
     setHeadersRows(rows);
@@ -668,7 +672,7 @@ function RequestResponseModal({
         body: JSON.stringify(jsonObj, null, 2)
       });
       setActiveResponseTab("Pretty");
-    } catch {}
+    } catch { }
   }, [xml, responseState]);
 
   return (
@@ -715,7 +719,7 @@ function RequestResponseModal({
               setShowTestInput={setShowTestInput}
               testsMode={testsMode}
               setTestsMode={setTestsMode}
-              runTests={() => {}}
+              runTests={() => { }}
               paramsRows={paramsRows}
               setParamsRows={setParamsRows}
               updateRequestState={updateRequestState}
@@ -729,7 +733,7 @@ function RequestResponseModal({
               setAuthConfig={setAuthConfig}
               authRows={authRows}
               setAuthRows={setAuthRows}
-              setCmEnvEdit={() => {}}
+              setCmEnvEdit={() => { }}
               bodyRows={bodyRows}
               setBodyRows={setBodyRows}
               testsInputText={testsInputText}
@@ -882,7 +886,7 @@ export function DagFlowPane({ collections }) {
       if (Array.isArray(parsed.nodes)) setNodes(parsed.nodes);
       if (Array.isArray(parsed.edges)) setEdges(parsed.edges);
       if (parsed.positions && typeof parsed.positions === "object") setPositions(parsed.positions);
-    } catch {}
+    } catch { }
   }, []);
 
   /* ── Persist state ── */
@@ -890,7 +894,7 @@ export function DagFlowPane({ collections }) {
     try {
       const payload = { nodes, edges, positions };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch {}
+    } catch { }
   }, [nodes, edges, positions]);
 
   /* ── Canvas size ── */
@@ -923,10 +927,12 @@ export function DagFlowPane({ collections }) {
 
   const addNodeFromRequest = useCallback((req) => {
     const id = uid("node");
-    const n = { id, type: "request", label: req.name || `Step ${nodes.length + 1}`, config: {
-      method: req.method || "GET", url: req.url || "", headers: req.headersText || "{}",
-      body: req.bodyText || "", params: (req.paramsRows || []).filter(r => r.key && r.enabled !== false).map(r => `${r.key}=${r.value}`).join("\n"), pathVars: "",
-    }, status: "idle", _sourceRequestId: req.id };
+    const n = {
+      id, type: "request", label: req.name || `Step ${nodes.length + 1}`, config: {
+        method: req.method || "GET", url: req.url || "", headers: req.headersText || "{}",
+        body: req.bodyText || "", params: (req.paramsRows || []).filter(r => r.key && r.enabled !== false).map(r => `${r.key}=${r.value}`).join("\n"), pathVars: "",
+      }, status: "idle", _sourceRequestId: req.id
+    };
     setNodes(prev => [...prev, n]);
     setPositions(prev => ({ ...prev, [id]: getNewNodePos() }));
   }, [nodes.length, getNewNodePos]);
@@ -1249,34 +1255,36 @@ export function DagFlowPane({ collections }) {
         setNodes(prev => prev.map(n => n.id === id ? { ...n, status: "running" } : n));
         setContexts(prev => ({ ...prev, [id]: { ...(prev[id] || {}), loopIteration: selfEdge ? iteration : undefined } }));
         try {
-          let headers = {}; try { headers = JSON.parse(node.config.headers); } catch {}
+          let headers = {}; try { headers = JSON.parse(node.config.headers); } catch { }
           if (inCtx.headers && typeof inCtx.headers === "object") headers = { ...headers, ...inCtx.headers };
           let bodyStr = node.config.body || "";
           if (inCtx.body) bodyStr = typeof inCtx.body === "string" ? inCtx.body : JSON.stringify(inCtx.body);
           let urlStr = node.config.url || "";
           const pathVars = {};
-          (node.config.pathVars || "").split("\n").forEach(line => { const [k,...v] = line.split("="); if (k?.trim()) pathVars[k.trim()] = v.join("=").trim(); });
+          (node.config.pathVars || "").split("\n").forEach(line => { const [k, ...v] = line.split("="); if (k?.trim()) pathVars[k.trim()] = v.join("=").trim(); });
           if (inCtx.pathVars && typeof inCtx.pathVars === "object") Object.assign(pathVars, inCtx.pathVars);
-          Object.entries(pathVars).forEach(([k,v]) => { urlStr = urlStr.replace(`:${k}`, encodeURIComponent(v)).replace(`{${k}}`, encodeURIComponent(v)); });
+          Object.entries(pathVars).forEach(([k, v]) => { urlStr = urlStr.replace(`:${k}`, encodeURIComponent(v)).replace(`{${k}}`, encodeURIComponent(v)); });
           const params = {};
-          (node.config.params || "").split("\n").forEach(line => { const [k,...v] = line.split("="); if (k?.trim()) params[k.trim()] = v.join("=").trim(); });
+          (node.config.params || "").split("\n").forEach(line => { const [k, ...v] = line.split("="); if (k?.trim()) params[k.trim()] = v.join("=").trim(); });
           if (inCtx.params && typeof inCtx.params === "object") Object.assign(params, inCtx.params);
-          const qs = Object.entries(params).filter(([k])=>k).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+          const qs = Object.entries(params).filter(([k]) => k).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
           if (qs) urlStr += (urlStr.includes("?") ? "&" : "?") + qs;
           const fetchOpts = { method: node.config.method || "GET", headers };
-          if (bodyStr && !["GET","HEAD"].includes(fetchOpts.method)) fetchOpts.body = bodyStr;
+          if (bodyStr && !["GET", "HEAD"].includes(fetchOpts.method)) fetchOpts.body = bodyStr;
           const t0 = performance.now();
           const res = await fetch(urlStr, fetchOpts);
           const time = Math.round(performance.now() - t0);
           const text = await res.text();
           let data; try { data = JSON.parse(text); } catch { data = text; }
-          const resHeaders = {}; res.headers.forEach((v,k)=>{resHeaders[k]=v;});
-          const nodeCtx = { request: { method: fetchOpts.method, url: urlStr, headers, body: bodyStr, params, pathVars },
-            response: { status: res.status, statusText: res.statusText, headers: resHeaders, data, time }, loopIteration: selfEdge ? iteration : undefined };
+          const resHeaders = {}; res.headers.forEach((v, k) => { resHeaders[k] = v; });
+          const nodeCtx = {
+            request: { method: fetchOpts.method, url: urlStr, headers, body: bodyStr, params, pathVars },
+            response: { status: res.status, statusText: res.statusText, headers: resHeaders, data, time }, loopIteration: selfEdge ? iteration : undefined
+          };
           ctxMap[id] = nodeCtx; setContexts(prev => ({ ...prev, [id]: nodeCtx }));
           setNodes(prev => prev.map(n => n.id === id ? { ...n, status: "success" } : n));
           if (selfEdge) {
-            if (selfEdge.terminateWhen?.trim()) { try { const tf = new Function("status","body","headers","ctx","iteration",`return (${selfEdge.terminateWhen});`); if (tf(res.status,data,resHeaders,nodeCtx,iteration)) keepLooping=false; } catch { keepLooping=false; } }
+            if (selfEdge.terminateWhen?.trim()) { try { const tf = new Function("status", "body", "headers", "ctx", "iteration", `return (${selfEdge.terminateWhen});`); if (tf(res.status, data, resHeaders, nodeCtx, iteration)) keepLooping = false; } catch { keepLooping = false; } }
             else if (selfEdge.condition?.trim()) { keepLooping = evaluateCondition(selfEdge.condition, nodeCtx, iteration); }
             else { keepLooping = false; }
             if (keepLooping) inCtx = { ...inCtx, ...nodeCtx };
@@ -1525,24 +1533,26 @@ export function DagFlowPane({ collections }) {
             const isSelf = edge.from === edge.to;
             return (
               <div onClick={e => e.stopPropagation()} style={{
-                position: "absolute", left: edgePopup.x - 90, top: edgePopup.y - (isSelf ? 200 : 150), width: 180,
+                position: "absolute", left: edgePopup.x - 90,
+                top: Math.max(10, edgePopup.y - (isSelf ? 200 : 150)),
+                width: 180,
                 background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "9px",
                 boxShadow: "0 8px 28px rgba(0,0,0,0.45)", padding: "6px", zIndex: 100,
                 display: "flex", flexDirection: "column", gap: "2px",
               }}>
                 {edge.branch && <div style={{ fontSize: "0.6rem", color: edge.branch === "true" ? YES_CLR : NO_CLR, fontWeight: 600, padding: "2px 8px" }}>{edge.branch === "true" ? "YES branch" : "NO branch"}</div>}
                 {!isSelf && <>
-                  <button className="ghost" onClick={() => handleInsertOnEdge(edge.id, "condition")} style={{
+                  <button className="ghost hover:bg-panel-2" onClick={() => handleInsertOnEdge(edge.id, "condition")} style={{
                     display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", borderRadius: "5px", fontSize: "0.72rem",
                     color: COND_CLR, fontWeight: 600, width: "100%", textAlign: "left",
                   }}>◇ Condition</button>
-                  <button className="ghost" onClick={() => handleInsertOnEdge(edge.id, "transform")} style={{
+                  <button className="ghost hover:bg-panel-2" onClick={() => handleInsertOnEdge(edge.id, "transform")} style={{
                     display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", borderRadius: "5px", fontSize: "0.72rem",
                     color: XFORM_CLR, fontWeight: 600, width: "100%", textAlign: "left",
                   }}>⬡ Transform</button>
                   <div style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
                 </>}
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.68rem", color: "var(--text-muted)", padding: "4px 8px", cursor: "pointer" }}>
+                <label className="hover:bg-panel-2 rounded-md" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.68rem", color: "var(--text-muted)", padding: "4px 8px", cursor: "pointer" }}>
                   <input type="checkbox" checked={edge.runOnFailure || false}
                     onChange={ev => updateEdge({ ...edge, runOnFailure: ev.target.checked })}
                     style={{ accentColor: "#ff5555" }} />
@@ -1565,7 +1575,7 @@ export function DagFlowPane({ collections }) {
                   </div>
                 </>}
                 <div style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
-                <button className="ghost" onClick={() => removeEdgeById(edge.id)} style={{
+                <button className="ghost hover:bg-red-500/10" onClick={() => removeEdgeById(edge.id)} style={{
                   display: "flex", alignItems: "center", gap: "6px", padding: "5px 8px", borderRadius: "5px",
                   fontSize: "0.68rem", color: "#ff5555", fontWeight: 600, width: "100%", textAlign: "left",
                 }}>

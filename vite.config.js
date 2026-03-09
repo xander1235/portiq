@@ -1,5 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
 
 const removeCrossorigin = () => {
   return {
@@ -12,7 +14,12 @@ const removeCrossorigin = () => {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), removeCrossorigin()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  plugins: [react(), tailwindcss(), removeCrossorigin()],
   server: {
     port: 5173,
     proxy: {

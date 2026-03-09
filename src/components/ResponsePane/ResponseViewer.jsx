@@ -3,7 +3,8 @@ import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
-import { search as searchExtension } from '@codemirror/search';
+import { search as searchExtension, openSearchPanel } from '@codemirror/search';
+import { keymap } from '@codemirror/view';
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import styles from "./ResponseViewer.module.css";
 
@@ -38,7 +39,8 @@ export function ResponseViewer({
     setDerivedExpr,
     handleAddDerivedField,
     handleSort,
-    responseSummary
+    responseSummary,
+    isSending
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
 
@@ -74,16 +76,31 @@ export function ResponseViewer({
         return (
             <div style={{ flex: 1, overflow: 'auto', border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <CodeMirror
-                    value={value || "No response yet."}
+                    value={value || ""}
                     readOnly={true}
                     theme={vscodeDark}
-                    extensions={[searchExtension(), ...extensions]}
+                    extensions={[searchExtension({ top: true }), keymap.of([{ key: "Mod-r", run: (view) => { openSearchPanel(view); return true; } }]), ...extensions]}
                     basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
                 />
             </div>
         );
     };
+
+    const loadingSpinner = (
+        <div className={styles.loadingContainer}>
+            <div className={styles.spinner}></div>
+            <span className={styles.loadingText}>Sending request...</span>
+        </div>
+    );
+
+    const emptyState = (
+        <div className={styles.emptyState}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+        </div>
+    );
 
     const responseBodyContent = (
         <div className={styles.responseBody} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -223,10 +240,16 @@ export function ResponseViewer({
 
             {error && <div className={styles.error}>{error}</div>}
 
-            {!isFullScreen && responseBodyContent}
+            {isSending && !response ? (
+                !isFullScreen && loadingSpinner
+            ) : !response && !error ? (
+                !isFullScreen && emptyState
+            ) : (
+                !isFullScreen && responseBodyContent
+            )}
 
             <FullScreenModal isOpen={isFullScreen} onClose={() => setIsFullScreen(false)} title="Response" actions={fullScreenActions}>
-                {responseBodyContent}
+                {isSending && !response ? loadingSpinner : responseBodyContent}
             </FullScreenModal>
         </section>
     );
