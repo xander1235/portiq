@@ -37,19 +37,21 @@ Commu (AI API Client) provides an intuitive interface for testing, organizing, a
   - Default 'No Environment' mode to easily disable interpolation when not needed.
 - **Beautiful UI Components**:
   - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button.
-  - Multi-line Variable Interpolation support via CodeMirror syntax highlighting.
+  - Multi-line Variable Interpolation support with **pixel-perfect character cursor alignment** in the URL and Table editors.
   - Custom, highly-polished premium dropdowns for Workspaces, Environments, Request Body Type, and Auth Type.
   - Redesigned History cards for a compact, fast overview of past requests.
+  - **Dynamic Model Names**: AI model lists automatically trim redundant date suffixes (e.g. `claude-3-5` instead of `claude-3-5-20240620`) for a cleaner look. 
 - **Advanced GitHub Sync**: Safely backup and restore your collections, variables, and workspace state securely to a private `commu-sync` GitHub repository.
   - Interactive Review Screen before pushing allows you to selectively **mask** variables. Masked variables leave your device as placeholders, completely protecting your secrets.
 - **Comprehensive Request Builder**: 
   - Visual editors for Query Params, Headers, and Auth.
   - Multi-format request body support (JSON, XML, form-data, urlencoded, raw).
   - Your active request (method, URL, headers, body) fully persists across reloads.
-  - **Full-Screen Editing**: Expand the request or response code editors to full-screen mode to get a distraction-free view with natively integrated `Command+F` search functionality.
-- **AI Assistant**: Built-in intelligent prompting to generate tests, suggest mock data, and analyze responses.
+  - **Premium Search Experience**: Integrated `Command+F` and `Command+R` search functionality with a custom **top-positioned panel** that automatically scrolls occurrences into view.
+- **AI Assistant**: Built-in intelligent prompting to generate tests, suggest mock data, and analyze responses. **Verify connectivity** instantly via the new "Test Connection" button in Settings.
 - **Response Visualization**: View raw data, pretty-printed JSON, tabular data, XML, or CSV exports.
 - **Pre & Post Scripts**: Write scripts to run before a request is fired or to assert tests against the response.
+- **Log Management**: Redesigned **App Logs** and **Execution Outputs** with compact typography and instant-clear functionality for a cleaner developer experience.
 - **Import / Export**: Easily share collections via JSON files, text pasting, or direct URL links.
 
 ## 🚀 Getting Started Locally

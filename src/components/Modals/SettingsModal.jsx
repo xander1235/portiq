@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { fetchModels } from "../../services/ai";
 
 /**
  * SettingsModal - App settings (AI config, preferences, data management)
@@ -20,6 +21,36 @@ export function SettingsModal({
   historyRetentionDays,
   setHistoryRetentionDays
 }) {
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      let key = "";
+      if (aiProvider === 'openai') key = aiApiKeyOpenAI;
+      else if (aiProvider === 'anthropic') key = aiApiKeyAnthropic;
+      else if (aiProvider === 'gemini') key = aiApiKeyGemini;
+
+      if (!key) {
+        setTestResult({ success: false, message: "Please enter an API key first." });
+        setTestingConnection(false);
+        return;
+      }
+
+      const models = await fetchModels(aiProvider, key, () => { });
+      if (models.length > 0) {
+        setTestResult({ success: true, message: `Connected! Built-in & supported models fetched successfully.` });
+      } else {
+        setTestResult({ success: false, message: "Failed to fetch models or invalid API key." });
+      }
+    } catch (err) {
+      setTestResult({ success: false, message: err.message || "Connection failed." });
+    }
+    setTestingConnection(false);
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -28,12 +59,32 @@ export function SettingsModal({
         <h4 style={{ margin: '16px 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>AI Configuration</h4>
         <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label>AI Provider</label>
-          <select className="input" style={{ width: '180px' }} value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="gemini">Google Gemini</option>
-          </select>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select className="input" style={{ width: '180px' }} value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Google Gemini</option>
+            </select>
+            <button className="primary" style={{ padding: '4px 8px', fontSize: '0.75rem', height: '28px' }} onClick={handleTestConnection} disabled={testingConnection}>
+              {testingConnection ? "Testing..." : "Test Connection"}
+            </button>
+          </div>
         </div>
+
+        {testResult && (
+          <div className="modal-row" style={{ marginTop: '8px' }}>
+            <div style={{
+              padding: '8px',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              backgroundColor: testResult.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              color: testResult.success ? 'var(--success)' : 'var(--error)',
+              border: `1px solid ${testResult.success ? 'var(--success)' : 'var(--error)'}`
+            }}>
+              {testResult.success ? '✅ ' : '❌ '} {testResult.message}
+            </div>
+          </div>
+        )}
 
         {aiProvider === 'openai' && (
           <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

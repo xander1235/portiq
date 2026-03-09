@@ -48,6 +48,7 @@
   --muted: #a2a9b8;
   --text-muted: var(--muted);
   --border: #2a3042;
+  --font-mono: "IBM Plex Mono", monospace;
 }
 
 @layer base {
@@ -178,6 +179,15 @@ select {
 .cm-theme-dark,
 .cm-editor {
   background-color: transparent !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.cm-scroller {
+  overflow: auto !important;
+  flex: 1 !important;
+  font-family: var(--font-mono) !important;
 }
 
 .cm-gutters {

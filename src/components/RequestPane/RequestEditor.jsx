@@ -9,12 +9,12 @@ import { lintGutter } from '@codemirror/lint';
 import { xmlLinter } from "../../utils/codemirror/xmlExtensions.js";
 import { customJsonLinter } from "../../utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "../../utils/codemirror/environmentExtensions.js";
-import { search, openSearchPanel } from '@codemirror/search';
-import { keymap } from '@codemirror/view';
+import { search } from '@codemirror/search';
+import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel.js";
 
 const searchWithReplace = () => [
-    search({ top: true }),
-    keymap.of([{ key: "Mod-r", run: (view) => { openSearchPanel(view); return true; } }])
+    search({ top: true, createPanel: createCustomSearchPanel }),
+    customSearchKeymap
 ];
 
 import { TableEditor } from "../TableEditor.jsx";
@@ -285,7 +285,7 @@ export function RequestEditor({
                             />
                         )}
                         {headersMode === "json" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={headersText}
                                     theme={vscodeDark}
@@ -529,7 +529,7 @@ export function RequestEditor({
                                 const envHoverTooltip = createEnvHoverTooltip(getEnvVars, setCmEnvEdit);
 
                                 return (
-                                    <div style={{ flex: 1, overflow: 'auto', border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                    <div style={{ flex: 1, border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                         <CodeMirror
                                             value={bodyText}
                                             height="100%"
@@ -577,7 +577,7 @@ export function RequestEditor({
                         {showTestInput && (
                             <div className={styles.testsInputInline}>
                                 <div className="panel-title">Test Input (JSON)</div>
-                                <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
+                                <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
                                     <CodeMirror
                                         value={testsInputText}
                                         theme={vscodeDark}
@@ -590,7 +590,7 @@ export function RequestEditor({
                             </div>
                         )}
                         {testsMode === "pre" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={testsPreText}
                                     theme={vscodeDark}
@@ -603,7 +603,7 @@ export function RequestEditor({
                             </div>
                         )}
                         {testsMode === "post" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={testsPostText}
                                     theme={vscodeDark}

@@ -36,7 +36,7 @@ export function TimingPane({ response, setShowRightRail }) {
                     <>
                         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                             <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--text)' }}>
-                                {response.time || 0}<span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>ms</span>
+                                {metrics.total || response.time || 0}<span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>ms</span>
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Total Time</div>
                             {response.size && (

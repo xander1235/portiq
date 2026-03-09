@@ -59,7 +59,7 @@
 
 .tabs {
     display: flex;
-    gap: 4px;
+    gap: 3px;
     margin-bottom: 6px;
     flex-wrap: wrap;
 }
@@ -68,8 +68,9 @@
     background: transparent;
     border: 1px solid var(--border);
     color: var(--muted);
-    border-radius: 8px;
-    padding: 5px 10px;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.75rem;
     cursor: pointer;
 }
 

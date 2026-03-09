@@ -74,7 +74,6 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             color: exists ? "var(--accent-2)" : "#ff5555",
                             backgroundColor: exists ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
                             borderRadius: "3px",
-                            padding: "0 2px",
                             cursor: onUpdateEnvVar ? "text" : "default",
                             pointerEvents: "auto"
                         }}

@@ -147,6 +147,7 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
     return {
       status: response.status,
       statusText: response.statusText,
+      time: duration,
       duration,
       headers: headersObj,
       body: text,
@@ -218,6 +219,7 @@ ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
     return {
       status: response.status,
       statusText: response.statusText,
+      time: duration,
       duration,
       headers: headersObj,
       body: text,

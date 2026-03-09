@@ -1,20 +1,31 @@
 import { searchRequestsContext } from "../utils/fuzzySearch";
 
 // Helper to fetch available models for the selected provider
-export async function fetchModels(provider, apiKey) {
-  if (!apiKey) return [];
+export async function fetchModels(provider, apiKey, addLog) {
+  if (!apiKey) {
+    if (addLog) addLog({ source: "AI", type: "info", message: `Skipped fetching models: No API key for ${provider}` });
+    return [];
+  }
+
+  if (addLog) addLog({ source: "AI", type: "info", message: `Fetching available models for ${provider}...` });
 
   try {
     if (provider === "openai") {
       const res = await fetch("/proxy-openai/v1/models", {
         headers: { "Authorization": `Bearer ${apiKey}` }
       });
-      if (!res.ok) throw new Error("Failed to fetch OpenAI models");
-      const data = await res.json();
-      return data.data
+      if (!res.ok) {
+        const text = await res.text();
+        if (addLog) addLog({ source: "AI", type: "error", message: `OpenAI fetch failed (${res.status})`, data: text });
+        throw new Error("Failed to fetch OpenAI models");
+      }
+      const data = await JSON.parse(await res.text() || "{}");
+      const models = data.data
         .filter(m => m.id.includes("gpt"))
         .map(m => m.id)
         .sort((a, b) => b.localeCompare(a));
+      if (addLog) addLog({ source: "AI", type: "success", message: `Successfully fetched OpenAI models`, data: models });
+      return models;
     }
 
     if (provider === "anthropic") {
@@ -24,24 +35,39 @@ export async function fetchModels(provider, apiKey) {
           "anthropic-version": "2023-06-01"
         }
       });
-      if (!res.ok) throw new Error("Failed to fetch Anthropic models");
-      const data = await res.json();
-      return data.data
+      if (!res.ok) {
+        const text = await res.text();
+        if (addLog) addLog({ source: "AI", type: "error", message: `Anthropic fetch failed (${res.status})`, data: text });
+        throw new Error("Failed to fetch Anthropic models");
+      }
+      const data = await JSON.parse(await res.text() || "{}");
+      const models = data.data
         .map(m => m.id)
         .sort((a, b) => b.localeCompare(a));
+      if (addLog) addLog({ source: "AI", type: "success", message: `Successfully fetched Anthropic models`, data: models });
+      return models;
     }
 
     if (provider === "gemini") {
       const res = await fetch(`/proxy-gemini/v1beta/models?key=${apiKey}`);
-      if (!res.ok) throw new Error("Failed to fetch Gemini models");
-      const data = await res.json();
-      return data.models
+      if (!res.ok) {
+        const text = await res.text();
+        if (addLog) addLog({ source: "AI", type: "error", message: `Gemini fetch failed (${res.status})`, data: text });
+        throw new Error("Failed to fetch Gemini models");
+      }
+      const data = await JSON.parse(await res.text() || "{}");
+      const models = data.models
         .filter(m => m.supportedGenerationMethods.includes("generateContent"))
         .map(m => m.name.replace("models/", ""))
         .sort((a, b) => b.localeCompare(a));
+      if (addLog) addLog({ source: "AI", type: "success", message: `Successfully fetched Gemini models`, data: models });
+      return models;
     }
   } catch (error) {
     console.warn(`Could not fetch models for ${provider}:`, error);
+    if (addLog && !error.message.includes("fetch")) {
+      addLog({ source: "AI", type: "error", message: `Exception thrown fetching ${provider} models`, data: error.toString() });
+    }
   }
 
   return [];

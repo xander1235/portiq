@@ -38,6 +38,7 @@ export function RightRail({
     showRightRail,
     setShowRightRail,
     responseSummary,
+    setResponseSummary,
     response,
     isAiTyping,
     aiChatHistory,
@@ -55,7 +56,10 @@ export function RightRail({
     availableModels,
     chatEndRef,
     history,
-    testsOutput
+    setHistory,
+    testsOutput,
+    appLogs,
+    setAppLogs
 }) {
 
     const handleTabClick = (tab) => {
@@ -108,6 +112,7 @@ export function RightRail({
                     {activeRightTab === 'ai' && (
                         <AIChatPanel
                             responseSummary={responseSummary}
+                            setResponseSummary={setResponseSummary}
                             response={response}
                             isAiTyping={isAiTyping}
                             aiChatHistory={aiChatHistory}
@@ -129,7 +134,7 @@ export function RightRail({
                     )}
 
                     {activeRightTab === 'console' && (
-                        <ConsolePane history={history} testsOutput={testsOutput} setShowRightRail={setShowRightRail} />
+                        <ConsolePane history={history} setHistory={setHistory} testsOutput={testsOutput} appLogs={appLogs} setAppLogs={setAppLogs} setShowRightRail={setShowRightRail} />
                     )}
 
                     {activeRightTab === 'tests' && (

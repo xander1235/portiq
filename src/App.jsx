@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import logo from "./assets/logo.png";
@@ -220,7 +220,17 @@ function App() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
   const [activeRightTab, setActiveRightTab] = useLocalStorage("ui_activeRightTab", "ai");
+  const [appLogs, setAppLogs] = useLocalStorage("ui_appLogs", []);
   const chatEndRef = useRef(null);
+
+  const addLog = useCallback((logEntry) => {
+    setAppLogs(prev => {
+      const MAX_LOGS = 200;
+      const newLogs = [...(prev || []), { timestamp: Date.now(), ...logEntry }];
+      if (newLogs.length > MAX_LOGS) return newLogs.slice(newLogs.length - MAX_LOGS);
+      return newLogs;
+    });
+  }, [setAppLogs]);
 
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
@@ -244,7 +254,7 @@ function App() {
         return;
       }
 
-      const models = await fetchModels(aiProvider, key) || [];
+      const models = await fetchModels(aiProvider, key, addLog) || [];
       if (isMounted) {
         setAvailableModels(models);
         // Auto-select cheapest/default if nothing selected or current not in list
@@ -276,6 +286,7 @@ function App() {
         setTimeout(() => setSemanticProgress(null), 3000);
       }).catch(err => {
         setSemanticProgress('Error: ' + err.message);
+        addLog({ source: "System", type: "error", message: `Semantic Search Error: ${err.message}` });
       });
     } else {
       setSemanticProgress(null);
@@ -1554,10 +1565,15 @@ function App() {
         setShowTestOutput(true);
       }
 
+      addLog({ source: "API", type: "info", message: `Sending ${payload.method} ${payload.url}` });
+
       const result = await window.api.sendRequest(payload);
 
       if (result.error) {
         setError(result.error);
+        addLog({ source: "API", type: "error", message: `Request Error: ${payload.method} ${payload.url}`, data: result.error });
+      } else {
+        addLog({ source: "API", type: result.status >= 400 ? "error" : "success", message: `Response: ${result.status} ${result.statusText} (${result.time}ms)` });
       }
 
       setResponse(result);
@@ -2350,6 +2366,7 @@ function App() {
           showRightRail={showRightRail}
           setShowRightRail={setShowRightRail}
           responseSummary={responseSummary}
+          setResponseSummary={setResponseSummary}
           response={response}
           isAiTyping={isAiTyping}
           aiChatHistory={aiChatHistory}
@@ -2367,7 +2384,10 @@ function App() {
           availableModels={availableModels}
           chatEndRef={chatEndRef}
           history={history}
+          setHistory={setHistory}
           testsOutput={testsOutput}
+          appLogs={appLogs}
+          setAppLogs={setAppLogs}
         />
       </div>
 

@@ -3,8 +3,9 @@ import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
-import { search as searchExtension, openSearchPanel } from '@codemirror/search';
+import { search as searchExtension } from '@codemirror/search';
 import { keymap } from '@codemirror/view';
+import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel.js";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import styles from "./ResponseViewer.module.css";
 
@@ -74,12 +75,12 @@ export function ResponseViewer({
 
     const renderCodeMirror = (value, extensions = []) => {
         return (
-            <div style={{ flex: 1, overflow: 'auto', border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ flex: 1, border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <CodeMirror
                     value={value || ""}
                     readOnly={true}
                     theme={vscodeDark}
-                    extensions={[searchExtension({ top: true }), keymap.of([{ key: "Mod-r", run: (view) => { openSearchPanel(view); return true; } }]), ...extensions]}
+                    extensions={[searchExtension({ top: true, createPanel: createCustomSearchPanel }), customSearchKeymap, ...extensions]}
                     basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
                 />
