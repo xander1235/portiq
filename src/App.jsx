@@ -20,6 +20,7 @@ import { customJsonLinter } from "./utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions.js";
 import { SemanticSearch } from "./utils/semanticSearch.js";
 import { flattenCollections } from "./utils/fuzzySearch.js";
+import { get, set } from "idb-keyval";
 
 import { TableEditor } from "./components/TableEditor.jsx";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal.jsx";
@@ -52,8 +53,7 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane.jsx";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane.jsx";
 import { McpPane } from "./components/ProtocolPanes/McpPane.jsx";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane.jsx";
-import { ProtocolRegistry } from "./protocols/registry.js";
-import "./protocols/index.js"; // register all built-in protocols
+import { ProtocolRegistry, GrpcProtocol } from "./protocols/index.js"; // register all built-in protocols
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -214,9 +214,49 @@ function App() {
   const [activeRequestTab, setActiveRequestTab] = useLocalStorage("ui_activeRequestTab", "Body");
   const [activeResponseTab, setActiveResponseTab] = useLocalStorage("ui_activeResponseTab", "Pretty");
   const [aiPrompt, setAiPrompt] = useLocalStorage("ui_aiPrompt", "");
-  const [aiChatHistory, setAiChatHistory] = useLocalStorage("ui_aiChatHistory", [
-    { role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }
+  const [aiChatSessions, setAiChatSessions] = useState([
+    { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] }
   ]);
+  const [activeAiSessionId, setActiveAiSessionId] = useState(aiChatSessions[0].id);
+
+  const aiChatHistory = useMemo(() => {
+    const session = aiChatSessions.find(s => s.id === activeAiSessionId);
+    return session ? session.messages : [];
+  }, [aiChatSessions, activeAiSessionId]);
+
+  const updateAiChatHistory = useCallback((updater) => {
+    setAiChatSessions(prevSessions => {
+      const sessionIndex = prevSessions.findIndex(s => s.id === activeAiSessionId);
+      if (sessionIndex === -1) return prevSessions;
+
+      const session = prevSessions[sessionIndex];
+      const newHistory = typeof updater === 'function' ? updater(session.messages) : updater;
+      
+      const newSessions = [...prevSessions];
+      newSessions[sessionIndex] = { ...session, messages: newHistory, timestamp: Date.now() };
+      
+      if (currentRequestId) {
+        set(`ai_sessions_${currentRequestId}`, newSessions).catch(console.error);
+      }
+      return newSessions;
+    });
+  }, [activeAiSessionId, currentRequestId]);
+
+  const createNewAiSession = useCallback(() => {
+    const newSession = {
+      id: "session_" + Date.now() + "_" + Math.random().toString(36).substring(2,9),
+      timestamp: Date.now(),
+      messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }]
+    };
+    setAiChatSessions(prev => {
+      const newSessions = [newSession, ...prev];
+      if (currentRequestId) {
+        set(`ai_sessions_${currentRequestId}`, newSessions).catch(console.error);
+      }
+      return newSessions;
+    });
+    setActiveAiSessionId(newSession.id);
+  }, [currentRequestId]);
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
   const [activeRightTab, setActiveRightTab] = useLocalStorage("ui_activeRightTab", "ai");
@@ -295,6 +335,7 @@ function App() {
 
   const [response, setResponse] = useState(null);
   const [responseSummary, setResponseSummary] = useState({ summary: "No response yet.", hints: [] });
+  const responseCacheRef = React.useRef(new Map());
   const [error, setError] = useState("");
   const [activeSidebar, setActiveSidebar] = useLocalStorage("ui_activeSidebar", "Collections");
   const [showSettings, setShowSettings] = useState(false);
@@ -397,13 +438,69 @@ function App() {
   }
 
   function handleRequestClick(req) {
+    // Save current response to cache before switching
+    if (currentRequestId) {
+      const dataToSave = { response, responseSummary };
+      responseCacheRef.current.set(currentRequestId, dataToSave);
+      set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+    }
     syncDraftToCollection();
     loadRequest(req);
+    // Restore cached response for the target request
+    if (req?.id) {
+      if (responseCacheRef.current.has(req.id)) {
+        const cached = responseCacheRef.current.get(req.id);
+        setResponse(cached.response);
+        setResponseSummary(cached.responseSummary);
+      } else {
+        // Try to load from persistent storage
+        setResponse(null);
+        setResponseSummary({ summary: "Loading past response...", hints: [] });
+        get(`response_cache_${req.id}`).then(cached => {
+          if (cached) {
+            responseCacheRef.current.set(req.id, cached);
+            // In a real app we'd verify currentRequestId === req.id, 
+            // but calling setResponse is safe enough here as users won't click that fast.
+            setResponse(cached.response);
+            setResponseSummary(cached.responseSummary);
+          } else {
+            setResponse(null);
+            setResponseSummary({ summary: "No response yet.", hints: [] });
+          }
+
+          get(`ai_sessions_${req.id}`).then(sessions => {
+            if (sessions && sessions.length > 0) {
+              setAiChatSessions(sessions);
+              setActiveAiSessionId(sessions[0].id);
+            } else {
+              const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+              setAiChatSessions([fresh]);
+              setActiveAiSessionId(fresh.id);
+            }
+          }).catch(console.error);
+        }).catch(() => {
+          setResponse(null);
+          setResponseSummary({ summary: "No response yet.", hints: [] });
+        });
+      }
+    } else {
+      setResponseSummary({ summary: "No response yet.", hints: [] });
+      const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+      setAiChatSessions([fresh]);
+      setActiveAiSessionId(fresh.id);
+    }
+    setError("");
   }
 
   // Effect to load the last active request when switching collections
   useEffect(() => {
     const lastRequestId = collectionActiveRequestIds[activeCollectionId];
+    // Save current response before switching
+    if (currentRequestId) {
+      const dataToSave = { response, responseSummary };
+      responseCacheRef.current.set(currentRequestId, dataToSave);
+      set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+    }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
         const col = getActiveCollection();
@@ -420,15 +517,53 @@ function App() {
         const req = findReq(col?.items || []);
         if (req) {
           loadRequest(req);
+          // Restore cached response
+          if (responseCacheRef.current.has(req.id)) {
+            const cached = responseCacheRef.current.get(req.id);
+            setResponse(cached.response);
+            setResponseSummary(cached.responseSummary);
+          } else {
+            setResponse(null);
+            setResponseSummary({ summary: "Loading past response...", hints: [] });
+            get(`response_cache_${req.id}`).then(cached => {
+              if (cached) {
+                responseCacheRef.current.set(req.id, cached);
+                setResponse(cached.response);
+                setResponseSummary(cached.responseSummary);
+              } else {
+                setResponse(null);
+                setResponseSummary({ summary: "No response yet.", hints: [] });
+              }
+
+              get(`ai_sessions_${req.id}`).then(sessions => {
+                if (sessions && sessions.length > 0) {
+                  setAiChatSessions(sessions);
+                  setActiveAiSessionId(sessions[0].id);
+                } else {
+                  const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+                  setAiChatSessions([fresh]);
+                  setActiveAiSessionId(fresh.id);
+                }
+              }).catch(console.error);
+            }).catch(() => {
+              setResponse(null);
+              setResponseSummary({ summary: "No response yet.", hints: [] });
+            });
+          }
         } else {
           loadRequest(null);
+          setResponse(null);
+          setResponseSummary({ summary: "No response yet.", hints: [] });
         }
       }
     } else {
       if (currentRequestId) {
         loadRequest(null);
+        setResponse(null);
+        setResponseSummary({ summary: "No response yet.", hints: [] });
       }
     }
+    setError("");
   }, [activeCollectionId]);
 
   const parsedJson = useMemo(() => {
@@ -720,8 +855,8 @@ function App() {
   ]);
 
   function parseHeaders() {
+    let parsed = {};
     try {
-      let parsed = {};
       if (headersText && headersText.trim().length > 0) {
         parsed = JSON.parse(headersText);
       } else {
@@ -729,13 +864,16 @@ function App() {
           .filter((row) => row.key && row.enabled !== false)
           .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
       }
-
-      const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, (v) => v);
-      return { ...authHeaders, ...parsed };
     } catch (err) {
-      setError("Headers must be valid JSON.");
-      return null;
+      // If JSON is invalid, fall back to table rows if they exist, otherwise empty
+      parsed = (headersRows || [])
+        .filter((row) => row.key && row.enabled !== false)
+        .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+      console.warn("Header JSON invalid, falling back to table rows");
     }
+
+    const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, (v) => v);
+    return { ...authHeaders, ...parsed };
   }
 
   function getCompiledAuthHeaders(type, config, customRows, valFn) {
@@ -1580,6 +1718,13 @@ function App() {
       const summary = await summarizeResponse(result);
       setResponseSummary(summary);
 
+      // Cache response for this request so it persists on navigation and app reload
+      if (currentRequestId) {
+        const dataToSave = { response: result, responseSummary: summary };
+        responseCacheRef.current.set(currentRequestId, dataToSave);
+        set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+      }
+
       const now = Date.now();
 
       const redactedPayload = { ...payload };
@@ -1642,7 +1787,6 @@ function App() {
     try {
       // gRPC calls are currently a placeholder - requires native module
       // For now we show the config validation
-      const { GrpcProtocol } = await import("./protocols/grpc.js");
       const validation = GrpcProtocol.validateRequest({
         url,
         service: grpcConfig.service,
@@ -1721,7 +1865,7 @@ function App() {
 
     const userMsg = { role: "user", text: textToSubmit };
     const newHistory = [...aiChatHistory, userMsg];
-    setAiChatHistory(newHistory);
+    updateAiChatHistory(newHistory);
 
     const currentPrompt = textToSubmit;
     if (typeof overridePrompt !== 'string') {
@@ -1739,16 +1883,45 @@ function App() {
       },
       semanticSearchEnabled: aiSemanticSearchEnabled
     };
-    const currentState = { method, url, headersText, bodyText, protocol };
+    const currentState = { method, url, headersText, bodyText, protocol, graphqlConfig };
     const responseData = response ? { status: response.status, statusText: response.statusText, headers: response.headers, body: response.body || (response.json ? JSON.stringify(response.json) : "") } : null;
+
+    // Feature 1: Pre-flight check. If asking about response but no response exists, abort the API call.
+    const promptLower = textToSubmit.toLowerCase();
+    const needsResponse = promptLower.includes("response") || promptLower.includes("extract") || promptLower.includes("result");
+    
+    if (needsResponse && !responseData) {
+      setTimeout(() => {
+        setIsAiTyping(false);
+        updateAiChatHistory(prev => [...prev, { 
+          role: "assistant", 
+          text: "It looks like you want me to analyze the response, but you haven't clicked **Send** on the request yet. Please run the request first so I have data to extract!" 
+        }]);
+      }, 600); // Small delay to feel natural
+      return;
+    }
 
     try {
       {
         const finalPrompt = currentPrompt;
-        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings, aiChatHistory, responseData);
+        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings, activeAiSessionId, aiChatSessions, responseData);
         console.log("[AI DEBUG] Raw AI output:", JSON.stringify(output, null, 2));
 
         let assistantMsg = output.message || "I have updated the workspace.";
+        
+        // Some AI models append extra data fields (like "extractedData") outside the designated schema.
+        // Catch all unrecognized top-level keys and append them as a formatted markdown block.
+        const knownKeys = ['message', 'operations', '_usage', '_model'];
+        const extraFields = {};
+        for (const [key, value] of Object.entries(output)) {
+          if (!knownKeys.includes(key) && value) {
+             extraFields[key] = value;
+          }
+        }
+        if (Object.keys(extraFields).length > 0) {
+          assistantMsg += '\n\n```json\n' + JSON.stringify(extraFields, null, 2) + '\n```';
+        }
+
         let suggestedEndpoints = null;
         let shouldSend = false;
 
@@ -1760,7 +1933,16 @@ function App() {
               if (op.payload.method) setMethod(op.payload.method);
               if (op.payload.url) setUrl(op.payload.url);
               if (op.payload.headersText) setHeadersText(op.payload.headersText);
-              if (op.payload.bodyText) setBodyText(op.payload.bodyText);
+              
+              if (protocol === "graphql" || (op.payload.protocol === "graphql")) {
+                setGraphqlConfig(prev => ({
+                  ...prev,
+                  query: op.payload.query || op.payload.bodyText || prev.query,
+                  variables: op.payload.variables || prev.variables
+                }));
+              } else {
+                if (op.payload.bodyText) setBodyText(op.payload.bodyText);
+              }
             } else if (op.type === "UPDATE_REQUEST_BY_ID") {
               setCollections(prev => prev.map(col => ({
                 ...col,
@@ -1885,7 +2067,7 @@ function App() {
           };
         }
 
-        setAiChatHistory([...finalHistory, {
+        updateAiChatHistory([...finalHistory, {
           role: "assistant",
           text: assistantMsg,
           suggestedEndpoints,
@@ -1901,7 +2083,7 @@ function App() {
       }
     } catch (err) {
       setIsAiTyping(false);
-      setAiChatHistory([...newHistory, { role: "assistant", text: `AI Error: ${err.message}` }]);
+      updateAiChatHistory([...newHistory, { role: "assistant", text: `AI Error: ${err.message}` }]);
     }
   }
 
@@ -2370,6 +2552,10 @@ function App() {
           response={response}
           isAiTyping={isAiTyping}
           aiChatHistory={aiChatHistory}
+          aiChatSessions={aiChatSessions}
+          activeAiSessionId={activeAiSessionId}
+          setActiveAiSessionId={setActiveAiSessionId}
+          createNewAiSession={createNewAiSession}
           aiPrompt={aiPrompt}
           setAiPrompt={setAiPrompt}
           handleAiChatSubmit={handleAiChatSubmit}

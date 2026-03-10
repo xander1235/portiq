@@ -823,12 +823,15 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .table-toolbar {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .derived {
@@ -841,22 +844,316 @@ select {
   flex: 1;
 }
 
+.table-scroll-container {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  position: relative;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  font-family: "IBM Plex Mono", monospace;
 }
 
-th,
-td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
 }
 
 th {
+  background: var(--panel);
   color: var(--muted);
   text-align: left;
   cursor: pointer;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  border-right: 1px solid var(--border);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  user-select: none;
+  transition: color 0.15s, background 0.15s;
+  position: relative;
+}
+
+th:last-child {
+  border-right: none;
+}
+
+th:hover {
+  color: var(--text);
+  background: rgba(255, 122, 89, 0.06);
+}
+
+th.sort-active {
+  color: var(--accent);
+}
+
+th.filter-active {
+  border-bottom-color: var(--accent);
+}
+
+th.filter-active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+th .sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+th .filter-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* Drag and drop */
+th.dragging {
+  opacity: 0.4;
+  background: rgba(255, 122, 89, 0.1);
+}
+
+th.drag-over {
+  background: rgba(255, 122, 89, 0.12);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+th[draggable="true"] {
+  cursor: grab;
+}
+
+th[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(42, 48, 66, 0.5);
+  border-right: 1px solid rgba(42, 48, 66, 0.3);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+td:last-child {
+  border-right: none;
+}
+
+td.cell-number-align {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tbody tr {
+  transition: background 0.12s;
+}
+
+tbody tr:hover {
+  background: rgba(255, 122, 89, 0.04);
+}
+
+tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+tbody tr:nth-child(even):hover {
+  background: rgba(255, 122, 89, 0.06);
+}
+
+/* Per-column filter input row */
+.col-filter-row th {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.col-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.col-filter-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.col-filter-input.has-value {
+  border-color: var(--accent);
+  background: rgba(255, 122, 89, 0.04);
+}
+
+.col-filter-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px rgba(255, 122, 89, 0.15);
+}
+
+.col-filter-clear {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.col-filter-clear:hover {
+  color: var(--accent);
+}
+
+/* Smart cell pills for objects/arrays */
+.cell-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: rgba(255, 122, 89, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(255, 122, 89, 0.2);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cell-pill:hover {
+  background: rgba(255, 122, 89, 0.2);
+}
+
+.cell-expanded {
+  white-space: normal;
+  max-width: none;
+  overflow: visible;
+}
+
+.cell-expanded-content {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.cell-expanded-content .mini-row {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(42, 48, 66, 0.3);
+}
+
+.cell-expanded-content .mini-row:last-child {
+  border-bottom: none;
+}
+
+.cell-expanded-content .mini-key {
+  color: var(--muted);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.cell-expanded-content .mini-val {
+  color: var(--text);
+}
+
+.cell-null {
+  color: var(--muted);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.cell-bool {
+  color: var(--accent-purple);
+  font-weight: 600;
+}
+
+.cell-number {
+  color: var(--accent-blue);
+}
+
+/* Stats footer */
+tfoot td {
+  background: var(--panel);
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-top: 2px solid var(--border);
+  border-right: 1px solid var(--border);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+tfoot td:last-child {
+  border-right: none;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-right: 4px;
+}
+
+.stat-value {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stat-row {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
 }
 
 .split {

@@ -42,6 +42,10 @@ export function RightRail({
     response,
     isAiTyping,
     aiChatHistory,
+    aiChatSessions,
+    activeAiSessionId,
+    setActiveAiSessionId,
+    createNewAiSession,
     aiPrompt,
     setAiPrompt,
     handleAiChatSubmit,
@@ -116,6 +120,10 @@ export function RightRail({
                             response={response}
                             isAiTyping={isAiTyping}
                             aiChatHistory={aiChatHistory}
+                            aiChatSessions={aiChatSessions}
+                            activeAiSessionId={activeAiSessionId}
+                            setActiveAiSessionId={setActiveAiSessionId}
+                            createNewAiSession={createNewAiSession}
                             aiPrompt={aiPrompt}
                             setAiPrompt={setAiPrompt}
                             handleAiChatSubmit={handleAiChatSubmit}

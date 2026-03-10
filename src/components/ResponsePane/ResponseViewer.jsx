@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
@@ -8,6 +8,60 @@ import { keymap } from '@codemirror/view';
 import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel.js";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import styles from "./ResponseViewer.module.css";
+
+function RenderCell({ val }) {
+    const [expanded, setExpanded] = useState(false);
+    if (val === null || val === undefined) {
+        return <span className="cell-null">{val === null ? "null" : "—"}</span>;
+    }
+    if (typeof val === "boolean") {
+        return <span className="cell-bool">{String(val)}</span>;
+    }
+    if (typeof val === "number") {
+        return <span className="cell-number">{val}</span>;
+    }
+    if (Array.isArray(val)) {
+        return (
+            <span>
+                <span className="cell-pill" onClick={() => setExpanded(e => !e)}>
+                    [{val.length} items]
+                </span>
+                {expanded && (
+                    <div className="cell-expanded-content">
+                        {val.map((item, i) => (
+                            <div className="mini-row" key={i}>
+                                <span className="mini-key">{i}</span>
+                                <span className="mini-val">{typeof item === 'object' ? JSON.stringify(item) : String(item)}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </span>
+        );
+    }
+    if (typeof val === "object") {
+        const entries = Object.entries(val);
+        return (
+            <span>
+                <span className="cell-pill" onClick={() => setExpanded(e => !e)}>
+                    {"{" + entries.length + " keys}"}
+                </span>
+                {expanded && (
+                    <div className="cell-expanded-content">
+                        {entries.map(([k, v]) => (
+                            <div className="mini-row" key={k}>
+                                <span className="mini-key">{k}</span>
+                                <span className="mini-val">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </span>
+        );
+    }
+    const str = String(val);
+    return str.length > 80 ? <span title={str}>{str.slice(0, 80)}…</span> : str;
+}
 
 export function ResponseViewer({
     response,
@@ -44,6 +98,68 @@ export function ResponseViewer({
     isSending
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [columnFilters, setColumnFilters] = useState({});
+    const [activeColFilters, setActiveColFilters] = useState(new Set());
+    const [columnOrder, setColumnOrder] = useState(null);
+    const [dragCol, setDragCol] = useState(null);
+    const [dragOverCol, setDragOverCol] = useState(null);
+
+    const columnFilteredRows = useMemo(() => {
+        const hasColFilters = Object.values(columnFilters).some(v => v);
+        if (!hasColFilters) return computedRows;
+        return computedRows.filter(row =>
+            Object.entries(columnFilters).every(([col, filter]) => {
+                if (!filter) return true;
+                const val = row[col];
+                return String(val ?? "").toLowerCase().includes(filter.toLowerCase());
+            })
+        );
+    }, [computedRows, columnFilters]);
+
+    // Derive ordered keys
+    const rawKeys = computedRows[0] ? Object.keys(computedRows[0]) : [];
+    const orderedKeys = useMemo(() => {
+        if (!columnOrder) return rawKeys;
+        // Only keep keys that still exist, and append any new ones
+        const existing = columnOrder.filter(k => rawKeys.includes(k));
+        const newKeys = rawKeys.filter(k => !columnOrder.includes(k));
+        return [...existing, ...newKeys];
+    }, [columnOrder, rawKeys]);
+
+    // Reset column order when keys change fundamentally
+    const rawKeysStr = rawKeys.join(',');
+    React.useEffect(() => {
+        setColumnOrder(null);
+        setColumnFilters({});
+        setActiveColFilters(new Set());
+    }, [rawKeysStr]);
+
+    // Column statistics
+    const columnStats = useMemo(() => {
+        const stats = {};
+        const rows = columnFilteredRows;
+        if (rows.length === 0) return stats;
+        for (const key of orderedKeys) {
+            const nums = [];
+            for (const row of rows) {
+                const v = row[key];
+                if (typeof v === 'number' && !isNaN(v)) nums.push(v);
+            }
+            if (nums.length > 0) {
+                const sum = nums.reduce((a, b) => a + b, 0);
+                stats[key] = {
+                    count: nums.length,
+                    sum: Math.round(sum * 100) / 100,
+                    avg: Math.round((sum / nums.length) * 100) / 100,
+                    min: Math.min(...nums),
+                    max: Math.max(...nums),
+                };
+            }
+        }
+        return stats;
+    }, [columnFilteredRows, orderedKeys]);
+
+    const clickTimerRef = React.useRef(null);
 
     const responseTabButtons = (
         <div className={styles.tabs} style={{ marginBottom: 0 }}>
@@ -124,87 +240,205 @@ export function ResponseViewer({
                     : "No headers available.";
                 return renderCodeMirror(headersJson, [json()]);
             })()}
-            {activeResponseTab === "Table" && (
-                <div className="table-view">
-                    <div className="table-toolbar">
-                        <input
-                            className="input search"
-                            placeholder="Search"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <select
-                            className="input"
-                            value={searchKey}
-                            onChange={(e) => setSearchKey(e.target.value)}
-                        >
-                            <option value="">All keys</option>
-                            {computedRows[0] && Object.keys(computedRows[0]).map((key) => (
-                                <option key={key} value={key}>{key}</option>
-                            ))}
-                        </select>
-                        <select
-                            className="input"
-                            value={selectedTablePath}
-                            onChange={(e) => setSelectedTablePath(e.target.value)}
-                        >
-                            {tableCandidates.map((path) => (
-                                <option key={path} value={path}>{path}</option>
-                            ))}
-                        </select>
-                        <select
-                            className="input"
-                            value={sortKey}
-                            onChange={(e) => setSortKey(e.target.value)}
-                        >
-                            <option value="">Sort key</option>
-                            {computedRows[0] && Object.keys(computedRows[0]).map((key) => (
-                                <option key={key} value={key}>{key}</option>
-                            ))}
-                        </select>
-                        <button className="ghost" onClick={() => setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}>
-                            Sort: {sortDirection}
-                        </button>
-                        <button className="ghost" onClick={() => downloadText("table.csv", csv)}>Export CSV</button>
-                        <button className="ghost" onClick={() => downloadText("table.json", JSON.stringify(tableRows, null, 2))}>Export JSON</button>
-                    </div>
-                    <div className="derived">
-                        <input
-                            className="input"
-                            placeholder="Derived field name"
-                            value={derivedName}
-                            onChange={(e) => setDerivedName(e.target.value)}
-                        />
-                        <input
-                            className="input"
-                            placeholder="Expression e.g. name + ' (' + role + ')'"
-                            value={derivedExpr}
-                            onChange={(e) => setDerivedExpr(e.target.value)}
-                        />
-                        <button className="ghost" onClick={handleAddDerivedField}>Add</button>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                {computedRows[0] ? Object.keys(computedRows[0]).map((key) => (
-                                    <th key={key} onClick={() => handleSort(key)}>{key}</th>
-                                )) : (
-                                    <th>No data</th>
-                                )}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {computedRows.map((row, idx) => (
-                                <tr key={idx}>
-                                    {Object.keys(row).map((key) => (
-                                        <td key={key}>{String(row[key])}</td>
+            {activeResponseTab === "Table" && (() => {
+                const keys = orderedKeys;
+                const filteredRows = columnFilteredRows;
+                const hasStats = Object.keys(columnStats).length > 0;
+
+                const handleDragStart = (key) => { setDragCol(key); };
+                const handleDragOver = (e, key) => { e.preventDefault(); setDragOverCol(key); };
+                const handleDragEnd = () => { setDragCol(null); setDragOverCol(null); };
+                const handleDrop = (targetKey) => {
+                    if (!dragCol || dragCol === targetKey) return;
+                    const order = [...keys];
+                    const fromIdx = order.indexOf(dragCol);
+                    const toIdx = order.indexOf(targetKey);
+                    order.splice(fromIdx, 1);
+                    order.splice(toIdx, 0, dragCol);
+                    setColumnOrder(order);
+                    setDragCol(null);
+                    setDragOverCol(null);
+                };
+
+                return (
+                    <div className="table-view">
+                        <div className="table-toolbar">
+                            <input
+                                className="input search"
+                                placeholder="Search all columns…"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            {tableCandidates.length > 1 && (
+                                <select
+                                    className="input"
+                                    value={selectedTablePath}
+                                    onChange={(e) => setSelectedTablePath(e.target.value)}
+                                >
+                                    {tableCandidates.map((path) => (
+                                        <option key={path} value={path}>{path}</option>
                                     ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                                </select>
+                            )}
+                            <button className="ghost compact" onClick={() => downloadText("table.csv", csv)}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px', verticalAlign: 'middle' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                CSV
+                            </button>
+                            <button className="ghost compact" onClick={() => downloadText("table.json", JSON.stringify(tableRows, null, 2))}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px', verticalAlign: 'middle' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                JSON
+                            </button>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: 'auto' }}>
+                                {filteredRows.length} row{filteredRows.length !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <div className="derived">
+                            <input
+                                className="input"
+                                placeholder="Derived field name"
+                                value={derivedName}
+                                onChange={(e) => setDerivedName(e.target.value)}
+                            />
+                            <input
+                                className="input"
+                                placeholder="Expression e.g. name + ' (' + role + ')'"
+                                value={derivedExpr}
+                                onChange={(e) => setDerivedExpr(e.target.value)}
+                            />
+                            <button className="ghost compact" onClick={handleAddDerivedField}>Add</button>
+                        </div>
+                        <div className="table-scroll-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        {keys.length > 0 ? keys.map((key) => {
+                                            const hasFilter = !!(columnFilters[key]);
+                                            const classes = [
+                                                sortKey === key ? "sort-active" : "",
+                                                hasFilter ? "filter-active" : "",
+                                                dragCol === key ? "dragging" : "",
+                                                dragOverCol === key ? "drag-over" : "",
+                                            ].filter(Boolean).join(" ");
+                                            return (
+                                                <th
+                                                    key={key}
+                                                    className={classes}
+                                                    draggable="true"
+                                                    onDragStart={() => handleDragStart(key)}
+                                                    onDragOver={(e) => handleDragOver(e, key)}
+                                                    onDragEnd={handleDragEnd}
+                                                    onDrop={() => handleDrop(key)}
+                                                    onClick={() => {
+                                                        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+                                                        clickTimerRef.current = setTimeout(() => handleSort(key), 200);
+                                                    }}
+                                                    onDoubleClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+                                                        setActiveColFilters(prev => {
+                                                            const next = new Set(prev);
+                                                            if (next.has(key)) {
+                                                                next.delete(key);
+                                                                setColumnFilters(f => { const n = { ...f }; delete n[key]; return n; });
+                                                            }
+                                                            else next.add(key);
+                                                            return next;
+                                                        });
+                                                    }}
+                                                    title="Click: sort · Double-click: filter · Drag: reorder"
+                                                >
+                                                    {key}
+                                                    {sortKey === key && (
+                                                        <span className="sort-indicator">
+                                                            {sortDirection === "asc" ? "▲" : "▼"}
+                                                        </span>
+                                                    )}
+                                                    {hasFilter && <span className="filter-dot" />}
+                                                </th>
+                                            );
+                                        }) : (
+                                            <th>No data</th>
+                                        )}
+                                    </tr>
+                                    {activeColFilters.size > 0 && (
+                                        <tr className="col-filter-row">
+                                            {keys.map((key) => (
+                                                <th key={key}>
+                                                    {activeColFilters.has(key) ? (
+                                                        <div className="col-filter-wrap">
+                                                            <input
+                                                                className={`col-filter-input${columnFilters[key] ? ' has-value' : ''}`}
+                                                                placeholder={`Filter ${key}…`}
+                                                                value={columnFilters[key] || ""}
+                                                                onChange={(e) => setColumnFilters(prev => ({ ...prev, [key]: e.target.value }))}
+                                                                autoFocus
+                                                            />
+                                                            {columnFilters[key] && (
+                                                                <button className="col-filter-clear" onClick={() => setColumnFilters(prev => ({ ...prev, [key]: "" }))} title="Clear filter">×</button>
+                                                            )}
+                                                        </div>
+                                                    ) : null}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    )}
+                                </thead>
+                                <tbody>
+                                    {filteredRows.map((row, idx) => (
+                                        <tr key={idx}>
+                                            {keys.map((key) => {
+                                                const val = row[key];
+                                                const isNum = typeof val === 'number';
+                                                const isExpandable = (Array.isArray(val) || (val !== null && typeof val === 'object' && !Array.isArray(val)));
+                                                return (
+                                                    <td key={key} className={`${isNum ? 'cell-number-align' : ''}${isExpandable ? ' cell-expanded' : ''}`}>
+                                                        <RenderCell val={val} />
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                    {filteredRows.length === 0 && (
+                                        <tr>
+                                            <td colSpan={keys.length || 1} style={{ textAlign: 'center', color: 'var(--muted)', padding: '24px', fontStyle: 'italic' }}>
+                                                No matching rows
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                                {hasStats && (
+                                    <tfoot>
+                                        <tr>
+                                            {keys.map((key) => {
+                                                const s = columnStats[key];
+                                                if (!s) return <td key={key} />;
+                                                return (
+                                                    <td key={key}>
+                                                        <div className="stat-group">
+                                                            <div className="stat-row">
+                                                                <span className="stat-label">Σ</span>
+                                                                <span className="stat-value">{s.sum.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="stat-row">
+                                                                <span className="stat-label">μ</span>
+                                                                <span className="stat-value">{s.avg.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="stat-row">
+                                                                <span className="stat-label">↕</span>
+                                                                <span className="stat-value">{s.min}–{s.max}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    </tfoot>
+                                )}
+                            </table>
+                        </div>
+                    </div>
+                );
+            })()}
             {activeResponseTab === "Visualize" && (
                 <div className={styles.visualize}>
                     <div className={styles.vizCard}>

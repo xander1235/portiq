@@ -1,6 +1,78 @@
 import React, { useRef, useEffect, useState } from "react";
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
 import rightRailStyles from "./Layout/RightRail.module.css";
 import styles from "../App.module.css";
+import { Copy, Check } from 'lucide-react';
+
+// CSS for highlight.js can be imported in styles.css later if needed, 
+// but even without it, the structure and copy button will be immense upgrades.
+
+const CodeBlockWithCopy = ({ inline, className, children, ...props }) => {
+  const match = /language-(\w+)/.exec(className || '');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!inline && match) {
+    return (
+      <div style={{ position: 'relative', margin: '12px 0', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)', padding: '4px 12px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{match[1]}</span>
+          <button 
+            onClick={handleCopy} 
+            className="ghost icon-button" 
+            style={{ padding: '4px', height: 'auto', color: copied ? 'var(--success)' : 'var(--text-muted)' }}
+            title="Copy code"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </div>
+        <pre style={{ margin: 0, padding: '12px', overflowX: 'auto', background: 'var(--bg)', fontSize: '0.8rem' }}>
+          <code className={className} {...props}>
+            {children}
+          </code>
+        </pre>
+      </div>
+    );
+  } else if (!inline) {
+     return (
+        <div style={{ position: 'relative', margin: '12px 0', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', background: 'var(--bg-hover)', padding: '4px 12px', borderBottom: '1px solid var(--border)' }}>
+            <button 
+              onClick={handleCopy} 
+              className="ghost icon-button" 
+              style={{ padding: '4px', height: 'auto', color: copied ? 'var(--success)' : 'var(--text-muted)' }}
+              title="Copy text"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+          <pre style={{ margin: 0, padding: '12px', overflowX: 'auto', background: 'var(--bg)', fontSize: '0.8rem' }}>
+            <code className={className} {...props}>
+              {children}
+            </code>
+          </pre>
+        </div>
+     );
+  }
+
+  return (
+    <code className={className} style={{ background: 'var(--bg-hover)', padding: '2px 4px', borderRadius: '4px', fontSize: '0.9em' }} {...props}>
+      {children}
+    </code>
+  );
+};
+
+/** Strip trailing date-version suffixes from model IDs (e.g. "-20251001", "-20240620") */
+function formatModelName(model) {
+    if (!model) return model;
+    return model.replace(/-\d{8,}$/, '');
+}
 
 /**
  * AIChatPanel - AI Assistant chat panel for the right rail.
@@ -14,6 +86,10 @@ export function AIChatPanel({
   response,
   isAiTyping,
   aiChatHistory,
+  aiChatSessions,
+  activeAiSessionId,
+  setActiveAiSessionId,
+  createNewAiSession,
   aiPrompt,
   setAiPrompt,
   handleAiChatSubmit,
@@ -32,17 +108,43 @@ export function AIChatPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div className={rightRailStyles.rightRailHeader}>
+      <div className={rightRailStyles.rightRailHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className={styles.sectionTitle}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
           </svg>
           AI Assistant
         </div>
-        <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
-          →
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {aiChatSessions && aiChatSessions.length > 0 && (
+            <select 
+              className="input" 
+              style={{ padding: '2px 24px 2px 8px', fontSize: '0.75rem', height: '24px', width: '130px', margin: 0, minHeight: 'unset' }}
+              value={activeAiSessionId || ''}
+              onChange={(e) => setActiveAiSessionId(e.target.value)}
+              title="Past Conversations"
+            >
+              {[...aiChatSessions].sort((a,b) => b.timestamp - a.timestamp).map((s) => (
+                <option key={s.id} value={s.id}>
+                  Chat {new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </option>
+              ))}
+            </select>
+          )}
+          <button className="ghost icon-button" onClick={createNewAiSession} title="New Chat" style={{ padding: '4px', width: '24px', height: '24px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse" style={{ padding: '4px', width: '24px', height: '24px' }}>
+            →
+          </button>
+        </div>
       </div>
+
+      {aiProvider === 'anthropic' && (
+        <div style={{ padding: '6px 12px', fontSize: '0.7rem', background: 'rgba(255,165,0,0.1)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+          <strong>Note:</strong> Anthropic does not support persistent history context. Each message is processed independently.
+        </div>
+      )}
 
       {responseSummary && responseSummary.summary !== "No response yet." && (
         <div className={rightRailStyles.card} style={{ padding: '8px', marginBottom: '12px', flexShrink: 0, position: 'relative' }}>
@@ -79,7 +181,25 @@ export function AIChatPanel({
           {aiChatHistory.map((msg, idx) => (
             <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
               <div className={`${rightRailStyles.message} ${msg.role === 'user' ? rightRailStyles.messageUser : rightRailStyles.messageAssistant}`}>
-                {msg.text}
+                {msg.role === 'user' ? (
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                ) : (
+                  <div className="markdown-body" style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
+                    <ReactMarkdown 
+                      rehypePlugins={[rehypeHighlight]}
+                      components={{
+                        code: CodeBlockWithCopy,
+                        pre: ({node, ...props}) => <>{props.children}</>,
+                        p: ({node, ...props}) => <div style={{ margin: '0 0 8px 0', whiteSpace: 'pre-wrap' }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: '4px' }} {...props} />
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
+                )}
 
                 {msg.suggestedEndpoints && msg.suggestedEndpoints.length > 0 && (
                   <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -118,7 +238,7 @@ export function AIChatPanel({
                   {msg.model && (
                     <span className={rightRailStyles.modelBadge}>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
-                      {msg.model}
+                      {formatModelName(msg.model)}
                     </span>
                   )}
                   {msg.usage && msg.usage.input && (

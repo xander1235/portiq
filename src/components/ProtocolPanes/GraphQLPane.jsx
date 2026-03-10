@@ -13,19 +13,20 @@ import { GraphQLProtocol } from "../../protocols/graphql.js";
 export function GraphQLPane({
   url,
   setUrl,
-  query,
-  setQuery,
-  variables,
-  setVariables,
-  operationName,
-  setOperationName,
-  headers,
-  setHeaders,
+  config,
+  setConfig,
   onSend,
   isSending,
   response,
   getEnvVars
 }) {
+  const { query, variables, operationName, headers } = config || { query: "", variables: "{}", headers: {} };
+
+  const setQuery = (v) => setConfig(prev => ({ ...prev, query: v }));
+  const setVariables = (v) => setConfig(prev => ({ ...prev, variables: v }));
+  const setOperationName = (v) => setConfig(prev => ({ ...prev, operationName: v }));
+  const setHeaders = (v) => setConfig(prev => ({ ...prev, headers: v }));
+
   const [activeTab, setActiveTab] = useState("query"); // query | variables | headers | schema
   const [schema, setSchema] = useState(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
