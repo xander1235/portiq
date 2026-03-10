@@ -24,6 +24,35 @@ export function SettingsModal({
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
+  const providerMeta = {
+    openai: {
+      label: "OpenAI API Key",
+      placeholder: "sk-..."
+    },
+    anthropic: {
+      label: "Anthropic API Key",
+      placeholder: "sk-ant-..."
+    },
+    gemini: {
+      label: "Gemini API Key",
+      placeholder: "AIza..."
+    }
+  };
+
+  const currentProvider = providerMeta[aiProvider] || providerMeta.openai;
+  const currentApiKey =
+    aiProvider === "openai"
+      ? aiApiKeyOpenAI
+      : aiProvider === "anthropic"
+        ? aiApiKeyAnthropic
+        : aiApiKeyGemini;
+
+  const setCurrentApiKey = (value) => {
+    if (aiProvider === "openai") setAiApiKeyOpenAI(value);
+    else if (aiProvider === "anthropic") setAiApiKeyAnthropic(value);
+    else setAiApiKeyGemini(value);
+  };
+
   const handleTestConnection = async () => {
     setTestingConnection(true);
     setTestResult(null);
@@ -53,161 +82,183 @@ export function SettingsModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-title">Settings</div>
-
-        <h4 style={{ margin: '16px 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>AI Configuration</h4>
-        <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label>AI Provider</label>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <select className="input" style={{ width: '180px' }} value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="gemini">Google Gemini</option>
-            </select>
-            <button className="primary" style={{ padding: '4px 8px', fontSize: '0.75rem', height: '28px' }} onClick={handleTestConnection} disabled={testingConnection}>
-              {testingConnection ? "Testing..." : "Test Connection"}
-            </button>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-modal-header">
+          <div>
+            <div className="modal-title">Settings</div>
+            <p className="settings-modal-subtitle">
+              Configure AI providers, app behavior, and local data management.
+            </p>
           </div>
+          <button className="ghost compact" onClick={onClose}>Close</button>
         </div>
 
-        {testResult && (
-          <div className="modal-row" style={{ marginTop: '8px' }}>
-            <div style={{
-              padding: '8px',
-              borderRadius: '6px',
-              fontSize: '0.8rem',
-              backgroundColor: testResult.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-              color: testResult.success ? 'var(--success)' : 'var(--error)',
-              border: `1px solid ${testResult.success ? 'var(--success)' : 'var(--error)'}`
-            }}>
-              {testResult.success ? '✅ ' : '❌ '} {testResult.message}
+        <div className="settings-modal-body">
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <div>
+                <h4>AI Configuration</h4>
+                <p>Choose a provider and verify the current API key.</p>
+              </div>
+              <button className="primary" onClick={handleTestConnection} disabled={testingConnection}>
+                {testingConnection ? "Testing..." : "Test Connection"}
+              </button>
             </div>
-          </div>
-        )}
 
-        {aiProvider === 'openai' && (
-          <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label>OpenAI API Key</label>
-            <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyOpenAI} onChange={(e) => setAiApiKeyOpenAI(e.target.value)} placeholder="sk-..." />
-          </div>
-        )}
-        {aiProvider === 'anthropic' && (
-          <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label>Anthropic API Key</label>
-            <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyAnthropic} onChange={(e) => setAiApiKeyAnthropic(e.target.value)} placeholder="sk-ant-..." />
-          </div>
-        )}
-        {aiProvider === 'gemini' && (
-          <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label>Gemini API Key</label>
-            <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyGemini} onChange={(e) => setAiApiKeyGemini(e.target.value)} placeholder="AIza..." />
-          </div>
-        )}
+            <div className="settings-field-grid">
+              <div className="settings-field">
+                <label>AI Provider</label>
+                <select className="input" value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+              </div>
 
-        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
-        <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>Preferences</h4>
+              <div className="settings-field">
+                <label>{currentProvider.label}</label>
+                <input
+                  type="password"
+                  className="input"
+                  value={currentApiKey}
+                  onChange={(e) => setCurrentApiKey(e.target.value)}
+                  placeholder={currentProvider.placeholder}
+                />
+              </div>
+            </div>
 
-        <div className="modal-row" style={{ display: 'flex', flexDirection: 'column' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={aiSemanticSearchEnabled}
-              onChange={(e) => setAiSemanticSearchEnabled(e.target.checked)}
-            /> Enable AI Semantic Search (Local RAG)
-          </label>
-          {aiSemanticSearchEnabled && semanticProgress && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '24px', marginTop: '4px' }}>
-              {semanticProgress}
-            </span>
-          )}
-        </div>
-        <div className="modal-row">
-          <label>
-            <input type="checkbox" defaultChecked /> Enable AI request generation
-          </label>
-        </div>
-        <div className="modal-row">
-          <label>
-            <input type="checkbox" defaultChecked /> Enable response summaries
-          </label>
-        </div>
-        <div className="modal-row">
-          <label>
-            <input type="checkbox" /> Redact secrets before AI
-          </label>
-        </div>
+            {testResult && (
+              <div className={testResult.success ? "settings-notice success" : "settings-notice error"}>
+                <span className="settings-notice-badge">{testResult.success ? "Connected" : "Error"}</span>
+                <span>{testResult.message}</span>
+              </div>
+            )}
+          </section>
 
-        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <div>
+                <h4>Preferences</h4>
+                <p>Toggle local AI features and request behavior.</p>
+              </div>
+            </div>
 
-        <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label>History Retention (Days)</label>
-          <input
-            type="number"
-            className="input"
-            style={{ width: '80px' }}
-            min="1"
-            max="365"
-            value={historyRetentionDays}
-            onChange={(e) => setHistoryRetentionDays(Number(e.target.value))}
-          />
-        </div>
+            <div className="settings-toggle-list">
+              <label className="settings-toggle-row">
+                <div>
+                  <span>Enable AI Semantic Search</span>
+                  <small>Use local embeddings for semantic lookup across saved content.</small>
+                  {aiSemanticSearchEnabled && (
+                    <span className="settings-inline-note">
+                      {semanticProgress || "No download progress means the model is already cached locally."}
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={aiSemanticSearchEnabled}
+                  onChange={(e) => setAiSemanticSearchEnabled(e.target.checked)}
+                />
+              </label>
 
-        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
-        <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--danger, #ef4444)' }}>Data Management</h4>
+              <label className="settings-toggle-row">
+                <div>
+                  <span>Enable AI request generation</span>
+                  <small>Allow prompt-based request creation in the main editor.</small>
+                </div>
+                <input type="checkbox" defaultChecked />
+              </label>
 
-        <div className="modal-row" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-            Your data is stored locally on this device. Clearing data will permanently delete all collections, history, environments, and settings.
-          </p>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              className="ghost"
-              style={{
-                color: 'var(--danger, #ef4444)',
-                borderColor: 'var(--danger, #ef4444)',
-                fontSize: '0.8rem',
-                padding: '6px 12px'
-              }}
-              onClick={async () => {
-                const confirmed = window.confirm(
-                  'Are you sure you want to delete ALL app data?\n\nThis will permanently remove:\n• All collections and requests\n• All request history\n• All environments and variables\n• All settings and API keys\n\nThis action cannot be undone.'
-                );
-                if (confirmed) {
-                  const secondConfirm = window.confirm(
-                    'FINAL WARNING: This will erase everything. The app will reload with a fresh state.\n\nContinue?'
-                  );
-                  if (secondConfirm) {
-                    try {
-                      await window.api.clearAllData();
-                      window.location.reload();
-                    } catch (err) {
-                      alert('Failed to clear data: ' + err.message);
+              <label className="settings-toggle-row">
+                <div>
+                  <span>Enable response summaries</span>
+                  <small>Generate condensed response analysis after requests complete.</small>
+                </div>
+                <input type="checkbox" defaultChecked />
+              </label>
+
+              <label className="settings-toggle-row">
+                <div>
+                  <span>Redact secrets before AI</span>
+                  <small>Strip sensitive tokens before sending data to external AI services.</small>
+                </div>
+                <input type="checkbox" />
+              </label>
+            </div>
+
+            <div className="settings-field-grid compact">
+              <div className="settings-field">
+                <label>History Retention (Days)</label>
+                <input
+                  type="number"
+                  className="input"
+                  min="1"
+                  max="365"
+                  value={historyRetentionDays}
+                  onChange={(e) => setHistoryRetentionDays(Number(e.target.value))}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-section danger">
+            <div className="settings-section-header">
+              <div>
+                <h4>Data Management</h4>
+                <p>Inspect local storage or clear all persisted app data.</p>
+              </div>
+            </div>
+
+            <div className="settings-danger-card">
+              <p>
+                Your data is stored locally on this device. Clearing data permanently removes all
+                collections, history, environments, and saved settings.
+              </p>
+              <div className="settings-action-row">
+                <button
+                  className="ghost danger"
+                  onClick={async () => {
+                    const confirmed = window.confirm(
+                      "Are you sure you want to delete ALL app data?\n\nThis will permanently remove:\n• All collections and requests\n• All request history\n• All environments and variables\n• All settings and API keys\n\nThis action cannot be undone."
+                    );
+                    if (confirmed) {
+                      const secondConfirm = window.confirm(
+                        "FINAL WARNING: This will erase everything. The app will reload with a fresh state.\n\nContinue?"
+                      );
+                      if (secondConfirm) {
+                        try {
+                          await window.api.clearAllData();
+                          window.location.reload();
+                        } catch (err) {
+                          alert("Failed to clear data: " + err.message);
+                        }
+                      }
                     }
-                  }
-                }
-              }}
-            >
-              🗑️ Clear All App Data
-            </button>
-            <button
-              className="ghost"
-              style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-              onClick={async () => {
-                try {
-                  const p = await window.api.getDataPath();
-                  alert('Your app data is stored at:\n\n' + p + '\n\nYou can manually delete this folder for a complete cleanup after uninstalling.');
-                } catch {
-                  alert('Data path: ~/Library/Application Support/Commu/');
-                }
-              }}
-            >
-              📂 Show Data Location
-            </button>
-          </div>
+                  }}
+                >
+                  Clear All App Data
+                </button>
+                <button
+                  className="ghost"
+                  onClick={async () => {
+                    try {
+                      const p = await window.api.getDataPath();
+                      alert("Your app data is stored at:\n\n" + p + "\n\nYou can manually delete this folder for a complete cleanup after uninstalling.");
+                    } catch {
+                      alert("Data path: ~/Library/Application Support/Commu/");
+                    }
+                  }}
+                >
+                  Show Data Location
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <button className="primary" onClick={onClose} style={{ marginTop: '16px', width: '100%' }}>Close</button>
+        <div className="modal-footer settings-modal-footer">
+          <button className="primary" onClick={onClose}>Done</button>
+        </div>
       </div>
     </div>
   );
