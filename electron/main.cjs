@@ -188,9 +188,18 @@ ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
   }
   sanitizedHeaders["Content-Type"] = "application/json";
 
+  let parsedVariables = variables;
+  if (typeof variables === "string" && variables.trim()) {
+    try {
+      parsedVariables = JSON.parse(variables);
+    } catch (err) {
+      return { error: "GraphQL variables must be valid JSON" };
+    }
+  }
+
   const graphqlBody = JSON.stringify({
     query,
-    variables: variables || undefined,
+    variables: parsedVariables || undefined,
     operationName: operationName || undefined
   });
 

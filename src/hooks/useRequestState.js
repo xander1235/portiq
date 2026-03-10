@@ -20,6 +20,12 @@ export function useRequestState() {
     });
     const [bodyType, setBodyType] = useLocalStorage("ui_bodyType", "json");
     const [bodyRows, setBodyRows] = useLocalStorage("ui_bodyRows", [{ key: "", value: "", comment: "", enabled: true }]);
+    const [graphqlConfig, setGraphqlConfig] = useLocalStorage("ui_graphqlConfig", {
+        query: "",
+        variables: "{}",
+        operationName: "",
+        headers: {}
+    });
 
     const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
@@ -125,7 +131,13 @@ export function useRequestState() {
             paramsRows: [{ key: "", value: "", enabled: true }],
             headersRows: [{ key: "", value: "", enabled: true }],
             authRows: [{ key: "", value: "", enabled: false }],
-            bodyRows: [{ key: "", value: "", enabled: true }]
+            bodyRows: [{ key: "", value: "", enabled: true }],
+            graphqlConfig: {
+                query: "",
+                variables: "{}",
+                operationName: "",
+                headers: {}
+            }
         };
 
         // Allow the caller to customise the request (e.g. set protocol) before it is inserted
@@ -174,6 +186,12 @@ export function useRequestState() {
             setAuthType("none");
             setBodyType("json");
             setBodyRows([{ key: "", value: "", enabled: true }]);
+            setGraphqlConfig({
+                query: "",
+                variables: "{}",
+                operationName: "",
+                headers: {}
+            });
             return;
         };
         setRequestName(req.name || "New Request");
@@ -187,6 +205,12 @@ export function useRequestState() {
         setTestsPostText(req.testsPostText || "");
         setTestsInputText(req.testsInputText || "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
         setBodyType(req.bodyType || "json");
+        setGraphqlConfig(req.graphqlConfig || {
+            query: "",
+            variables: "{}",
+            operationName: "",
+            headers: {}
+        });
         setParamsRows(req.paramsRows || [{ key: "", value: "", enabled: true }]);
         setHeadersRows(req.headersRows || [{ key: "", value: "", enabled: true }]);
         setAuthRows(req.authRows || [{ key: "", value: "", enabled: false }]);
@@ -230,6 +254,7 @@ export function useRequestState() {
             authConfig,
             bodyType,
             bodyRows,
+            graphqlConfig,
             name: requestName
         };
 
@@ -706,6 +731,7 @@ export function useRequestState() {
         authConfig, setAuthConfig,
         bodyType, setBodyType,
         bodyRows, setBodyRows,
+        graphqlConfig, setGraphqlConfig,
         protocol, setProtocol,
         requestName, setRequestName,
         currentRequestId, setCurrentRequestId,

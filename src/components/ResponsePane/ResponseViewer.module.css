@@ -20,7 +20,7 @@
 .responseBody {
     flex: 1;
     overflow: auto;
-    background: var(--panel-2);
+    background: var(--panel);
     border-radius: 4px;
     padding: 4px;
     display: flex;

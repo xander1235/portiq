@@ -16,9 +16,7 @@ export function GraphQLPane({
   config,
   setConfig,
   onSend,
-  isSending,
-  response,
-  getEnvVars
+  isSending
 }) {
   const { query, variables, operationName, headers } = config || { query: "", variables: "{}", headers: {} };
 
@@ -67,8 +65,23 @@ export function GraphQLPane({
     SUBSCRIPTION: "#10b981"
   };
 
+  const fillPaneStyle = {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column"
+  };
+
+  const editorFrameStyle = {
+    flex: 1,
+    minHeight: 0,
+    borderRadius: "8px",
+    overflow: "hidden",
+    border: "1px solid var(--border)"
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "8px" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, gap: "8px" }}>
       {/* URL bar */}
       <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "8px 12px" }}>
         <span style={{
@@ -115,22 +128,22 @@ export function GraphQLPane({
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "0 12px 12px" }}>
+      <div style={{ ...fillPaneStyle, padding: "0 12px 12px" }}>
         {activeTab === "query" && (
-          <div style={{ height: "100%" }}>
+          <div style={fillPaneStyle}>
             <CodeMirror
               value={query}
               onChange={(val) => setQuery(val)}
               theme={vscodeDark}
               height="100%"
-              style={{ fontSize: "13px", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}
+              style={{ ...editorFrameStyle, fontSize: "13px" }}
               placeholder={`query {\n  users {\n    id\n    name\n    email\n  }\n}`}
             />
           </div>
         )}
 
         {activeTab === "variables" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", height: "100%" }}>
+          <div style={{ ...fillPaneStyle, gap: "8px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Operation Name (optional)</label>
               <input
@@ -142,14 +155,14 @@ export function GraphQLPane({
               />
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Variables (JSON)</div>
-            <div style={{ flex: 1 }}>
+            <div style={fillPaneStyle}>
               <CodeMirror
                 value={variables}
                 onChange={(val) => setVariables(val)}
                 theme={vscodeDark}
                 extensions={[json()]}
                 height="100%"
-                style={{ fontSize: "13px", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}
+                style={{ ...editorFrameStyle, fontSize: "13px" }}
                 placeholder='{\n  "userId": "123"\n}'
               />
             </div>
@@ -163,7 +176,7 @@ export function GraphQLPane({
         )}
 
         {activeTab === "schema" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ ...fillPaneStyle, gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <button className="ghost" onClick={handleFetchSchema} disabled={schemaLoading || !url}>
                 {schemaLoading ? "Loading..." : "Fetch Schema"}
@@ -173,10 +186,10 @@ export function GraphQLPane({
               )}
             </div>
             {schema && (
-              <div style={{ fontSize: "0.8rem", color: "var(--text)" }}>
+              <div style={{ ...fillPaneStyle, fontSize: "0.8rem", color: "var(--text)" }}>
                 <div style={{ marginBottom: "8px", fontWeight: 600 }}>Types ({schema.types?.length || 0})</div>
                 <div style={{
-                  maxHeight: "300px", overflow: "auto",
+                  flex: 1, minHeight: 0, overflow: "auto",
                   background: "var(--panel)", borderRadius: "8px",
                   padding: "12px", border: "1px solid var(--border)"
                 }}>
@@ -203,66 +216,6 @@ export function GraphQLPane({
         )}
       </div>
 
-      {/* Response area for GraphQL */}
-      {response && (
-        <div style={{
-          borderTop: "1px solid var(--border)",
-          padding: "12px",
-          maxHeight: "40%",
-          overflow: "auto"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-            <span style={{
-              padding: "2px 8px",
-              borderRadius: "4px",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              background: response.hasErrors ? "rgba(239,68,68,0.1)" : "rgba(34,197,94,0.1)",
-              color: response.hasErrors ? "#ef4444" : "#22c55e"
-            }}>
-              {response.status || "—"} {response.statusText || ""}
-            </span>
-            {response.duration && (
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{response.duration}ms</span>
-            )}
-          </div>
-
-          {response.errors && (
-            <div style={{
-              background: "rgba(239,68,68,0.05)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              borderRadius: "8px",
-              padding: "8px 12px",
-              marginBottom: "8px"
-            }}>
-              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#ef4444", marginBottom: "4px" }}>
-                GraphQL Errors
-              </div>
-              {response.errors.map((err, i) => (
-                <div key={i} style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  • {err.message}
-                  {err.locations && (
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-                      {" "}(line {err.locations[0]?.line}, col {err.locations[0]?.column})
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {response.data && (
-            <CodeMirror
-              value={JSON.stringify(response.data, null, 2)}
-              theme={vscodeDark}
-              extensions={[json()]}
-              readOnly
-              height="200px"
-              style={{ fontSize: "13px", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 }

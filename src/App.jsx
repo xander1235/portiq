@@ -54,6 +54,7 @@ import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane.jsx";
 import { McpPane } from "./components/ProtocolPanes/McpPane.jsx";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane.jsx";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index.js"; // register all built-in protocols
+import { GraphQLProtocol } from "./protocols/graphql.js";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -185,6 +186,7 @@ function App() {
     authConfig, setAuthConfig,
     bodyType, setBodyType,
     bodyRows, setBodyRows,
+    graphqlConfig, setGraphqlConfig,
     protocol, setProtocol,
     requestName, setRequestName,
     currentRequestId, setCurrentRequestId,
@@ -344,7 +346,6 @@ function App() {
   const [isSending, setIsSending] = useState(false);
 
   // Protocol system state (per-request protocol is in useRequestState; these are protocol-specific UI state)
-  const [graphqlConfig, setGraphqlConfig] = useState({ query: "", variables: "{}", headers: {} });
   const [graphqlResponse, setGraphqlResponse] = useState(null);
   const [wsConfig, setWsConfig] = useState({ connectionId: null });
   const [grpcConfig, setGrpcConfig] = useState({});
@@ -432,6 +433,38 @@ function App() {
   const [derivedExpr, setDerivedExpr] = useState("");
   const [derivedFields, setDerivedFields] = useState([]);
 
+  function setActiveProtocolResponse(protocolId, nextResponse) {
+    setResponse(nextResponse);
+    if (protocolId === "graphql") {
+      setGraphqlResponse(nextResponse);
+      setGrpcResponse(null);
+      return;
+    }
+    setGraphqlResponse(null);
+    if (protocolId !== "grpc") {
+      setGrpcResponse(null);
+    }
+  }
+
+  function cacheResponseForRequest(requestId, nextResponse, nextSummary) {
+    if (!requestId) return;
+    const dataToSave = { response: nextResponse, responseSummary: nextSummary };
+    responseCacheRef.current.set(requestId, dataToSave);
+    set(`response_cache_${requestId}`, dataToSave).catch(console.error);
+  }
+
+  function restoreResponseForRequest(req, cached) {
+    const nextResponse = cached?.response || null;
+    const nextSummary = cached?.responseSummary || { summary: "No response yet.", hints: [] };
+    setActiveProtocolResponse(req?.protocol || "http", nextResponse);
+    setResponseSummary(nextSummary);
+  }
+
+  function clearActiveResponse(protocolId = protocol) {
+    setActiveProtocolResponse(protocolId, null);
+    setResponseSummary({ summary: "No response yet.", hints: [] });
+  }
+
   function handleCollectionSwitch(id) {
     syncDraftToCollection();
     setActiveCollectionId(id);
@@ -440,32 +473,24 @@ function App() {
   function handleRequestClick(req) {
     // Save current response to cache before switching
     if (currentRequestId) {
-      const dataToSave = { response, responseSummary };
-      responseCacheRef.current.set(currentRequestId, dataToSave);
-      set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+      cacheResponseForRequest(currentRequestId, response, responseSummary);
     }
     syncDraftToCollection();
     loadRequest(req);
     // Restore cached response for the target request
     if (req?.id) {
       if (responseCacheRef.current.has(req.id)) {
-        const cached = responseCacheRef.current.get(req.id);
-        setResponse(cached.response);
-        setResponseSummary(cached.responseSummary);
+        restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
       } else {
         // Try to load from persistent storage
-        setResponse(null);
+        clearActiveResponse(req.protocol || "http");
         setResponseSummary({ summary: "Loading past response...", hints: [] });
         get(`response_cache_${req.id}`).then(cached => {
           if (cached) {
             responseCacheRef.current.set(req.id, cached);
-            // In a real app we'd verify currentRequestId === req.id, 
-            // but calling setResponse is safe enough here as users won't click that fast.
-            setResponse(cached.response);
-            setResponseSummary(cached.responseSummary);
+            restoreResponseForRequest(req, cached);
           } else {
-            setResponse(null);
-            setResponseSummary({ summary: "No response yet.", hints: [] });
+            clearActiveResponse(req.protocol || "http");
           }
 
           get(`ai_sessions_${req.id}`).then(sessions => {
@@ -479,12 +504,11 @@ function App() {
             }
           }).catch(console.error);
         }).catch(() => {
-          setResponse(null);
-          setResponseSummary({ summary: "No response yet.", hints: [] });
+          clearActiveResponse(req.protocol || "http");
         });
       }
     } else {
-      setResponseSummary({ summary: "No response yet.", hints: [] });
+      clearActiveResponse(req?.protocol || "http");
       const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
       setAiChatSessions([fresh]);
       setActiveAiSessionId(fresh.id);
@@ -497,9 +521,7 @@ function App() {
     const lastRequestId = collectionActiveRequestIds[activeCollectionId];
     // Save current response before switching
     if (currentRequestId) {
-      const dataToSave = { response, responseSummary };
-      responseCacheRef.current.set(currentRequestId, dataToSave);
-      set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+      cacheResponseForRequest(currentRequestId, response, responseSummary);
     }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
@@ -519,20 +541,16 @@ function App() {
           loadRequest(req);
           // Restore cached response
           if (responseCacheRef.current.has(req.id)) {
-            const cached = responseCacheRef.current.get(req.id);
-            setResponse(cached.response);
-            setResponseSummary(cached.responseSummary);
+            restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
           } else {
-            setResponse(null);
+            clearActiveResponse(req.protocol || "http");
             setResponseSummary({ summary: "Loading past response...", hints: [] });
             get(`response_cache_${req.id}`).then(cached => {
               if (cached) {
                 responseCacheRef.current.set(req.id, cached);
-                setResponse(cached.response);
-                setResponseSummary(cached.responseSummary);
+                restoreResponseForRequest(req, cached);
               } else {
-                setResponse(null);
-                setResponseSummary({ summary: "No response yet.", hints: [] });
+                clearActiveResponse(req.protocol || "http");
               }
 
               get(`ai_sessions_${req.id}`).then(sessions => {
@@ -546,21 +564,18 @@ function App() {
                 }
               }).catch(console.error);
             }).catch(() => {
-              setResponse(null);
-              setResponseSummary({ summary: "No response yet.", hints: [] });
+              clearActiveResponse(req.protocol || "http");
             });
           }
         } else {
           loadRequest(null);
-          setResponse(null);
-          setResponseSummary({ summary: "No response yet.", hints: [] });
+          clearActiveResponse();
         }
       }
     } else {
       if (currentRequestId) {
         loadRequest(null);
-        setResponse(null);
-        setResponseSummary({ summary: "No response yet.", hints: [] });
+        clearActiveResponse();
       }
     }
     setError("");
@@ -1616,11 +1631,21 @@ function App() {
 
     const mockReq = {
       name: "History Request",
+      protocol: req.protocol || "http",
       method: req.method,
       url: req.url,
       bodyText: req.body || "",
       bodyType: req.body ? "raw" : "none"
     };
+
+    if (req.protocol === "graphql") {
+      mockReq.graphqlConfig = {
+        query: req.query || "",
+        variables: typeof req.variables === "string" ? req.variables : JSON.stringify(req.variables || {}, null, 2),
+        operationName: req.operationName || "",
+        headers: req.headers || {}
+      };
+    }
 
     if (req.headers && Object.keys(req.headers).length > 0) {
       const hRows = Object.entries(req.headers).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
@@ -1634,11 +1659,11 @@ function App() {
 
     // Restore the response
     if (res) {
-      setResponse(res);
+      setActiveProtocolResponse(mockReq.protocol, res);
       const summary = await summarizeResponse(res);
       setResponseSummary(summary);
     } else {
-      setResponse(null);
+      clearActiveResponse(mockReq.protocol);
       setResponseSummary({ summary: "No response recorded.", hints: [] });
     }
   }
@@ -1699,7 +1724,7 @@ function App() {
       payload.headers = preContext.request.headers || payload.headers;
       payload.body = preContext.request.body ?? payload.body;
       if (preOutput.length) {
-        setTestsOutput(preOutput.join("\n"));
+        setTestsOutput(preOutput);
         setShowTestOutput(true);
       }
 
@@ -1752,7 +1777,7 @@ function App() {
       const postOutput = [];
       runScript(testsPostText, { request: payload, response: result }, postOutput);
       if (postOutput.length) {
-        setTestsOutput(postOutput.join("\n"));
+        setTestsOutput(postOutput);
         setShowTestOutput(true);
       }
     } finally {
@@ -1763,18 +1788,103 @@ function App() {
   async function handleGraphQLSend() {
     if (!url.trim()) return;
     setIsSending(true);
-    setGraphqlResponse(null);
+    clearActiveResponse("graphql");
+    setResponseSummary({ summary: "Sending request...", hints: [] });
+    setError("");
     try {
       const headers = parseHeaders();
-      const result = await window.api.sendGraphQL({
+      if (headers === null) return;
+
+      const validation = GraphQLProtocol.validateRequest({
         url: interpolate(url),
-        query: graphqlConfig.query,
-        variables: graphqlConfig.variables,
+        query: interpolate(graphqlConfig.query || ""),
+        variables: interpolate(graphqlConfig.variables || "{}")
+      });
+      if (!validation.valid) {
+        const message = validation.errors.join("\n");
+        setError(message);
+        setActiveProtocolResponse("graphql", GraphQLProtocol.parseResponse({ error: message }));
+        return;
+      }
+
+      const requestPayload = GraphQLProtocol.buildRequest({
+        url: interpolate(url),
+        query: interpolate(graphqlConfig.query || ""),
+        variables: interpolate(graphqlConfig.variables || "{}"),
+        operationName: interpolate(graphqlConfig.operationName || ""),
         headers: headers ? Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])) : {}
       });
-      setGraphqlResponse(result);
+
+      const preOutput = [];
+      const preContext = {
+        request: {
+          method: "POST",
+          url: requestPayload.url,
+          headers: { ...requestPayload.headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: requestPayload.query,
+            variables: requestPayload.variables,
+            operationName: requestPayload.operationName || undefined
+          })
+        },
+        response: null
+      };
+      runScript(testsPreText, preContext, preOutput);
+      if (preOutput.length) {
+        setTestsOutput(preOutput);
+        setShowTestOutput(true);
+      }
+
+      addLog({ source: "API", type: "info", message: `Sending GraphQL POST ${requestPayload.url}` });
+
+      const rawResult = await window.api.sendGraphQL(requestPayload);
+      const result = GraphQLProtocol.parseResponse(rawResult);
+
+      if (result.error) {
+        setError(result.error);
+        addLog({ source: "API", type: "error", message: `GraphQL Error: POST ${requestPayload.url}`, data: result.error });
+      } else {
+        addLog({
+          source: "API",
+          type: result.status >= 400 || result.hasErrors ? "error" : "success",
+          message: `GraphQL Response: ${result.status} ${result.statusText} (${result.time || result.duration}ms)`
+        });
+      }
+
+      setActiveProtocolResponse("graphql", result);
+      const summary = await summarizeResponse(result);
+      setResponseSummary(summary);
+      cacheResponseForRequest(currentRequestId, result, summary);
+
+      const now = Date.now();
+      const historyEntry = {
+        timestamp: now,
+        request: {
+          protocol: "graphql",
+          method: "POST",
+          url: redactSecrets(requestPayload.url),
+          headers: Object.fromEntries(
+            Object.entries(requestPayload.headers || {}).map(([k, v]) => [k, redactSecrets(v)])
+          ),
+          query: redactSecrets(requestPayload.query || ""),
+          variables: requestPayload.variables,
+          operationName: requestPayload.operationName || ""
+        },
+        response: result
+      };
+      const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;
+      setHistory(prev => [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs));
+
+      const postOutput = [];
+      runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
+      if (postOutput.length) {
+        setTestsOutput(postOutput);
+        setShowTestOutput(true);
+      }
     } catch (err) {
-      setGraphqlResponse({ error: err.message });
+      const result = GraphQLProtocol.parseResponse({ error: err.message });
+      setActiveProtocolResponse("graphql", result);
+      setError(err.message);
     } finally {
       setIsSending(false);
     }

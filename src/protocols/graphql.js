@@ -139,7 +139,8 @@ export const GraphQLProtocol = {
     const parsed = {
       status: raw.status,
       statusText: raw.statusText,
-      duration: raw.duration,
+      duration: raw.duration ?? raw.time ?? 0,
+      time: raw.time ?? raw.duration ?? 0,
       headers: raw.headers || {},
       body: raw.body || "",
       json: raw.json || null,
