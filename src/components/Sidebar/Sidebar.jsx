@@ -261,12 +261,11 @@ export function Sidebar({
                         <div className={`${styles.treeRequest} ${dragOverItemId === item.id ? styles.dragOver : ''} ${draggedItemId === item.id ? styles.dragging : ''}`} onClick={() => loadRequest(item)}>
                             <div className={styles.treeRequestHeader}>
                                 {item.protocol && item.protocol !== "http" ? (
-                                    <span style={{
-                                        fontSize: "0.65rem", fontWeight: 700, padding: "1px 5px",
-                                        borderRadius: "3px", textTransform: "uppercase", flexShrink: 0,
-                                        color: ({ graphql: "#e535ab", websocket: "#f59e0b", grpc: "#00bcd4", sse: "#a78bfa", mcp: "#f472b6", dag: "#fb923c" })[item.protocol] || "var(--text-muted)",
-                                        background: `${({ graphql: "#e535ab", websocket: "#f59e0b", grpc: "#00bcd4", sse: "#a78bfa", mcp: "#f472b6", dag: "#fb923c" })[item.protocol] || "var(--text-muted)"}15`,
-                                    }}>{{ graphql: "GQL", websocket: "WS", grpc: "gRPC", sse: "SSE", mcp: "MCP", dag: "DAG" }[item.protocol] || item.protocol.toUpperCase()}</span>
+                                    <span
+                                        className={`${styles.protocolBadge} ${styles[item.protocol] || ""}`}
+                                    >
+                                        {{ graphql: "GQL", websocket: "WS", grpc: "gRPC", sse: "SSE", mcp: "MCP", dag: "DAG" }[item.protocol] || item.protocol.toUpperCase()}
+                                    </span>
                                 ) : (
                                     <span className={`${styles.methodBadge} ${item.method ? styles[item.method.toLowerCase()] : ''}`}>{item.method}</span>
                                 )}

@@ -26,6 +26,18 @@ export function useRequestState() {
         operationName: "",
         headers: {}
     });
+    const [wsConfig, setWsConfig] = useLocalStorage("ui_wsConfig", {
+        headersText: "{\n}",
+        headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+        headersMode: "table",
+        protocolsText: "",
+        protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+        autoReconnect: false,
+        reconnectInterval: 3000,
+        connectTimeout: 10000,
+        messageType: "text",
+        messages: []
+    });
 
     const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
@@ -137,6 +149,18 @@ export function useRequestState() {
                 variables: "{}",
                 operationName: "",
                 headers: {}
+            },
+            wsConfig: {
+                headersText: "{\n}",
+                headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+                headersMode: "table",
+                protocolsText: "",
+                protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+                autoReconnect: false,
+                reconnectInterval: 3000,
+                connectTimeout: 10000,
+                messageType: "text",
+                messages: []
             }
         };
 
@@ -192,6 +216,18 @@ export function useRequestState() {
                 operationName: "",
                 headers: {}
             });
+            setWsConfig({
+                headersText: "{\n}",
+                headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+                headersMode: "table",
+                protocolsText: "",
+                protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+                autoReconnect: false,
+                reconnectInterval: 3000,
+                connectTimeout: 10000,
+                messageType: "text",
+                messages: []
+            });
             return;
         };
         setRequestName(req.name || "New Request");
@@ -210,6 +246,18 @@ export function useRequestState() {
             variables: "{}",
             operationName: "",
             headers: {}
+        });
+        setWsConfig(req.wsConfig || {
+            headersText: "{\n}",
+            headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+            headersMode: "table",
+            protocolsText: "",
+            protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+            autoReconnect: false,
+            reconnectInterval: 3000,
+            connectTimeout: 10000,
+            messageType: "text",
+            messages: []
         });
         setParamsRows(req.paramsRows || [{ key: "", value: "", enabled: true }]);
         setHeadersRows(req.headersRows || [{ key: "", value: "", enabled: true }]);
@@ -255,6 +303,7 @@ export function useRequestState() {
             bodyType,
             bodyRows,
             graphqlConfig,
+            wsConfig,
             name: requestName
         };
 
@@ -732,6 +781,7 @@ export function useRequestState() {
         bodyType, setBodyType,
         bodyRows, setBodyRows,
         graphqlConfig, setGraphqlConfig,
+        wsConfig, setWsConfig,
         protocol, setProtocol,
         requestName, setRequestName,
         currentRequestId, setCurrentRequestId,

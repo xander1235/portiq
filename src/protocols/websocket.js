@@ -21,11 +21,12 @@ export const WebSocketProtocol = {
     messages: [],
     autoReconnect: false,
     reconnectInterval: 3000,
+    connectTimeout: 10000,
     messageType: "text" // "text" | "json" | "binary"
   },
 
   getDefaultUrl() {
-    return "wss://echo.websocket.org";
+    return "ws://localhost:8080";
   },
 
   detectProtocol(url) {
@@ -48,10 +49,40 @@ export const WebSocketProtocol = {
   },
 
   buildRequest(config) {
+    let parsedHeaders = {};
+    if (Array.isArray(config.headersRows) && config.headersRows.length > 0) {
+      parsedHeaders = config.headersRows
+        .filter((row) => row.key && row.enabled !== false)
+        .reduce((acc, row) => ({ ...acc, [row.key]: row.value || "" }), {});
+    } else if (typeof config.headersText === "string" && config.headersText.trim()) {
+      try {
+        parsedHeaders = JSON.parse(config.headersText);
+      } catch {
+        parsedHeaders = {};
+      }
+    } else if (config.headers && typeof config.headers === "object") {
+      parsedHeaders = config.headers;
+    }
+
+    const parsedProtocols = Array.isArray(config.protocolRows) && config.protocolRows.length > 0
+      ? config.protocolRows
+          .filter((row) => row.key && row.enabled !== false)
+          .map((row) => String(row.key).trim())
+          .filter(Boolean)
+      : Array.isArray(config.protocols)
+      ? config.protocols
+      : String(config.protocolsText || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
     return {
       url: config.url,
-      headers: config.headers || {},
-      protocols: config.protocols || []
+      headers: parsedHeaders,
+      protocols: parsedProtocols,
+      autoReconnect: Boolean(config.autoReconnect),
+      reconnectInterval: Number(config.reconnectInterval) > 0 ? Number(config.reconnectInterval) : 3000,
+      connectTimeout: Number(config.connectTimeout) > 0 ? Number(config.connectTimeout) : 10000
     };
   },
 
@@ -69,12 +100,15 @@ export const WebSocketProtocol = {
   /**
    * Parse a message trying JSON first.
    */
-  parseMessage(data) {
+  parseMessage(data, encoding = "text") {
+    if (encoding === "base64") {
+      return { type: "binary", data, raw: data, encoding };
+    }
     try {
       const json = JSON.parse(data);
-      return { type: "json", data: json, raw: data };
+      return { type: "json", data: json, raw: data, encoding };
     } catch {
-      return { type: "text", data: data, raw: data };
+      return { type: "text", data: data, raw: data, encoding };
     }
   },
 
@@ -88,6 +122,9 @@ export const WebSocketProtocol = {
       } catch {
         return msg.raw;
       }
+    }
+    if (msg.type === "binary") {
+      return msg.raw || "";
     }
     return msg.raw || String(msg.data);
   },
@@ -106,59 +143,62 @@ export const WebSocketProtocol = {
     let status = "disconnected";
     let messageHistory = [];
     let cleanups = [];
+    let reconnectTimer = null;
+    let connectionArgs = null;
+    let manuallyClosed = false;
+
+    async function syncStatusFromBackend() {
+      const existing = await window.api.wsGetMessages({ id: connectionId });
+      status = existing.status || "disconnected";
+      notify("statusChange", status);
+      return existing;
+    }
 
     const manager = {
       get status() { return status; },
       get messages() { return messageHistory; },
 
-      async connect(url, headers = {}, protocols = []) {
+      async attachExisting(options = {}) {
+        connectionArgs = options.url ? {
+          url: options.url,
+          headers: options.headers || {},
+          protocols: options.protocols || [],
+          options: options.options || {}
+        } : connectionArgs;
+
+        bindListeners();
+
+        const existing = await syncStatusFromBackend();
+        messageHistory = Array.isArray(existing.messages)
+          ? existing.messages.map((msg) => ({
+              ...msg,
+              parsed: WebSocketProtocol.parseMessage(msg.data, msg.encoding)
+            }))
+          : [];
+        return {
+          ...existing,
+          messages: messageHistory
+        };
+      },
+
+      async connect(url, headers = {}, protocols = [], options = {}) {
+        manuallyClosed = false;
+        connectionArgs = { url, headers, protocols, options };
         status = "connecting";
         notify("statusChange", status);
 
-        // Set up event listeners via preload
-        if (window.api?.onWsMessage) {
-          const unsub = window.api.onWsMessage((data) => {
-            if (data.id === connectionId) {
-              const parsed = WebSocketProtocol.parseMessage(data.message.data);
-              const enriched = { ...data.message, parsed };
-              messageHistory.push(enriched);
-              notify("message", enriched);
-            }
-          });
-          cleanups.push(unsub);
-        }
-
-        if (window.api?.onWsClosed) {
-          const unsub = window.api.onWsClosed((data) => {
-            if (data.id === connectionId) {
-              status = "disconnected";
-              notify("statusChange", status);
-              notify("close", data);
-            }
-          });
-          cleanups.push(unsub);
-        }
-
-        if (window.api?.onWsError) {
-          const unsub = window.api.onWsError((data) => {
-            if (data.id === connectionId) {
-              status = "error";
-              notify("statusChange", status);
-              notify("error", data);
-            }
-          });
-          cleanups.push(unsub);
-        }
+        bindListeners();
 
         const result = await window.api.wsConnect({
           id: connectionId,
           url,
           headers,
-          protocols
+          protocols,
+          timeoutMs: options.connectTimeout
         });
 
         if (result.error) {
-          status = "error";
+          status = result.cancelled ? "disconnected" : "error";
           notify("statusChange", status);
           return result;
         }
@@ -170,14 +210,25 @@ export const WebSocketProtocol = {
 
       async send(data) {
         if (status !== "connected") {
-          return { error: "Not connected" };
+          await syncStatusFromBackend();
+          if (status !== "connected") {
+            return { error: "Not connected" };
+          }
         }
-        const result = await window.api.wsSend({
-          id: connectionId,
-          data: typeof data === "string" ? data : JSON.stringify(data)
-        });
+        const payload = data && typeof data === "object" && data.encoding === "base64"
+          ? { id: connectionId, data: data.data, encoding: "base64" }
+          : { id: connectionId, data: typeof data === "string" ? data : JSON.stringify(data), encoding: "text" };
+
+        const result = await window.api.wsSend(payload);
+        if (result.error) {
+          await syncStatusFromBackend();
+          if (status !== "connected") {
+            return { error: "Not connected" };
+          }
+          return result;
+        }
         if (result.ok && result.message) {
-          const parsed = WebSocketProtocol.parseMessage(result.message.data);
+          const parsed = WebSocketProtocol.parseMessage(result.message.data, result.message.encoding);
           const enriched = { ...result.message, parsed };
           messageHistory.push(enriched);
           notify("message", enriched);
@@ -186,11 +237,29 @@ export const WebSocketProtocol = {
       },
 
       async disconnect() {
+        manuallyClosed = true;
         const result = await window.api.wsDisconnect({ id: connectionId });
         status = "disconnected";
         notify("statusChange", status);
         cleanup();
         return result;
+      },
+
+      async reconnectNow() {
+        if (!connectionArgs) {
+          return { error: "No previous connection to reconnect" };
+        }
+        manuallyClosed = false;
+        if (reconnectTimer) {
+          window.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        return manager.connect(
+          connectionArgs.url,
+          connectionArgs.headers,
+          connectionArgs.protocols,
+          connectionArgs.options
+        );
       },
 
       on(event, callback) {
@@ -217,7 +286,62 @@ export const WebSocketProtocol = {
       (listeners[event] || []).forEach(fn => fn(data));
     }
 
+    function bindListeners() {
+      cleanup();
+
+      if (window.api?.onWsMessage) {
+        const unsub = window.api.onWsMessage((data) => {
+          if (data.id === connectionId) {
+            const parsed = WebSocketProtocol.parseMessage(data.message.data, data.message.encoding);
+            const enriched = { ...data.message, parsed };
+            messageHistory.push(enriched);
+            notify("message", enriched);
+          }
+        });
+        cleanups.push(unsub);
+      }
+
+      if (window.api?.onWsClosed) {
+        const unsub = window.api.onWsClosed((data) => {
+          if (data.id === connectionId) {
+            status = "disconnected";
+            notify("statusChange", status);
+            notify("close", data);
+            if (!manuallyClosed && connectionArgs?.options?.autoReconnect) {
+              status = "reconnecting";
+              notify("statusChange", status);
+              reconnectTimer = window.setTimeout(() => {
+                reconnectTimer = null;
+                manager.connect(
+                  connectionArgs.url,
+                  connectionArgs.headers,
+                  connectionArgs.protocols,
+                  connectionArgs.options
+                );
+              }, connectionArgs.options.reconnectInterval || 3000);
+            }
+          }
+        });
+        cleanups.push(unsub);
+      }
+
+      if (window.api?.onWsError) {
+        const unsub = window.api.onWsError((data) => {
+          if (data.id === connectionId) {
+            status = "error";
+            notify("statusChange", status);
+            notify("error", data);
+          }
+        });
+        cleanups.push(unsub);
+      }
+    }
+
     function cleanup() {
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       cleanups.forEach(fn => fn());
       cleanups = [];
     }

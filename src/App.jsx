@@ -187,6 +187,7 @@ function App() {
     bodyType, setBodyType,
     bodyRows, setBodyRows,
     graphqlConfig, setGraphqlConfig,
+    wsConfig, setWsConfig,
     protocol, setProtocol,
     requestName, setRequestName,
     currentRequestId, setCurrentRequestId,
@@ -347,7 +348,6 @@ function App() {
 
   // Protocol system state (per-request protocol is in useRequestState; these are protocol-specific UI state)
   const [graphqlResponse, setGraphqlResponse] = useState(null);
-  const [wsConfig, setWsConfig] = useState({ connectionId: null });
   const [grpcConfig, setGrpcConfig] = useState({});
   const [grpcResponse, setGrpcResponse] = useState(null);
 
@@ -424,6 +424,7 @@ function App() {
   const [itemToMove, setItemToMove] = useState(null);
   const [moveTargetId, setMoveTargetId] = useState("root");
   const [moveSearchQuery, setMoveSearchQuery] = useState("");
+  const [wsClearSignal, setWsClearSignal] = useState(0);
 
   const [search, setSearch] = useState("");
   const [searchKey, setSearchKey] = useState("");
@@ -2574,6 +2575,14 @@ function App() {
                 <WebSocketPane
                   url={url}
                   setUrl={setUrl}
+                  config={wsConfig}
+                  setConfig={setWsConfig}
+                  currentRequestId={currentRequestId}
+                  updateRequestState={updateRequestState}
+                  getEnvVars={getEnvVars}
+                  interpolate={interpolate}
+                  clearSignal={wsClearSignal}
+                  onResponseChange={(nextResponse) => setActiveProtocolResponse("websocket", nextResponse)}
                 />
               )}
               {protocol === "grpc" && (
@@ -2647,6 +2656,7 @@ function App() {
             handleSort={handleSort}
             responseSummary={responseSummary}
             isSending={isSending}
+            onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
           />
         </main>
 

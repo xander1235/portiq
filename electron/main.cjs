@@ -243,7 +243,7 @@ ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
 const wsConnections = new Map();
 
 ipcMain.handle("ws:connect", async (_event, payload) => {
-  const { id, url, headers, protocols } = payload || {};
+  const { id, url, headers, protocols, timeoutMs } = payload || {};
   if (!url || typeof url !== "string") return { error: "Missing or invalid URL" };
   if (!id) return { error: "Missing connection ID" };
 
@@ -260,20 +260,35 @@ ipcMain.handle("ws:connect", async (_event, payload) => {
         headers: headers || {}
       });
 
-      const connectionData = { ws, messages: [], status: "connecting" };
+      const connectionData = { ws, messages: [], status: "connecting", connectedAt: null, cancelled: false };
       wsConnections.set(id, connectionData);
+      let settled = false;
+      let timeoutHandle = null;
+
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+        resolve(result);
+      };
 
       ws.on("open", () => {
         connectionData.status = "connected";
-        resolve({ status: "connected" });
+        connectionData.connectedAt = Date.now();
+        finish({ status: "connected", connectedAt: connectionData.connectedAt });
       });
 
-      ws.on("message", (data) => {
+      ws.on("message", (data, isBinary) => {
+        const normalized = Buffer.isBuffer(data) ? data : Buffer.from(data);
         const msg = {
           timestamp: Date.now(),
           direction: "incoming",
-          data: data.toString(),
-          size: data.length
+          data: isBinary ? normalized.toString("base64") : normalized.toString(),
+          size: normalized.length,
+          encoding: isBinary ? "base64" : "text"
         };
         connectionData.messages.push(msg);
         // Keep last 1000 messages only
@@ -289,11 +304,17 @@ ipcMain.handle("ws:connect", async (_event, payload) => {
 
       ws.on("close", (code, reason) => {
         connectionData.status = "disconnected";
+        connectionData.connectedAt = null;
         const windows = BrowserWindow.getAllWindows();
         windows.forEach(win => {
           win.webContents.send("ws:closed", { id, code, reason: reason?.toString() });
         });
         wsConnections.delete(id);
+        if (!settled) {
+          finish(connectionData.cancelled
+            ? { cancelled: true, error: "Connection cancelled" }
+            : { error: "Connection closed" });
+        }
       });
 
       ws.on("error", (err) => {
@@ -302,16 +323,17 @@ ipcMain.handle("ws:connect", async (_event, payload) => {
         windows.forEach(win => {
           win.webContents.send("ws:error", { id, error: err.message });
         });
-        resolve({ error: err.message });
+        finish({ error: err.message });
       });
 
       // Timeout for connection
-      setTimeout(() => {
+      timeoutHandle = setTimeout(() => {
         if (connectionData.status === "connecting") {
+          connectionData.cancelled = false;
           ws.close();
-          resolve({ error: "Connection timeout" });
+          finish({ error: "Connection timeout" });
         }
-      }, 30000);
+      }, Number(timeoutMs) > 0 ? Number(timeoutMs) : 10000);
     } catch (err) {
       resolve({ error: err.message || String(err) });
     }
@@ -319,18 +341,21 @@ ipcMain.handle("ws:connect", async (_event, payload) => {
 });
 
 ipcMain.handle("ws:send", async (_event, payload) => {
-  const { id, data } = payload || {};
+  const { id, data, encoding } = payload || {};
   const conn = wsConnections.get(id);
   if (!conn || !conn.ws) return { error: "No active WebSocket connection" };
   if (conn.ws.readyState !== 1) return { error: "WebSocket is not open" };
 
   try {
-    conn.ws.send(data);
+    const payloadData = encoding === "base64" ? Buffer.from(data || "", "base64") : data;
+    conn.ws.send(payloadData);
+    const normalized = Buffer.isBuffer(payloadData) ? payloadData : Buffer.from(String(payloadData ?? ""));
     const msg = {
       timestamp: Date.now(),
       direction: "outgoing",
-      data: typeof data === "string" ? data : data.toString(),
-      size: typeof data === "string" ? data.length : data.byteLength || 0
+      data: encoding === "base64" ? normalized.toString("base64") : normalized.toString(),
+      size: normalized.length,
+      encoding: encoding === "base64" ? "base64" : "text"
     };
     conn.messages.push(msg);
     return { ok: true, message: msg };
@@ -345,6 +370,7 @@ ipcMain.handle("ws:disconnect", async (_event, payload) => {
   if (!conn || !conn.ws) return { ok: true };
 
   try {
+    conn.cancelled = conn.status === "connecting";
     conn.ws.close();
     wsConnections.delete(id);
     return { ok: true };
@@ -356,8 +382,8 @@ ipcMain.handle("ws:disconnect", async (_event, payload) => {
 ipcMain.handle("ws:getMessages", async (_event, payload) => {
   const { id } = payload || {};
   const conn = wsConnections.get(id);
-  if (!conn) return { messages: [], status: "disconnected" };
-  return { messages: conn.messages, status: conn.status };
+  if (!conn) return { messages: [], status: "disconnected", connectedAt: null };
+  return { messages: conn.messages, status: conn.status, connectedAt: conn.connectedAt || null };
 });
 
 // ── Mock Server Manager ──

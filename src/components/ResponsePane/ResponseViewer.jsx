@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
@@ -95,7 +95,8 @@ export function ResponseViewer({
     handleAddDerivedField,
     handleSort,
     responseSummary,
-    isSending
+    isSending,
+    onClearWebSocketMessages
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [columnFilters, setColumnFilters] = useState({});
@@ -103,6 +104,9 @@ export function ResponseViewer({
     const [columnOrder, setColumnOrder] = useState(null);
     const [dragCol, setDragCol] = useState(null);
     const [dragOverCol, setDragOverCol] = useState(null);
+    const [wsFilter, setWsFilter] = useState("all");
+    const [wsAutoScroll, setWsAutoScroll] = useState(true);
+    const wsMessagesEndRef = useRef(null);
 
     const columnFilteredRows = useMemo(() => {
         const hasColFilters = Object.values(columnFilters).some(v => v);
@@ -218,6 +222,114 @@ export function ResponseViewer({
             </svg>
         </div>
     );
+
+    const websocketMessages = response?.protocol === "websocket"
+        ? (response?.ws?.messages || [])
+        : [];
+
+    const filteredWebSocketMessages = useMemo(() => {
+        if (wsFilter === "all") return websocketMessages;
+        return websocketMessages.filter((msg) => msg.direction === wsFilter);
+    }, [websocketMessages, wsFilter]);
+
+    const sentWebSocketCount = useMemo(
+        () => websocketMessages.filter((msg) => msg.direction === "outgoing").length,
+        [websocketMessages]
+    );
+    const receivedWebSocketCount = useMemo(
+        () => websocketMessages.filter((msg) => msg.direction === "incoming").length,
+        [websocketMessages]
+    );
+
+    useEffect(() => {
+        if (response?.protocol === "websocket" && wsAutoScroll && wsMessagesEndRef.current) {
+            wsMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [response?.protocol, filteredWebSocketMessages, wsAutoScroll]);
+
+    if (response?.protocol === "websocket") {
+        const wsStatus = response?.ws?.status || "disconnected";
+        const wsError = response?.error || error;
+        const statusColor = wsStatus === "connected"
+            ? "#22c55e"
+            : wsStatus === "connecting" || wsStatus === "reconnecting"
+                ? "#f59e0b"
+                : wsStatus === "error"
+                    ? "#ef4444"
+                    : "var(--muted)";
+
+        return (
+            <section className={styles.response}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", gap: "12px" }}>
+                    <div className={styles.responseMeta} style={{ marginBottom: 0, flexWrap: "wrap" }}>
+                        <div>Status: <span style={{ color: statusColor, fontWeight: 600 }}>{wsStatus}</span></div>
+                        <div>Sent: {sentWebSocketCount}</div>
+                        <div>Received: {receivedWebSocketCount}</div>
+                        <div>Connected: {response?.ws?.elapsedSeconds != null ? `${response.ws.elapsedSeconds}s` : "-"}</div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <div className={styles.tabs} style={{ marginBottom: 0 }}>
+                            {["all", "incoming", "outgoing"].map((item) => (
+                                <button
+                                    key={item}
+                                    className={wsFilter === item ? `${styles.tab} ${styles.active}` : styles.tab}
+                                    onClick={() => setWsFilter(item)}
+                                >
+                                    {item === "incoming" ? "Received" : item === "outgoing" ? "Sent" : "All"}
+                                </button>
+                            ))}
+                        </div>
+                        <button className="ghost compact" onClick={() => onClearWebSocketMessages?.()}>Clear</button>
+                        <label style={{ fontSize: "0.78rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <input type="checkbox" checked={wsAutoScroll} onChange={(e) => setWsAutoScroll(e.target.checked)} />
+                            Auto-scroll
+                        </label>
+                    </div>
+                </div>
+
+                {wsError && <div className={styles.error}>{wsError}</div>}
+
+                <div className={styles.responseBody} style={{ gap: "8px", padding: "12px" }}>
+                    {filteredWebSocketMessages.length === 0 ? (
+                        emptyState
+                    ) : (
+                        filteredWebSocketMessages.map((msg, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "6px",
+                                    padding: "10px 12px",
+                                    borderRadius: "10px",
+                                    background: msg.direction === "outgoing" ? "rgba(99, 102, 241, 0.08)" : "rgba(34, 197, 94, 0.08)",
+                                    border: `1px solid ${msg.direction === "outgoing" ? "rgba(99, 102, 241, 0.16)" : "rgba(34, 197, 94, 0.16)"}`,
+                                    alignSelf: msg.direction === "outgoing" ? "flex-end" : "flex-start",
+                                    width: "min(78%, 720px)"
+                                }}
+                            >
+                                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", fontSize: "0.72rem", color: "var(--muted)" }}>
+                                    <span style={{ fontWeight: 700, color: msg.direction === "outgoing" ? "#818cf8" : "#22c55e" }}>
+                                        {msg.direction === "outgoing" ? "SENT" : "RECEIVED"}
+                                    </span>
+                                    <span>{msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ""}</span>
+                                    {msg.size !== undefined && <span>{msg.size}B</span>}
+                                    {msg.encoding === "base64" && <span>binary/base64</span>}
+                                </div>
+                                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "IBM Plex Mono, monospace", fontSize: "0.8rem", color: "var(--text)" }}>
+                                    {msg.parsed?.type === "json"
+                                        ? JSON.stringify(msg.parsed.data, null, 2)
+                                        : (msg.data || msg.raw || "")}
+                                </pre>
+                            </div>
+                        ))
+                    )}
+                    <div ref={wsMessagesEndRef} />
+                </div>
+            </section>
+        );
+    }
 
     const responseBodyContent = (
         <div className={styles.responseBody} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
