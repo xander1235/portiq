@@ -108,18 +108,22 @@ export function AIChatPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div className={rightRailStyles.rightRailHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className={styles.sectionTitle}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-          </svg>
-          AI Assistant
+      <div className={rightRailStyles.aiHeader}>
+        <div className={rightRailStyles.aiHeaderMeta}>
+          <div className={rightRailStyles.aiHeaderIcon}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            </svg>
+          </div>
+          <div className={rightRailStyles.aiHeaderCopy}>
+            <div className={rightRailStyles.aiEyebrow}>AI Assistant</div>
+            <div className={rightRailStyles.aiTitle}>Chat and request guidance</div>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div className={rightRailStyles.aiHeaderActions}>
           {aiChatSessions && aiChatSessions.length > 0 && (
             <select 
-              className="input" 
-              style={{ padding: '2px 24px 2px 8px', fontSize: '0.75rem', height: '24px', width: '130px', margin: 0, minHeight: 'unset' }}
+              className={`input ${rightRailStyles.aiSessionSelect}`}
               value={activeAiSessionId || ''}
               onChange={(e) => setActiveAiSessionId(e.target.value)}
               title="Past Conversations"
@@ -131,10 +135,10 @@ export function AIChatPanel({
               ))}
             </select>
           )}
-          <button className="ghost icon-button" onClick={createNewAiSession} title="New Chat" style={{ padding: '4px', width: '24px', height: '24px' }}>
+          <button className={`ghost icon-button ${rightRailStyles.aiHeaderButton}`} onClick={createNewAiSession} title="New Chat">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse" style={{ padding: '4px', width: '24px', height: '24px' }}>
+          <button className={`ghost icon-button ${rightRailStyles.aiHeaderButton}`} onClick={() => setShowRightRail(false)} title="Collapse">
             →
           </button>
         </div>
@@ -147,22 +151,37 @@ export function AIChatPanel({
       )}
 
       {responseSummary && responseSummary.summary !== "No response yet." && (
-        <div className={rightRailStyles.card} style={{ padding: '8px', marginBottom: '12px', flexShrink: 0, position: 'relative' }}>
+        <div className={`${rightRailStyles.card} ${rightRailStyles.responseInsightCard}`}>
           <button
-            className="ghost icon-button"
-            style={{ position: 'absolute', top: '4px', right: '4px', padding: '2px', width: '20px', height: '20px', fontSize: '0.8rem' }}
+            className={`ghost icon-button ${rightRailStyles.responseInsightDismiss}`}
             onClick={() => setResponseSummary(null)}
             title="Dismiss"
           >
             ✕
           </button>
-          <div className={rightRailStyles.cardTitle} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Response Intelligence</div>
-          <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: '4px', paddingRight: '16px' }}>{responseSummary.summary}</div>
-          {responseSummary.hints.length > 0 && <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: 0 }}>Hint: {responseSummary.hints[0]}</div>}
+          <div className={rightRailStyles.responseInsightHeader}>
+            <div>
+              <div className={rightRailStyles.responseInsightEyebrow}>Response Intelligence</div>
+              <div className={rightRailStyles.responseInsightTitle}>
+                {response?.status ? `Status ${response.status}` : "Latest response"}
+              </div>
+            </div>
+            {response?.status && (
+              <span className={rightRailStyles.responseInsightBadge}>
+                {response.status >= 400 ? "Needs attention" : "Healthy"}
+              </span>
+            )}
+          </div>
+          <div className={rightRailStyles.responseInsightSummary}>{responseSummary.summary}</div>
+          {responseSummary.hints.length > 0 && (
+            <div className={rightRailStyles.responseInsightHint}>
+              <span>Hint</span>
+              <div>{responseSummary.hints[0]}</div>
+            </div>
+          )}
           {response?.status >= 400 && response?.status < 600 && (
             <button
-              className="ghost compact"
-              style={{ marginTop: '8px', width: '100%', justifyContent: 'center', display: 'flex', gap: '6px', backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)' }}
+              className={`ghost compact ${rightRailStyles.responseInsightAction}`}
               onClick={() => {
                 const errorMsg = typeof response?.data === 'object' ? JSON.stringify(response.data).substring(0, 100) : (response?.statusText || "Unknown error");
                 handleAiChatSubmit(`This request failed with status ${response.status} and error '${errorMsg}'. Please fix my request.`);

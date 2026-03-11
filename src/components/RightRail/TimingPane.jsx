@@ -1,6 +1,5 @@
 import React from "react";
 import rightRailStyles from "../Layout/RightRail.module.css";
-import styles from "../../App.module.css";
 
 export function TimingPane({ response, setShowRightRail }) {
 
@@ -16,20 +15,27 @@ export function TimingPane({ response, setShowRightRail }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <div className={rightRailStyles.rightRailHeader}>
-                <div className={styles.sectionTitle}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    Timing & Performance
+            <div className={rightRailStyles.paneHero}>
+                <div className={rightRailStyles.paneHeroTop}>
+                    <div className={rightRailStyles.paneHeroMeta}>
+                        <div className={rightRailStyles.paneHeroIcon}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div>
+                            <div className={rightRailStyles.paneEyebrow}>Timing & Performance</div>
+                            <div className={rightRailStyles.paneTitle}>Latency and transport breakdown</div>
+                        </div>
+                    </div>
+                    <button className={`ghost icon-button ${rightRailStyles.paneHeaderButton}`} onClick={() => setShowRightRail(false)} title="Collapse">
+                        →
+                    </button>
                 </div>
-                <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
-                    →
-                </button>
             </div>
 
-            <div className={rightRailStyles.chatContainer} style={{ background: 'var(--panel-1)', border: '1px solid var(--border)', padding: '16px', overflowY: 'auto' }}>
+            <div className={rightRailStyles.paneSurface} style={{ padding: '16px', overflowY: 'auto' }}>
                 {!response ? (
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '20px' }}>Send a request to see timing data.</div>
                 ) : (

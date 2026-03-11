@@ -1,47 +1,53 @@
 import React, { useState } from "react";
 import rightRailStyles from "../Layout/RightRail.module.css";
-import styles from "../../App.module.css";
 
 export function ConsolePane({ history, setHistory, testsOutput, appLogs, setAppLogs, setShowRightRail }) {
     const [activeTab, setActiveTab] = useState("logs");
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <div className={rightRailStyles.rightRailHeader}>
-                <div className={styles.sectionTitle}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
-                        <polyline points="4 17 10 11 4 5"></polyline>
-                        <line x1="12" y1="19" x2="20" y2="19"></line>
-                    </svg>
-                    Console
+            <div className={rightRailStyles.paneHero}>
+                <div className={rightRailStyles.paneHeroTop}>
+                    <div className={rightRailStyles.paneHeroMeta}>
+                        <div className={rightRailStyles.paneHeroIcon}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="4 17 10 11 4 5"></polyline>
+                                <line x1="12" y1="19" x2="20" y2="19"></line>
+                            </svg>
+                        </div>
+                        <div>
+                            <div className={rightRailStyles.paneEyebrow}>Console</div>
+                            <div className={rightRailStyles.paneTitle}>Logs and execution history</div>
+                        </div>
+                    </div>
+                    <button className={`ghost icon-button ${rightRailStyles.paneHeaderButton}`} onClick={() => setShowRightRail(false)} title="Collapse">
+                        →
+                    </button>
                 </div>
-                <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
-                    →
-                </button>
+
+                <div className={rightRailStyles.paneTabRow}>
+                    <button
+                        className={`${rightRailStyles.paneTabButton} ${activeTab === 'logs' ? rightRailStyles.paneTabButtonActive : ''}`}
+                        onClick={() => setActiveTab('logs')}
+                    >
+                        App Logs
+                    </button>
+                    <button
+                        className={`${rightRailStyles.paneTabButton} ${activeTab === 'executions' ? rightRailStyles.paneTabButtonActive : ''}`}
+                        onClick={() => setActiveTab('executions')}
+                    >
+                        Executions
+                    </button>
+                    <button
+                        className={`${rightRailStyles.paneTabButton} ${activeTab === 'scripts' ? rightRailStyles.paneTabButtonActive : ''}`}
+                        onClick={() => setActiveTab('scripts')}
+                    >
+                        Script Output
+                    </button>
+                </div>
             </div>
 
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 12px' }}>
-                <button
-                    style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', cursor: 'pointer', color: activeTab === 'logs' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: activeTab === 'logs' ? '2px solid var(--accent)' : '2px solid transparent' }}
-                    onClick={() => setActiveTab('logs')}
-                >
-                    App Logs
-                </button>
-                <button
-                    style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', cursor: 'pointer', color: activeTab === 'executions' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: activeTab === 'executions' ? '2px solid var(--accent)' : '2px solid transparent' }}
-                    onClick={() => setActiveTab('executions')}
-                >
-                    Executions
-                </button>
-                <button
-                    style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', cursor: 'pointer', color: activeTab === 'scripts' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: activeTab === 'scripts' ? '2px solid var(--accent)' : '2px solid transparent' }}
-                    onClick={() => setActiveTab('scripts')}
-                >
-                    Script Output
-                </button>
-            </div>
-
-            <div className={rightRailStyles.chatContainer} style={{ background: 'var(--panel-1)', border: '1px solid var(--border)', padding: '12px', overflowY: 'auto', flex: 1 }}>
+            <div className={rightRailStyles.paneSurface} style={{ padding: '12px', overflowY: 'auto', flex: 1 }}>
 
                 {activeTab === 'logs' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
