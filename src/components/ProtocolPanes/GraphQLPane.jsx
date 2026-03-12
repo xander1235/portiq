@@ -29,8 +29,23 @@ export function GraphQLPane({
   const [schema, setSchema] = useState(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState(null);
+  const [schemaFilter, setSchemaFilter] = useState("");
+  const [selectedTypeName, setSelectedTypeName] = useState("");
 
   const operationType = GraphQLProtocol.detectOperationType(query);
+  const schemaTypes = (schema?.types || []).filter((type) => type?.name && !type.name.startsWith("__"));
+  const filteredSchemaTypes = schemaTypes.filter((type) => {
+    const search = schemaFilter.trim().toLowerCase();
+    if (!search) return true;
+    return (
+      type.name.toLowerCase().includes(search) ||
+      (type.fields || []).some((field) => field.name.toLowerCase().includes(search))
+    );
+  });
+  const selectedSchemaType = filteredSchemaTypes.find((type) => type.name === selectedTypeName)
+    || schemaTypes.find((type) => type.name === selectedTypeName)
+    || filteredSchemaTypes[0]
+    || null;
 
   const handleFetchSchema = useCallback(async () => {
     if (!url) return;
@@ -113,6 +128,20 @@ export function GraphQLPane({
         </button>
       </div>
 
+      {operationType === "SUBSCRIPTION" && (
+        <div style={{
+          margin: "0 12px",
+          padding: "10px 12px",
+          borderRadius: "8px",
+          border: "1px solid rgba(245, 158, 11, 0.25)",
+          background: "rgba(245, 158, 11, 0.08)",
+          color: "var(--text-muted)",
+          fontSize: "0.8rem"
+        }}>
+          Subscription operations usually require a WebSocket transport. The current GraphQL pane executes over HTTP only.
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: "2px", padding: "0 12px", borderBottom: "1px solid var(--border)" }}>
         {["query", "variables", "headers", "schema"].map((tab) => (
@@ -181,34 +210,99 @@ export function GraphQLPane({
               <button className="ghost" onClick={handleFetchSchema} disabled={schemaLoading || !url}>
                 {schemaLoading ? "Loading..." : "Fetch Schema"}
               </button>
+              <input
+                className="input"
+                style={{ maxWidth: "260px" }}
+                placeholder="Search types or fields"
+                value={schemaFilter}
+                onChange={(e) => setSchemaFilter(e.target.value)}
+              />
               {schemaError && (
                 <span style={{ fontSize: "0.8rem", color: "var(--accent-red, #ef4444)" }}>{schemaError}</span>
               )}
             </div>
             {schema && (
-              <div style={{ ...fillPaneStyle, fontSize: "0.8rem", color: "var(--text)" }}>
-                <div style={{ marginBottom: "8px", fontWeight: 600 }}>Types ({schema.types?.length || 0})</div>
+              <div style={{ ...fillPaneStyle, fontSize: "0.8rem", color: "var(--text)", display: "grid", gridTemplateColumns: "260px 1fr", gap: "12px" }}>
                 <div style={{
-                  flex: 1, minHeight: 0, overflow: "auto",
-                  background: "var(--panel)", borderRadius: "8px",
-                  padding: "12px", border: "1px solid var(--border)"
+                  minHeight: 0,
+                  overflow: "auto",
+                  background: "var(--panel)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  border: "1px solid var(--border)"
                 }}>
-                  {schema.types?.filter(t => !t.name.startsWith("__")).map((type) => (
-                    <div key={type.name} style={{ marginBottom: "8px" }}>
-                      <span style={{ fontWeight: 600, color: "var(--accent)" }}>{type.kind}</span>{" "}
-                      <span>{type.name}</span>
-                      {type.fields && (
-                        <div style={{ paddingLeft: "16px", color: "var(--text-muted)" }}>
-                          {type.fields.slice(0, 10).map(f => (
-                            <div key={f.name}>• {f.name}</div>
+                  <div style={{ marginBottom: "8px", fontWeight: 600 }}>Types ({filteredSchemaTypes.length})</div>
+                  {filteredSchemaTypes.map((type) => (
+                    <button
+                      key={type.name}
+                      className="ghost"
+                      onClick={() => setSelectedTypeName(type.name)}
+                      style={{
+                        width: "100%",
+                        justifyContent: "flex-start",
+                        marginBottom: "6px",
+                        borderColor: selectedSchemaType?.name === type.name ? "var(--accent)" : "var(--border)",
+                        color: selectedSchemaType?.name === type.name ? "var(--accent)" : "var(--text)"
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{type.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{
+                  minHeight: 0,
+                  overflow: "auto",
+                  background: "var(--panel)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  border: "1px solid var(--border)"
+                }}>
+                  {selectedSchemaType ? (
+                    <>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "1rem" }}>{selectedSchemaType.name}</span>
+                        <span style={{ color: "var(--accent)", fontWeight: 600 }}>{selectedSchemaType.kind}</span>
+                      </div>
+                      {selectedSchemaType.description && (
+                        <div style={{ marginBottom: "12px", color: "var(--text-muted)" }}>{selectedSchemaType.description}</div>
+                      )}
+                      {(selectedSchemaType.fields || []).length > 0 && (
+                        <div style={{ marginBottom: "12px" }}>
+                          <div style={{ fontWeight: 600, marginBottom: "6px" }}>Fields</div>
+                          {(selectedSchemaType.fields || []).map((field) => (
+                            <div key={field.name} style={{ padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ fontWeight: 600 }}>{field.name}</div>
+                              {field.description && <div style={{ color: "var(--text-muted)" }}>{field.description}</div>}
+                            </div>
                           ))}
-                          {type.fields.length > 10 && (
-                            <div>... and {type.fields.length - 10} more fields</div>
-                          )}
                         </div>
                       )}
-                    </div>
-                  ))}
+                      {(selectedSchemaType.inputFields || []).length > 0 && (
+                        <div style={{ marginBottom: "12px" }}>
+                          <div style={{ fontWeight: 600, marginBottom: "6px" }}>Input Fields</div>
+                          {(selectedSchemaType.inputFields || []).map((field) => (
+                            <div key={field.name} style={{ padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ fontWeight: 600 }}>{field.name}</div>
+                              {field.description && <div style={{ color: "var(--text-muted)" }}>{field.description}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(selectedSchemaType.enumValues || []).length > 0 && (
+                        <div>
+                          <div style={{ fontWeight: 600, marginBottom: "6px" }}>Enum Values</div>
+                          {(selectedSchemaType.enumValues || []).map((field) => (
+                            <div key={field.name} style={{ padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ fontWeight: 600 }}>{field.name}</div>
+                              {field.description && <div style={{ color: "var(--text-muted)" }}>{field.description}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ color: "var(--text-muted)" }}>No matching schema types.</div>
+                  )}
                 </div>
               </div>
             )}

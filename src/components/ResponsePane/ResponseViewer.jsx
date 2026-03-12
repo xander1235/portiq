@@ -247,6 +247,23 @@ export function ResponseViewer({
         }
     }, [response?.protocol, filteredWebSocketMessages, wsAutoScroll]);
 
+    const chartConfig = useMemo(() => {
+        if (!Array.isArray(tableRows) || tableRows.length === 0) return null;
+        const numericKeys = Object.keys(tableRows[0] || {}).filter((key) =>
+            tableRows.some((row) => typeof row[key] === "number" && !Number.isNaN(row[key]))
+        );
+        if (numericKeys.length === 0) return null;
+        const valueKey = numericKeys[0];
+        const labelKey = Object.keys(tableRows[0] || {}).find((key) => key !== valueKey && typeof tableRows[0][key] !== "object")
+            || null;
+        const points = tableRows.slice(0, 10).map((row, index) => ({
+            label: labelKey ? String(row[labelKey] ?? `Row ${index + 1}`) : `Row ${index + 1}`,
+            value: Number(row[valueKey] || 0)
+        }));
+        const maxValue = Math.max(...points.map((point) => point.value), 1);
+        return { valueKey, labelKey, points, maxValue };
+    }, [tableRows]);
+
     if (response?.protocol === "websocket") {
         const wsStatus = response?.ws?.status || "disconnected";
         const wsError = response?.error || error;
@@ -565,6 +582,34 @@ export function ResponseViewer({
                         <div className={styles.vizTitle}>Status</div>
                         <div className={styles.vizValue}>{response?.status || "-"}</div>
                     </div>
+                    {chartConfig && (
+                        <div className={styles.vizCard} style={{ gridColumn: "1 / -1" }}>
+                            <div className={styles.vizTitle}>Chart</div>
+                            <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginBottom: "10px" }}>
+                                {chartConfig.valueKey} across the first {chartConfig.points.length} rows
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                {chartConfig.points.map((point) => (
+                                    <div key={point.label} style={{ display: "grid", gridTemplateColumns: "140px 1fr 80px", gap: "10px", alignItems: "center" }}>
+                                        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-muted)" }}>
+                                            {point.label}
+                                        </div>
+                                        <div style={{ height: "10px", borderRadius: "999px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                                            <div
+                                                style={{
+                                                    width: `${(point.value / chartConfig.maxValue) * 100}%`,
+                                                    height: "100%",
+                                                    borderRadius: "999px",
+                                                    background: "linear-gradient(90deg, var(--accent-2), var(--accent))"
+                                                }}
+                                            />
+                                        </div>
+                                        <div style={{ textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{point.value}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -576,6 +621,7 @@ export function ResponseViewer({
                 <div className={styles.responseMeta} style={{ marginBottom: 0 }}>
                     <div>Status: {response?.status ? `${response.status} ${response.statusText}` : "-"}</div>
                     <div>Latency: {response?.duration ? `${response.duration} ms` : "-"}</div>
+                    <div>HTTP: {response?.httpVersion || "-"}</div>
                     <div>Size: {response?.body ? `${response.body.length} bytes` : "-"}</div>
                 </div>
 

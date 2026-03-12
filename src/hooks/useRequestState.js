@@ -18,6 +18,8 @@ export function useRequestState() {
         basic: { username: "", password: "" },
         api_key: { key: "", value: "", add_to: "header" }
     });
+    const [httpVersion, setHttpVersion] = useLocalStorage("ui_httpVersion", "auto");
+    const [requestTimeoutMs, setRequestTimeoutMs] = useLocalStorage("ui_requestTimeoutMs", 30000);
     const [bodyType, setBodyType] = useLocalStorage("ui_bodyType", "json");
     const [bodyRows, setBodyRows] = useLocalStorage("ui_bodyRows", [{ key: "", value: "", comment: "", enabled: true }]);
     const [graphqlConfig, setGraphqlConfig] = useLocalStorage("ui_graphqlConfig", {
@@ -139,6 +141,8 @@ export function useRequestState() {
             testsPreText: "",
             testsPostText: "",
             testsInputText: "",
+            httpVersion: "auto",
+            requestTimeoutMs: 30000,
             bodyType: "json",
             paramsRows: [{ key: "", value: "", enabled: true }],
             headersRows: [{ key: "", value: "", enabled: true }],
@@ -208,6 +212,8 @@ export function useRequestState() {
             setParamsRows([{ key: "", value: "", enabled: true }]);
             setAuthRows([{ key: "", value: "", enabled: false }]);
             setAuthType("none");
+            setHttpVersion("auto");
+            setRequestTimeoutMs(30000);
             setBodyType("json");
             setBodyRows([{ key: "", value: "", enabled: true }]);
             setGraphqlConfig({
@@ -240,6 +246,8 @@ export function useRequestState() {
         setTestsPreText(req.testsPreText || "");
         setTestsPostText(req.testsPostText || "");
         setTestsInputText(req.testsInputText || "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
+        setHttpVersion(req.httpVersion || "auto");
+        setRequestTimeoutMs(req.requestTimeoutMs || 30000);
         setBodyType(req.bodyType || "json");
         setGraphqlConfig(req.graphqlConfig || {
             query: "",
@@ -295,6 +303,8 @@ export function useRequestState() {
             testsPreText,
             testsPostText,
             testsInputText,
+            httpVersion,
+            requestTimeoutMs,
             paramsRows,
             headersRows,
             authRows,
@@ -612,6 +622,8 @@ export function useRequestState() {
                     headersRows: (req.headers || []).map(h => ({ key: h.name, value: h.value, enabled: true })),
                     paramsRows: (req.queryParams || []).map(q => ({ key: q.name, value: q.value, enabled: true })),
                     authRows: [{ key: "", value: "", enabled: false }],
+                    httpVersion: "auto",
+                    requestTimeoutMs: 30000,
                     bodyRows: [{ key: "", value: "", enabled: true }],
                     authType: "none",
                     authConfig: {
@@ -688,6 +700,8 @@ export function useRequestState() {
                         headersRows: (pmReq.header || []).map(h => ({ key: h.key, value: h.value, enabled: true })),
                         paramsRows: (pmReq.url?.query || []).map(q => ({ key: q.key, value: q.value, enabled: true })),
                         authRows: [{ key: "", value: "", enabled: false }],
+                        httpVersion: "auto",
+                        requestTimeoutMs: 30000,
                         bodyRows: [{ key: "", value: "", enabled: true }],
                         authType: "none",
                         authConfig: {
@@ -778,6 +792,8 @@ export function useRequestState() {
         authRows, setAuthRows,
         authType, setAuthType,
         authConfig, setAuthConfig,
+        httpVersion, setHttpVersion,
+        requestTimeoutMs, setRequestTimeoutMs,
         bodyType, setBodyType,
         bodyRows, setBodyRows,
         graphqlConfig, setGraphqlConfig,

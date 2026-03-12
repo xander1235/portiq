@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("api", {
 
   // ── HTTP ──
   sendRequest: (payload) => ipcRenderer.invoke("http:sendRequest", payload),
+  cancelRequest: (payload) => ipcRenderer.invoke("http:cancelRequest", payload),
 
   // ── GraphQL ──
   sendGraphQL: (payload) => ipcRenderer.invoke("graphql:sendRequest", payload),

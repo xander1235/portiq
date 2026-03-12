@@ -73,6 +73,10 @@ export function RequestEditor({
     setAuthConfig,
     authRows,
     setAuthRows,
+    httpVersion,
+    setHttpVersion,
+    requestTimeoutMs,
+    setRequestTimeoutMs,
     setCmEnvEdit,
     bodyRows,
     setBodyRows,
@@ -82,13 +86,53 @@ export function RequestEditor({
     setTestsPreText,
     testsPostText,
     setTestsPostText,
-    testsOutput
+    testsOutput,
+    handleCancelSend
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
     const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
     const [showBearerToken, setShowBearerToken] = useState(false);
     const [showApiKeyValue, setShowApiKeyValue] = useState(false);
+
+    const updateBodyRowsState = (nextRows) => {
+        setBodyRows(nextRows);
+        if (currentRequestId) updateRequestState(currentRequestId, "bodyRows", nextRows);
+    };
+
+    const updateMultipartRow = (index, patch) => {
+        updateBodyRowsState((bodyRows || []).map((row, rowIndex) => (
+            rowIndex === index ? { ...row, ...patch } : row
+        )));
+    };
+
+    const addMultipartRow = () => {
+        updateBodyRowsState([...(bodyRows || []), { key: "", value: "", enabled: true, kind: "text" }]);
+    };
+
+    const removeMultipartRow = (index) => {
+        const nextRows = (bodyRows || []).filter((_, rowIndex) => rowIndex !== index);
+        updateBodyRowsState(nextRows.length > 0 ? nextRows : [{ key: "", value: "", enabled: true, kind: "text" }]);
+    };
+
+    const handleMultipartFileSelect = async (index, file) => {
+        if (!file) {
+            updateMultipartRow(index, { fileName: "", mimeType: "", fileBase64: "" });
+            return;
+        }
+        const arrayBuffer = await file.arrayBuffer();
+        let binary = "";
+        new Uint8Array(arrayBuffer).forEach((byte) => {
+            binary += String.fromCharCode(byte);
+        });
+        updateMultipartRow(index, {
+            kind: "file",
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            fileBase64: btoa(binary),
+            value: ""
+        });
+    };
 
     return (
         <section className={styles.request}>
@@ -140,8 +184,11 @@ export function RequestEditor({
                     <SelectContent>
                         <SelectItem value="GET" className="font-semibold text-[var(--ok)]">GET</SelectItem>
                         <SelectItem value="POST" className="font-semibold text-[var(--warn)]">POST</SelectItem>
+                        <SelectItem value="PATCH" className="font-semibold text-[var(--accent-purple)]">PATCH</SelectItem>
                         <SelectItem value="PUT" className="font-semibold text-[var(--info)]">PUT</SelectItem>
                         <SelectItem value="DELETE" className="font-semibold text-[var(--error)]">DELETE</SelectItem>
+                        <SelectItem value="HEAD">HEAD</SelectItem>
+                        <SelectItem value="OPTIONS">OPTIONS</SelectItem>
                     </SelectContent>
                 </Select>
                 <EnvInput
@@ -153,8 +200,12 @@ export function RequestEditor({
                     placeholder="https://api.example.com/v1/users/{{id}}"
                     style={{ flex: 1 }}
                 />
-                <button className="primary" onClick={handleSend} disabled={isSending}>
-                    {isSending ? "Sending..." : "Send"}
+                <button
+                    className={isSending ? "ghost" : "primary"}
+                    onClick={isSending ? handleCancelSend : handleSend}
+                    style={isSending ? { color: "#ef4444", borderColor: "#ef4444" } : undefined}
+                >
+                    {isSending ? "Cancel" : "Send"}
                 </button>
             </div>
 
@@ -171,6 +222,34 @@ export function RequestEditor({
                     ))}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Select value={httpVersion} onValueChange={(val) => {
+                        setHttpVersion(val);
+                        if (currentRequestId) updateRequestState(currentRequestId, "httpVersion", val);
+                    }}>
+                        <SelectTrigger className="w-[128px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                            <SelectValue placeholder="HTTP" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="auto">Auto</SelectItem>
+                            <SelectItem value="1.1">HTTP/1.1</SelectItem>
+                            <SelectItem value="2">HTTP/2</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Timeout</span>
+                        <Input
+                            value={requestTimeoutMs}
+                            type="number"
+                            min="1000"
+                            step="500"
+                            className="w-[104px] h-[28px] text-[12px] bg-panel border-border text-foreground"
+                            onChange={(e) => {
+                                const nextValue = Number(e.target.value) || 30000;
+                                setRequestTimeoutMs(nextValue);
+                                if (currentRequestId) updateRequestState(currentRequestId, "requestTimeoutMs", nextValue);
+                            }}
+                        />
+                    </div>
                     {activeRequestTab === "Headers" && (
                         <div className={styles.tabs} style={{ marginBottom: 0 }}>
                             <button
@@ -200,7 +279,7 @@ export function RequestEditor({
                                     <SelectItem value="json">JSON</SelectItem>
                                     <SelectItem value="xml">XML</SelectItem>
                                     <SelectItem value="form">x-www-form-urlencoded</SelectItem>
-                                    <SelectItem value="multipart">form-data (simple)</SelectItem>
+                                    <SelectItem value="multipart">form-data</SelectItem>
                                     <SelectItem value="raw">Raw</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -528,7 +607,7 @@ export function RequestEditor({
                                     <SelectItem value="json">JSON</SelectItem>
                                     <SelectItem value="xml">XML</SelectItem>
                                     <SelectItem value="form">x-www-form-urlencoded</SelectItem>
-                                    <SelectItem value="multipart">form-data (simple)</SelectItem>
+                                    <SelectItem value="multipart">form-data</SelectItem>
                                     <SelectItem value="raw">Raw</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -586,17 +665,90 @@ export function RequestEditor({
                                     </div>
                                 );
                             })()}
-                            {(bodyType === "form" || bodyType === "multipart") && (
+                            {bodyType === "form" && (
                                 <TableEditor
                                     rows={bodyRows}
-                                    onChange={(r) => {
-                                        setBodyRows(r);
-                                        if (currentRequestId) updateRequestState(currentRequestId, "bodyRows", r);
-                                    }}
+                                    onChange={updateBodyRowsState}
                                     keyPlaceholder="Field"
                                     valuePlaceholder="Value"
                                     envVars={getEnvVars()}
                                 />
+                            )}
+                            {bodyType === "multipart" && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                        <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
+                                            Add text fields or file parts to the multipart body.
+                                        </div>
+                                        <button className="ghost compact" onClick={addMultipartRow}>Add Part</button>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflow: "auto", minHeight: 0 }}>
+                                        {(bodyRows || []).map((row, index) => (
+                                            <div
+                                                key={index}
+                                                style={{
+                                                    display: "grid",
+                                                    gridTemplateColumns: "24px 1.2fr 110px 2fr 32px",
+                                                    gap: "8px",
+                                                    alignItems: "center",
+                                                    padding: "8px",
+                                                    border: "1px solid var(--border)",
+                                                    borderRadius: "8px",
+                                                    background: "rgba(255,255,255,0.02)"
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={row.enabled !== false}
+                                                    onChange={(e) => updateMultipartRow(index, { enabled: e.target.checked })}
+                                                />
+                                                <EnvInput
+                                                    className="input"
+                                                    value={row.key || ""}
+                                                    onChange={(value) => updateMultipartRow(index, { key: value })}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    placeholder="Part name"
+                                                />
+                                                <Select
+                                                    value={row.kind || "text"}
+                                                    onValueChange={(value) => updateMultipartRow(index, { kind: value })}
+                                                >
+                                                    <SelectTrigger className="w-full h-[32px] text-[12px] bg-panel border-border text-foreground">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="text">Text</SelectItem>
+                                                        <SelectItem value="file">File</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {row.kind === "file" ? (
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                                                        <input
+                                                            className="input"
+                                                            type="file"
+                                                            style={{ flex: 1, minWidth: 0, padding: "4px" }}
+                                                            onChange={(e) => handleMultipartFileSelect(index, e.target.files?.[0])}
+                                                        />
+                                                        <span style={{ fontSize: "0.72rem", color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                            {row.fileName || "No file"}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <EnvInput
+                                                        className="input"
+                                                        value={row.value || ""}
+                                                        onChange={(value) => updateMultipartRow(index, { value })}
+                                                        envVars={getEnvVars()}
+                                                        onUpdateEnvVar={handleUpdateEnvVar}
+                                                        placeholder="Part value"
+                                                    />
+                                                )}
+                                                <button className="ghost compact" onClick={() => removeMultipartRow(index)}>×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     );
@@ -675,5 +827,3 @@ export function RequestEditor({
         </section>
     );
 }
-
-

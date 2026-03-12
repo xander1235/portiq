@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
+const http = require("http");
+const https = require("https");
+const http2 = require("http2");
 
 const isDev = !app.isPackaged;
 let db = null;
@@ -70,6 +73,7 @@ const MAX_BODY_LENGTH = 50 * 1024 * 1024; // 50 MB
 const MAX_HEADER_COUNT = 100;
 const MAX_KEY_LENGTH = 1024;
 const MAX_VALUE_LENGTH = 10 * 1024 * 1024; // 10 MB per value
+const pendingHttpRequests = new Map();
 
 function validateString(val, maxLen, label) {
   if (val !== undefined && val !== null && typeof val !== "string") {
@@ -95,11 +99,317 @@ function validateHeaders(headers) {
   return sanitized;
 }
 
+function buildHttpResult({ status, statusText, headers, body, duration, httpVersion }) {
+  let json = null;
+  try {
+    json = JSON.parse(body);
+  } catch (err) {
+    json = null;
+  }
+
+  return {
+    status,
+    statusText,
+    time: duration,
+    duration,
+    headers,
+    body,
+    json,
+    httpVersion
+  };
+}
+
+function buildMultipartBody(parts) {
+  const boundary = `----CommuBoundary${Date.now().toString(16)}`;
+  const buffers = [];
+
+  for (const part of parts || []) {
+    if (!part?.name) continue;
+    if (part.kind === "file") {
+      const fileBuffer = Buffer.from(part.dataBase64 || "", "base64");
+      buffers.push(Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${part.name}"; filename="${part.filename || "upload.bin"}"\r\n` +
+        `Content-Type: ${part.contentType || "application/octet-stream"}\r\n\r\n`
+      ));
+      buffers.push(fileBuffer);
+      buffers.push(Buffer.from("\r\n"));
+      continue;
+    }
+
+    buffers.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${part.name}"\r\n\r\n${part.value || ""}\r\n`
+    ));
+  }
+
+  buffers.push(Buffer.from(`--${boundary}--\r\n`));
+  return {
+    boundary,
+    body: Buffer.concat(buffers)
+  };
+}
+
+function buildAbortResult(reason) {
+  if (reason === "cancelled") {
+    return { cancelled: true, error: "Request cancelled" };
+  }
+  if (reason === "timeout") {
+    return { timedOut: true, error: "Request timeout" };
+  }
+  return null;
+}
+
+async function sendAutoHttpRequest({ requestId, method, url, headers, body, timeoutMs }) {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  let abortReason = null;
+  let timeoutHandle = null;
+
+  if (requestId) {
+    pendingHttpRequests.set(requestId, {
+      cancel: () => {
+        abortReason = "cancelled";
+        controller.abort();
+      }
+    });
+  }
+
+  if (timeoutMs > 0) {
+    timeoutHandle = setTimeout(() => {
+      abortReason = "timeout";
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: ["GET", "HEAD"].includes(method) ? undefined : body,
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    const duration = Date.now() - startedAt;
+    const headersObj = {};
+    response.headers.forEach((value, key) => {
+      headersObj[key] = value;
+    });
+
+    return buildHttpResult({
+      status: response.status,
+      statusText: response.statusText,
+      headers: headersObj,
+      body: text,
+      duration,
+      httpVersion: "auto"
+    });
+  } catch (err) {
+    const aborted = buildAbortResult(abortReason);
+    if (aborted) return aborted;
+
+    let errorMsg = err.message || String(err);
+    if (err.name === "AggregateError" && err.errors) {
+      errorMsg += `: ${err.errors.map(e => e.message || String(e)).join(", ")}`;
+    } else if (err.cause) {
+      if (err.cause.name === "AggregateError" && err.cause.errors) {
+        errorMsg += `: ${err.cause.errors.map(e => e.message || String(e)).join(", ")}`;
+      } else {
+        errorMsg += `: ${err.cause.message || String(err.cause)}`;
+      }
+    }
+    return { error: errorMsg };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (requestId) pendingHttpRequests.delete(requestId);
+  }
+}
+
+function sendHttp1Request({ requestId, method, url, headers, body, timeoutMs }) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const parsedUrl = new URL(url);
+    const client = parsedUrl.protocol === "https:" ? https : http;
+    const requestOptions = {
+      protocol: parsedUrl.protocol,
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || undefined,
+      path: `${parsedUrl.pathname}${parsedUrl.search}`,
+      method,
+      headers
+    };
+
+    let settled = false;
+    let abortReason = null;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (requestId) pendingHttpRequests.delete(requestId);
+      resolve(result);
+    };
+
+    const req = client.request(requestOptions, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      res.on("end", () => {
+        const bodyText = Buffer.concat(chunks).toString("utf8");
+        const headersObj = Object.fromEntries(
+          Object.entries(res.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")])
+        );
+        finish(buildHttpResult({
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || http.STATUS_CODES[res.statusCode] || "",
+          headers: headersObj,
+          body: bodyText,
+          duration: Date.now() - startedAt,
+          httpVersion: `HTTP/${res.httpVersion || "1.1"}`
+        }));
+      });
+    });
+
+    req.on("error", (err) => {
+      const aborted = buildAbortResult(abortReason);
+      if (aborted) {
+        finish(aborted);
+        return;
+      }
+      finish({ error: err.message || String(err) });
+    });
+
+    if (timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        abortReason = "timeout";
+        req.destroy(new Error("Request timeout"));
+      });
+    }
+
+    if (requestId) {
+      pendingHttpRequests.set(requestId, {
+        cancel: () => {
+          abortReason = "cancelled";
+          req.destroy(new Error("Request cancelled"));
+        }
+      });
+    }
+
+    if (!["GET", "HEAD"].includes(method) && body !== undefined && body !== null) {
+      req.write(body);
+    }
+    req.end();
+  });
+}
+
+function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const parsedUrl = new URL(url);
+    const session = http2.connect(parsedUrl.origin);
+    let settled = false;
+    let abortReason = null;
+    let timeoutHandle = null;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (requestId) pendingHttpRequests.delete(requestId);
+      try { session.close(); } catch (err) { /* ignore */ }
+      resolve(result);
+    };
+
+    const disallowedHeaders = new Set(["connection", "host", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"]);
+    const requestHeaders = {
+      ":method": method,
+      ":path": `${parsedUrl.pathname}${parsedUrl.search}`,
+      ":scheme": parsedUrl.protocol.replace(":", ""),
+      ":authority": parsedUrl.host
+    };
+
+    Object.entries(headers || {}).forEach(([key, value]) => {
+      const normalizedKey = String(key).toLowerCase();
+      if (!disallowedHeaders.has(normalizedKey)) {
+        requestHeaders[normalizedKey] = String(value);
+      }
+    });
+
+    const stream = session.request(requestHeaders);
+
+    const responseHeaders = {};
+    let responseStatus = 0;
+    const chunks = [];
+
+    stream.on("response", (headersMap) => {
+      responseStatus = Number(headersMap[":status"] || 0);
+      Object.entries(headersMap).forEach(([key, value]) => {
+        if (!key.startsWith(":")) {
+          responseHeaders[key] = Array.isArray(value) ? value.join(", ") : String(value ?? "");
+        }
+      });
+    });
+
+    stream.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+
+    stream.on("end", () => {
+      finish(buildHttpResult({
+        status: responseStatus,
+        statusText: http.STATUS_CODES[responseStatus] || "",
+        headers: responseHeaders,
+        body: Buffer.concat(chunks).toString("utf8"),
+        duration: Date.now() - startedAt,
+        httpVersion: "HTTP/2"
+      }));
+    });
+
+    stream.on("error", (err) => {
+      const aborted = buildAbortResult(abortReason);
+      if (aborted) {
+        finish(aborted);
+        return;
+      }
+      finish({ error: err.message || String(err) });
+    });
+
+    session.on("error", (err) => {
+      const aborted = buildAbortResult(abortReason);
+      if (aborted) {
+        finish(aborted);
+        return;
+      }
+      finish({ error: err.message || String(err) });
+    });
+
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        abortReason = "timeout";
+        try { stream.close(); } catch (err) { /* ignore */ }
+        finish(buildAbortResult("timeout"));
+      }, timeoutMs);
+    }
+
+    if (requestId) {
+      pendingHttpRequests.set(requestId, {
+        cancel: () => {
+          abortReason = "cancelled";
+          try { stream.close(); } catch (err) { /* ignore */ }
+          finish(buildAbortResult("cancelled"));
+        }
+      });
+    }
+
+    if (!["GET", "HEAD"].includes(method) && body !== undefined && body !== null) {
+      stream.end(body);
+    } else {
+      stream.end();
+    }
+  });
+}
+
 ipcMain.handle("app:ping", async () => "pong");
 
 ipcMain.handle("http:sendRequest", async (_event, payload) => {
-  const { method, url, headers, body } = payload || {};
-  const startedAt = Date.now();
+  const { requestId, method, url, headers, body, timeoutMs, httpVersion, multipartParts } = payload || {};
 
   // ── Validate inputs ──
   if (!url || typeof url !== "string") {
@@ -121,38 +431,51 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
   if (body !== undefined && body !== null) {
     validateString(body, MAX_BODY_LENGTH, "Request body");
   }
+  if (multipartParts !== undefined && !Array.isArray(multipartParts)) {
+    return { error: "Multipart parts must be an array" };
+  }
 
   try {
-    const response = await fetch(url, {
-      method: upperMethod,
-      headers: sanitizedHeaders,
-      body: ["GET", "HEAD"].includes(upperMethod) ? undefined : body
-    });
-
-    const text = await response.text();
-    const duration = Date.now() - startedAt;
-
-    const headersObj = {};
-    response.headers.forEach((value, key) => {
-      headersObj[key] = value;
-    });
-
-    let json = null;
-    try {
-      json = JSON.parse(text);
-    } catch (err) {
-      json = null;
+    const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30000;
+    const normalizedVersion = httpVersion || "auto";
+    let requestBody = body;
+    if (Array.isArray(multipartParts) && multipartParts.length > 0) {
+      const multipart = buildMultipartBody(multipartParts);
+      sanitizedHeaders["Content-Type"] = `multipart/form-data; boundary=${multipart.boundary}`;
+      sanitizedHeaders["Content-Length"] = String(multipart.body.length);
+      requestBody = multipart.body;
     }
 
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      time: duration,
-      duration,
-      headers: headersObj,
-      body: text,
-      json
-    };
+    if (normalizedVersion === "1.1") {
+      return await sendHttp1Request({
+        requestId,
+        method: upperMethod,
+        url,
+        headers: sanitizedHeaders,
+        body: requestBody,
+        timeoutMs: normalizedTimeout
+      });
+    }
+
+    if (normalizedVersion === "2") {
+      return await sendHttp2Request({
+        requestId,
+        method: upperMethod,
+        url,
+        headers: sanitizedHeaders,
+        body: requestBody,
+        timeoutMs: normalizedTimeout
+      });
+    }
+
+    return await sendAutoHttpRequest({
+      requestId,
+      method: upperMethod,
+      url,
+      headers: sanitizedHeaders,
+      body: requestBody,
+      timeoutMs: normalizedTimeout
+    });
   } catch (err) {
     let errorMsg = err.message || String(err);
     if (err.name === 'AggregateError' && err.errors) {
@@ -165,6 +488,19 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
       }
     }
     return { error: errorMsg };
+  }
+});
+
+ipcMain.handle("http:cancelRequest", async (_event, payload) => {
+  const { requestId } = payload || {};
+  if (!requestId) return { error: "Missing request ID" };
+  const pending = pendingHttpRequests.get(requestId);
+  if (!pending) return { ok: true };
+  try {
+    pending.cancel?.();
+    return { ok: true };
+  } catch (err) {
+    return { error: err.message || String(err) };
   }
 });
 
@@ -388,8 +724,6 @@ ipcMain.handle("ws:getMessages", async (_event, payload) => {
 
 // ── Mock Server Manager ──
 let mockServers = new Map();
-const http = require("http");
-
 ipcMain.handle("mock:start", async (_event, payload) => {
   const { id, port, routes } = payload || {};
   if (!id) return { error: "Missing server ID" };

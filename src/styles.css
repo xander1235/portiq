@@ -195,6 +195,46 @@ select {
   border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
+.cm-foldGutter .cm-gutterElement {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.cm-foldGutter .cm-gutterElement [title="Fold line"],
+.cm-foldGutter .cm-gutterElement [title="Unfold line"] {
+  color: transparent !important;
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 6px !important;
+  transition: background 0.15s ease, transform 0.15s ease !important;
+}
+
+.cm-foldGutter .cm-gutterElement [title="Fold line"]::before,
+.cm-foldGutter .cm-gutterElement [title="Unfold line"]::before {
+  color: var(--muted) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+
+.cm-foldGutter .cm-gutterElement [title="Fold line"]::before {
+  content: "▾";
+}
+
+.cm-foldGutter .cm-gutterElement [title="Unfold line"]::before {
+  content: "▸";
+}
+
+.cm-foldGutter .cm-gutterElement [title="Fold line"]:hover,
+.cm-foldGutter .cm-gutterElement [title="Unfold line"]:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
 .cm-env-var,
 .cm-env-var * {
   color: var(--accent-yellow) !important;

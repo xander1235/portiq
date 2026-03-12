@@ -184,6 +184,8 @@ function App() {
     authRows, setAuthRows,
     authType, setAuthType,
     authConfig, setAuthConfig,
+    httpVersion, setHttpVersion,
+    requestTimeoutMs, setRequestTimeoutMs,
     bodyType, setBodyType,
     bodyRows, setBodyRows,
     graphqlConfig, setGraphqlConfig,
@@ -345,6 +347,7 @@ function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage("ui_sidebarCollapsed", false);
   const [isSending, setIsSending] = useState(false);
+  const [activeHttpRequestId, setActiveHttpRequestId] = useState(null);
 
   // Protocol system state (per-request protocol is in useRequestState; these are protocol-specific UI state)
   const [graphqlResponse, setGraphqlResponse] = useState(null);
@@ -464,6 +467,36 @@ function App() {
   function clearActiveResponse(protocolId = protocol) {
     setActiveProtocolResponse(protocolId, null);
     setResponseSummary({ summary: "No response yet.", hints: [] });
+  }
+
+  function findRequestInItems(items, targetRequestId, folderPath = []) {
+    for (const item of items || []) {
+      if (item.type === "folder") {
+        const nested = findRequestInItems(item.items || [], targetRequestId, [...folderPath, item.name]);
+        if (nested) return nested;
+        continue;
+      }
+      if (item.type === "request" && item.id === targetRequestId) {
+        return { request: item, folderPath };
+      }
+    }
+    return null;
+  }
+
+  function getCurrentRequestSyncContext() {
+    const activeCollection = (collections || []).find((collection) => collection.id === activeCollectionId) || null;
+    const located = activeCollection && currentRequestId
+      ? findRequestInItems(activeCollection.items || [], currentRequestId)
+      : null;
+
+    return {
+      requestId: currentRequestId || "",
+      collectionId: activeCollection?.id || "",
+      collectionName: activeCollection?.name || "Unassigned",
+      folderPath: located?.folderPath || [],
+      requestName: located?.request?.name || requestName || "New Request",
+      protocol: protocol || "http"
+    };
   }
 
   function handleCollectionSwitch(id) {
@@ -716,11 +749,20 @@ function App() {
         if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
         if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
         if (state.testsInputText) setTestsInputText(state.testsInputText);
+        if (state.httpVersion) setHttpVersion(state.httpVersion);
+        if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
         if (state.bodyType) setBodyType(state.bodyType);
         if (state.paramsRows) setParamsRows(state.paramsRows);
         if (state.headersRows) setHeadersRows(state.headersRows);
         if (state.authRows) setAuthRows(state.authRows);
+        if (state.authType !== undefined) setAuthType(state.authType);
+        if (state.authConfig) setAuthConfig(state.authConfig);
         if (state.bodyRows) setBodyRows(state.bodyRows);
+        if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
+        if (state.wsConfig) setWsConfig(state.wsConfig);
+        if (state.protocol) setProtocol(state.protocol);
+        if (state.requestName !== undefined) setRequestName(state.requestName);
+        if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
         if (state.activeRequestTab) setActiveRequestTab(state.activeRequestTab);
         if (state.activeResponseTab) setActiveResponseTab(state.activeResponseTab);
         if (Array.isArray(state.collections) && state.collections.length > 0) {
@@ -738,6 +780,7 @@ function App() {
         if (state.selectedTablePath) setSelectedTablePath(state.selectedTablePath);
         if (state.headersMode) setHeadersMode(state.headersMode);
         if (state.testsMode) setTestsMode(state.testsMode);
+        if (state.historyRetentionDays !== undefined) setHistoryRetentionDays(state.historyRetentionDays);
       } catch (err) {
         // ignore corrupt state
       }
@@ -756,11 +799,21 @@ function App() {
       testsPreText,
       testsPostText,
       testsInputText,
+      httpVersion,
+      requestTimeoutMs,
       bodyType,
       paramsRows,
       headersRows,
       authRows,
+      authType,
+      authConfig,
       bodyRows,
+      graphqlConfig,
+      wsConfig,
+      protocol,
+      requestName,
+      currentRequestId,
+      historyRetentionDays,
       activeRequestTab,
       activeResponseTab,
       collections,
@@ -788,11 +841,21 @@ function App() {
     testsPreText,
     testsPostText,
     testsInputText,
+    httpVersion,
+    requestTimeoutMs,
     bodyType,
     paramsRows,
     headersRows,
     authRows,
+    authType,
+    authConfig,
     bodyRows,
+    graphqlConfig,
+    wsConfig,
+    protocol,
+    requestName,
+    currentRequestId,
+    historyRetentionDays,
     activeRequestTab,
     activeResponseTab,
     collections,
@@ -818,11 +881,21 @@ function App() {
         testsPreText,
         testsPostText,
         testsInputText,
+        httpVersion,
+        requestTimeoutMs,
         bodyType,
         paramsRows,
         headersRows,
         authRows,
+        authType,
+        authConfig,
         bodyRows,
+        graphqlConfig,
+        wsConfig,
+        protocol,
+        requestName,
+        currentRequestId,
+        historyRetentionDays,
         activeRequestTab,
         activeResponseTab,
         collections,
@@ -850,11 +923,21 @@ function App() {
     testsPreText,
     testsPostText,
     testsInputText,
+    httpVersion,
+    requestTimeoutMs,
     bodyType,
     paramsRows,
     headersRows,
     authRows,
+    authType,
+    authConfig,
     bodyRows,
+    graphqlConfig,
+    wsConfig,
+    protocol,
+    requestName,
+    currentRequestId,
+    historyRetentionDays,
     activeRequestTab,
     activeResponseTab,
     collections,
@@ -1466,9 +1549,12 @@ function App() {
         curl += ` \\\n  -H '${k}: ${v}'`;
       });
       if (isMultipart && reqMethod !== "GET") {
-        const data = rowsToObject(bodyRows, snippetInterpolate);
-        Object.entries(data).forEach(([k, v]) => {
-          curl += ` \\\n  -F '${k}=${v}'`;
+        (bodyRows || []).filter((row) => row.key && row.enabled !== false).forEach((row) => {
+          if (row.kind === "file") {
+            curl += ` \\\n  -F '${val(row.key)}=@${row.fileName || "upload.bin"}'`;
+            return;
+          }
+          curl += ` \\\n  -F '${val(row.key)}=${val(row.value || "")}'`;
         });
       } else if (reqBody && reqMethod !== "GET") {
         curl += ` \\\n  -d '${reqBody.replace(/'/g, "'\\''")}'`;
@@ -1636,6 +1722,8 @@ function App() {
       method: req.method,
       url: req.url,
       bodyText: req.body || "",
+      httpVersion: req.httpVersion || "auto",
+      requestTimeoutMs: req.timeoutMs || 30000,
       bodyType: req.body ? "raw" : "none"
     };
 
@@ -1669,8 +1757,15 @@ function App() {
     }
   }
 
+  async function handleCancelHttpSend() {
+    if (!activeHttpRequestId || !window.api?.cancelRequest) return;
+    await window.api.cancelRequest({ requestId: activeHttpRequestId });
+  }
+
   async function handleSend() {
     setIsSending(true);
+    const requestId = `http-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setActiveHttpRequestId(requestId);
     setResponse(null);
     setResponseSummary({ summary: "Sending request...", hints: [] });
     setError("");
@@ -1678,22 +1773,44 @@ function App() {
       const headers = parseHeaders();
       if (headers === null) return;
       let body = bodyText;
+      let multipartParts = null;
       if (bodyType === "json") {
-        body = stripJsonComments(interpolate(bodyText));
+        const strippedJson = stripJsonComments(interpolate(bodyText));
+        if (strippedJson.trim()) {
+          try {
+            body = JSON.stringify(JSON.parse(strippedJson));
+          } catch (err) {
+            setError(`Invalid JSON body: ${err.message}`);
+            setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
+            return;
+          }
+        } else {
+          body = "";
+        }
       }
       if (bodyType === "form") {
         const data = rowsToObject(bodyRows);
         body = new URLSearchParams(data).toString();
       }
       if (bodyType === "multipart") {
-        const boundary = `----CommuBoundary${Date.now()}`;
-        const data = rowsToObject(bodyRows);
-        const parts = Object.entries(data).map(([key, value]) =>
-          `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}`
-        );
-        body = parts.join("\r\n") + `\r\n--${boundary}--\r\n`;
-        // Override Content-Type header with the boundary
-        headers["Content-Type"] = `multipart/form-data; boundary=${boundary}`;
+        multipartParts = (bodyRows || [])
+          .filter((row) => row.key && row.enabled !== false)
+          .map((row) => (
+            row.kind === "file"
+              ? {
+                  kind: "file",
+                  name: interpolate(row.key),
+                  filename: row.fileName || "upload.bin",
+                  contentType: row.mimeType || "application/octet-stream",
+                  dataBase64: row.fileBase64 || ""
+                }
+              : {
+                  kind: "text",
+                  name: interpolate(row.key),
+                  value: interpolate(row.value || "")
+                }
+          ));
+        body = undefined;
       }
       if (bodyType === "xml") {
         body = interpolate(bodyText);
@@ -1702,10 +1819,14 @@ function App() {
         body = interpolate(bodyText);
       }
       const payload = {
+        requestId,
         method,
         url: buildUrlWithParams(),
         headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
-        body
+        body,
+        multipartParts,
+        timeoutMs: requestTimeoutMs,
+        httpVersion
       };
 
       const preOutput = [];
@@ -1719,7 +1840,7 @@ function App() {
         },
         response: null
       };
-      runScript(testsPreText, preContext, preOutput);
+      await runScript(testsPreText, preContext, preOutput);
       payload.method = preContext.request.method || payload.method;
       payload.url = preContext.request.url || payload.url;
       payload.headers = preContext.request.headers || payload.headers;
@@ -1733,11 +1854,17 @@ function App() {
 
       const result = await window.api.sendRequest(payload);
 
+      if (result.cancelled) {
+        addLog({ source: "API", type: "info", message: `Request cancelled: ${payload.method} ${payload.url}` });
+        setResponseSummary({ summary: "Request cancelled.", hints: [] });
+        return;
+      }
+
       if (result.error) {
         setError(result.error);
         addLog({ source: "API", type: "error", message: `Request Error: ${payload.method} ${payload.url}`, data: result.error });
       } else {
-        addLog({ source: "API", type: result.status >= 400 ? "error" : "success", message: `Response: ${result.status} ${result.statusText} (${result.time}ms)` });
+        addLog({ source: "API", type: result.status >= 400 ? "error" : "success", message: `Response: ${result.status} ${result.statusText} (${result.time}ms) ${result.httpVersion ? `[${result.httpVersion}]` : ""}`.trim() });
       }
 
       setResponse(result);
@@ -1764,9 +1891,16 @@ function App() {
         redactedPayload.body = redactSecrets(redactedPayload.body);
       }
 
+      const requestContext = getCurrentRequestSyncContext();
       const historyEntry = {
         timestamp: now,
-        request: redactedPayload,
+        request: {
+          ...redactedPayload,
+          ...requestContext,
+          protocol: "http",
+          httpVersion,
+          timeoutMs: requestTimeoutMs
+        },
         response: result
       };
       const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;
@@ -1776,12 +1910,13 @@ function App() {
       });
 
       const postOutput = [];
-      runScript(testsPostText, { request: payload, response: result }, postOutput);
+      await runScript(testsPostText, { request: payload, response: result }, postOutput);
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
       }
     } finally {
+      setActiveHttpRequestId(null);
       setIsSending(false);
     }
   }
@@ -1830,7 +1965,7 @@ function App() {
         },
         response: null
       };
-      runScript(testsPreText, preContext, preOutput);
+      await runScript(testsPreText, preContext, preOutput);
       if (preOutput.length) {
         setTestsOutput(preOutput);
         setShowTestOutput(true);
@@ -1858,9 +1993,11 @@ function App() {
       cacheResponseForRequest(currentRequestId, result, summary);
 
       const now = Date.now();
+      const requestContext = getCurrentRequestSyncContext();
       const historyEntry = {
         timestamp: now,
         request: {
+          ...requestContext,
           protocol: "graphql",
           method: "POST",
           url: redactSecrets(requestPayload.url),
@@ -1877,7 +2014,7 @@ function App() {
       setHistory(prev => [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs));
 
       const postOutput = [];
-      runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
+      await runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
@@ -2205,7 +2342,7 @@ function App() {
     }
   };
 
-  function runTests() {
+  async function runTests() {
     setTestsOutput([]);
     let input = null;
     try {
@@ -2222,9 +2359,9 @@ function App() {
         response: input.response || input
       };
       if (testsMode === "pre") {
-        runScript(testsPreText, ctx, out, "pre-script");
+        await runScript(testsPreText, ctx, out, "pre-script");
       } else {
-        runScript(testsPostText, ctx, out, "post-script");
+        await runScript(testsPostText, ctx, out, "post-script");
       }
       setTestsOutput(out.length ? out : [{ type: "info", text: "Tests executed.", label: testsMode }]);
       setShowTestOutput(true);
@@ -2234,7 +2371,7 @@ function App() {
     }
   }
 
-  function runScript(code, context, output, label) {
+  async function runScript(code, context, output, label) {
     if (!code || !code.trim()) return;
     const safeOutput = output || [];
     const request = context.request || {};
@@ -2257,12 +2394,54 @@ function App() {
         request.url = value;
       }
     };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     // eslint-disable-next-line no-new-func
-    const fn = new Function("context", "api", "pm", "output", code);
-    fn({ request, response }, api, pm, safeOutput);
+    const fn = new AsyncFunction("context", "api", "pm", "output", code);
+    await fn({ request, response }, api, pm, safeOutput);
   }
 
   function buildPm(request, response, output, label) {
+    const env = environments.find((entry) => entry.id === activeEnvId) || null;
+    const collection = collections.find((entry) => entry.id === activeCollectionId) || null;
+
+    const readCollectionVar = (key) => {
+      const vars = collection?.variables || {};
+      return vars[key];
+    };
+    const writeCollectionVar = (key, value) => {
+      setCollections((prev) => prev.map((entry) => {
+        if (entry.id !== activeCollectionId) return entry;
+        return {
+          ...entry,
+          variables: {
+            ...(entry.variables || {}),
+            [key]: value
+          }
+        };
+      }));
+    };
+    const unsetCollectionVar = (key) => {
+      setCollections((prev) => prev.map((entry) => {
+        if (entry.id !== activeCollectionId) return entry;
+        const nextVars = { ...(entry.variables || {}) };
+        delete nextVars[key];
+        return { ...entry, variables: nextVars };
+      }));
+    };
+
+    const readEnvVar = (key) => env?.vars?.find((row) => row.key === key && row.enabled !== false)?.value;
+    const writeEnvVar = (key, value) => handleUpdateEnvVar(key, value);
+    const unsetEnvVar = (key) => {
+      if (!activeEnvId) return;
+      setEnvironments((prev) => prev.map((entry) => {
+        if (entry.id !== activeEnvId) return entry;
+        return {
+          ...entry,
+          vars: (entry.vars || []).filter((row) => row.key !== key)
+        };
+      }));
+    };
+
     const pm = {
       request: {
         headers: request.headers || {},
@@ -2283,7 +2462,33 @@ function App() {
             }
           }
           return null;
+        },
+        to: {
+          have: {
+            status: (expected) => {
+              const actual = response?.status ?? response?.code ?? 0;
+              if (actual !== expected) throw new Error(`Expected status ${expected} but got ${actual}`);
+            }
+          }
         }
+      },
+      environment: {
+        get: (key) => readEnvVar(key),
+        set: (key, value) => writeEnvVar(key, value),
+        unset: (key) => unsetEnvVar(key),
+        toObject: () => getEnvVars()
+      },
+      variables: {
+        get: (key) => readEnvVar(key),
+        set: (key, value) => writeEnvVar(key, value),
+        unset: (key) => unsetEnvVar(key),
+        toObject: () => getEnvVars()
+      },
+      collectionVariables: {
+        get: (key) => readCollectionVar(key),
+        set: (key, value) => writeCollectionVar(key, value),
+        unset: (key) => unsetCollectionVar(key),
+        toObject: () => ({ ...(collection?.variables || {}) })
       },
       test: (name, fn) => {
         try {
@@ -2312,13 +2517,34 @@ function App() {
               if (value !== false) throw new Error(`Expected false but got ${value}`);
             }
           },
+          exist: () => {
+            if (value === null || value === undefined) throw new Error("Expected value to exist");
+          },
+          have: {
+            property: (prop) => {
+              if (value == null || !(prop in Object(value))) {
+                throw new Error(`Expected property ${prop} to exist`);
+              }
+            }
+          },
           contain: (expected) => {
             if (!String(value).includes(String(expected))) {
               throw new Error(`Expected ${value} to contain ${expected}`);
             }
           }
         }
-      })
+      }),
+      sendRequest: async (config) => {
+        const result = await window.api.sendRequest({
+          method: config.method || "GET",
+          url: interpolate(config.url || ""),
+          headers: config.headers || {},
+          body: config.body,
+          httpVersion: config.httpVersion || httpVersion,
+          timeoutMs: config.timeoutMs || requestTimeoutMs
+        });
+        return result;
+      }
     };
     return pm;
   }
@@ -2548,6 +2774,10 @@ function App() {
                   setAuthConfig={setAuthConfig}
                   authRows={authRows}
                   setAuthRows={setAuthRows}
+                  httpVersion={httpVersion}
+                  setHttpVersion={setHttpVersion}
+                  requestTimeoutMs={requestTimeoutMs}
+                  setRequestTimeoutMs={setRequestTimeoutMs}
                   setCmEnvEdit={setCmEnvEdit}
                   bodyRows={bodyRows}
                   setBodyRows={setBodyRows}
@@ -2558,6 +2788,7 @@ function App() {
                   testsPostText={testsPostText}
                   setTestsPostText={setTestsPostText}
                   testsOutput={testsOutput}
+                  handleCancelSend={handleCancelHttpSend}
                 />
               )}
               {protocol === "graphql" && (
