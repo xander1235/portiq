@@ -7,8 +7,38 @@
 Commu is an open-source desktop API client built with React, Vite, and Electron. It combines everyday API workflows with AI-assisted request generation, response exploration, local persistence, and GitHub-based sync.
 
 <p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0f172a?style=for-the-badge&labelColor=111827&color=22c55e"></a>
+  <img alt="Electron" src="https://img.shields.io/badge/electron-30-0f172a?style=for-the-badge&labelColor=111827&color=38bdf8">
+  <img alt="React 18" src="https://img.shields.io/badge/react-18-0f172a?style=for-the-badge&labelColor=111827&color=61dafb">
+  <img alt="Vite 5" src="https://img.shields.io/badge/vite-5-0f172a?style=for-the-badge&labelColor=111827&color=f59e0b">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-0f172a?style=for-the-badge&labelColor=111827&color=a78bfa">
+</p>
+
+<p align="center">
   <img src="docs/screenshots/dashboard.png" width="860" alt="Commu dashboard" />
 </p>
+
+## Quick Start
+
+If you just want to run Commu locally:
+
+```bash
+npm install
+npm run dev
+```
+
+If you use Nix:
+
+```bash
+nix-shell -p nodejs_20 --run "npm install"
+nix-shell -p nodejs_20 --run "npm run dev"
+```
+
+If native modules need a rebuild:
+
+```bash
+npm run rebuild
+```
 
 ## Functionality
 
