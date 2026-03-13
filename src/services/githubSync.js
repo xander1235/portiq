@@ -4,6 +4,7 @@ import { getGitHubToken } from "./githubAuth.js";
 const SYNC_REPO_NAME = "commu-sync";
 const WORKSPACE_ROOT = "workspace";
 const LEGACY_STATE_FILE = "state.json";
+const SECRET_PLACEHOLDER_PREFIX = "__COMMU_SECRET__:";
 
 function getOctokit() {
     const token = getGitHubToken();
@@ -49,6 +50,187 @@ function slugify(value) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 48) || "item";
+}
+
+function makeSecretPlaceholder(scope) {
+    return `${SECRET_PLACEHOLDER_PREFIX}${scope}`;
+}
+
+function isSecretPlaceholder(value) {
+    return typeof value === "string" && value.startsWith(SECRET_PLACEHOLDER_PREFIX);
+}
+
+function isSensitiveKey(key) {
+    return /authorization|api[-_ ]?key|token|secret|password|cookie|auth|credential/i.test(String(key || ""));
+}
+
+function sanitizeSensitiveMap(input, scope) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+    const next = { ...input };
+    Object.keys(next).forEach((key) => {
+        if (next[key] && isSensitiveKey(key)) {
+            next[key] = makeSecretPlaceholder(`${scope}:${key}`);
+        }
+    });
+    return next;
+}
+
+function sanitizeSensitiveRows(rows, scope) {
+    if (!Array.isArray(rows)) return rows;
+    return rows.map((row, index) => {
+        if (!row || typeof row !== "object") return row;
+        if (!row.value || !isSensitiveKey(row.key)) return row;
+        return {
+            ...row,
+            value: makeSecretPlaceholder(`${scope}:row:${index}:${row.key || "value"}`)
+        };
+    });
+}
+
+function sanitizeSensitiveJsonText(text, scope) {
+    if (typeof text !== "string" || !text.trim()) return text;
+    try {
+        const parsed = JSON.parse(text);
+        return JSON.stringify(sanitizeSensitiveMap(parsed, scope), null, 2);
+    } catch {
+        return text;
+    }
+}
+
+function sanitizeAuthConfig(authConfig, scope) {
+    const base = authConfig && typeof authConfig === "object" ? authConfig : {};
+    const next = {
+        bearer: { ...(base.bearer || {}) },
+        basic: { ...(base.basic || {}) },
+        api_key: { ...(base.api_key || {}) }
+    };
+
+    if (next.bearer.token) {
+        next.bearer.token = makeSecretPlaceholder(`${scope}:auth:bearer:token`);
+    }
+    if (next.basic.password) {
+        next.basic.password = makeSecretPlaceholder(`${scope}:auth:basic:password`);
+    }
+    if (next.api_key.value) {
+        next.api_key.value = makeSecretPlaceholder(`${scope}:auth:api_key:value`);
+    }
+
+    return next;
+}
+
+function sanitizeWsConfig(wsConfig, scope) {
+    if (!wsConfig || typeof wsConfig !== "object") return wsConfig;
+    return {
+        ...wsConfig,
+        headersRows: sanitizeSensitiveRows(wsConfig.headersRows, `${scope}:ws:headersRows`),
+        headersText: sanitizeSensitiveJsonText(wsConfig.headersText, `${scope}:ws:headersText`)
+    };
+}
+
+function sanitizeGraphqlConfig(graphqlConfig, scope) {
+    if (!graphqlConfig || typeof graphqlConfig !== "object") return graphqlConfig;
+    return {
+        ...graphqlConfig,
+        headers: sanitizeSensitiveMap(graphqlConfig.headers, `${scope}:graphql:headers`)
+    };
+}
+
+function sanitizeRequestSecrets(request, scope) {
+    if (!request || typeof request !== "object") return request;
+    return {
+        ...request,
+        authConfig: sanitizeAuthConfig(request.authConfig, scope),
+        authRows: sanitizeSensitiveRows(request.authRows, `${scope}:authRows`),
+        headersRows: sanitizeSensitiveRows(request.headersRows, `${scope}:headersRows`),
+        paramsRows: sanitizeSensitiveRows(request.paramsRows, `${scope}:paramsRows`),
+        headersText: sanitizeSensitiveJsonText(request.headersText, `${scope}:headersText`),
+        graphqlConfig: sanitizeGraphqlConfig(request.graphqlConfig, scope),
+        wsConfig: sanitizeWsConfig(request.wsConfig, scope)
+    };
+}
+
+function restoreRowsWithLocalSecrets(remoteRows, localRows) {
+    if (!Array.isArray(remoteRows)) return remoteRows;
+    const localList = Array.isArray(localRows) ? localRows : [];
+    return remoteRows.map((row, index) => {
+        if (!row || typeof row !== "object" || !isSecretPlaceholder(row.value)) return row;
+        const localRow = localList[index];
+        if (localRow?.value && !isSecretPlaceholder(localRow.value)) {
+            return { ...row, value: localRow.value };
+        }
+        return row;
+    });
+}
+
+function restoreMapWithLocalSecrets(remoteMap, localMap) {
+    if (!remoteMap || typeof remoteMap !== "object" || Array.isArray(remoteMap)) return remoteMap;
+    const local = localMap && typeof localMap === "object" ? localMap : {};
+    const next = { ...remoteMap };
+    Object.keys(next).forEach((key) => {
+        if (isSecretPlaceholder(next[key]) && local[key] && !isSecretPlaceholder(local[key])) {
+            next[key] = local[key];
+        }
+    });
+    return next;
+}
+
+function restoreJsonTextWithLocalSecrets(remoteText, localText) {
+    if (typeof remoteText !== "string" || !remoteText.trim()) return remoteText;
+    try {
+        const remote = JSON.parse(remoteText);
+        const local = typeof localText === "string" && localText.trim() ? JSON.parse(localText) : {};
+        return JSON.stringify(restoreMapWithLocalSecrets(remote, local), null, 2);
+    } catch {
+        return remoteText;
+    }
+}
+
+function restoreAuthConfigWithLocalSecrets(remoteAuthConfig, localAuthConfig) {
+    const remote = remoteAuthConfig && typeof remoteAuthConfig === "object" ? remoteAuthConfig : {};
+    const local = localAuthConfig && typeof localAuthConfig === "object" ? localAuthConfig : {};
+    const next = {
+        bearer: { ...(remote.bearer || {}) },
+        basic: { ...(remote.basic || {}) },
+        api_key: { ...(remote.api_key || {}) }
+    };
+
+    if (isSecretPlaceholder(next.bearer.token) && local?.bearer?.token) {
+        next.bearer.token = local.bearer.token;
+    }
+    if (isSecretPlaceholder(next.basic.password) && local?.basic?.password) {
+        next.basic.password = local.basic.password;
+    }
+    if (isSecretPlaceholder(next.api_key.value) && local?.api_key?.value) {
+        next.api_key.value = local.api_key.value;
+    }
+
+    return next;
+}
+
+function restoreRequestSecrets(remoteRequest, localRequest) {
+    if (!remoteRequest || typeof remoteRequest !== "object") return remoteRequest;
+    const local = localRequest && typeof localRequest === "object" ? localRequest : {};
+    return {
+        ...remoteRequest,
+        authConfig: restoreAuthConfigWithLocalSecrets(remoteRequest.authConfig, local.authConfig),
+        authRows: restoreRowsWithLocalSecrets(remoteRequest.authRows, local.authRows),
+        headersRows: restoreRowsWithLocalSecrets(remoteRequest.headersRows, local.headersRows),
+        paramsRows: restoreRowsWithLocalSecrets(remoteRequest.paramsRows, local.paramsRows),
+        headersText: restoreJsonTextWithLocalSecrets(remoteRequest.headersText, local.headersText),
+        graphqlConfig: remoteRequest.graphqlConfig
+            ? {
+                ...remoteRequest.graphqlConfig,
+                headers: restoreMapWithLocalSecrets(remoteRequest.graphqlConfig.headers, local?.graphqlConfig?.headers)
+            }
+            : remoteRequest.graphqlConfig,
+        wsConfig: remoteRequest.wsConfig
+            ? {
+                ...remoteRequest.wsConfig,
+                headersRows: restoreRowsWithLocalSecrets(remoteRequest.wsConfig.headersRows, local?.wsConfig?.headersRows),
+                headersText: restoreJsonTextWithLocalSecrets(remoteRequest.wsConfig.headersText, local?.wsConfig?.headersText)
+            }
+            : remoteRequest.wsConfig
+    };
 }
 
 function getStorageJson(key, fallback = null) {
@@ -133,7 +315,7 @@ function serializeCollectionItems(items, basePath, files) {
         if (item.type === "request") {
             const requestPath = `${basePath}/${slugify(item.name)}__${item.id}.request.json`;
             files[requestPath] = {
-                ...item,
+                ...sanitizeRequestSecrets(item, `request:${item.id}`),
                 sortOrder: index
             };
         }
@@ -193,27 +375,29 @@ function buildWorkspaceFiles(appState, maskedVarIds = new Set()) {
     };
 
     files[`${WORKSPACE_ROOT}/draft/current-request.json`] = {
-        method: appState.method || "GET",
-        url: appState.url || "",
-        headersText: appState.headersText || "",
-        bodyText: appState.bodyText || "",
-        testsPreText: appState.testsPreText || "",
-        testsPostText: appState.testsPostText || "",
-        testsInputText: appState.testsInputText || "",
-        httpVersion: appState.httpVersion || "auto",
-        requestTimeoutMs: appState.requestTimeoutMs || 30000,
-        bodyType: appState.bodyType || "json",
-        paramsRows: appState.paramsRows || [],
-        headersRows: appState.headersRows || [],
-        authRows: appState.authRows || [],
-        authType: appState.authType || "none",
-        authConfig: appState.authConfig || {},
-        bodyRows: appState.bodyRows || [],
-        graphqlConfig: appState.graphqlConfig || {},
-        wsConfig: appState.wsConfig || {},
-        protocol: appState.protocol || "http",
-        requestName: appState.requestName || "New Request",
-        currentRequestId: appState.currentRequestId || ""
+        ...sanitizeRequestSecrets({
+            method: appState.method || "GET",
+            url: appState.url || "",
+            headersText: appState.headersText || "",
+            bodyText: appState.bodyText || "",
+            testsPreText: appState.testsPreText || "",
+            testsPostText: appState.testsPostText || "",
+            testsInputText: appState.testsInputText || "",
+            httpVersion: appState.httpVersion || "auto",
+            requestTimeoutMs: appState.requestTimeoutMs || 30000,
+            bodyType: appState.bodyType || "json",
+            paramsRows: appState.paramsRows || [],
+            headersRows: appState.headersRows || [],
+            authRows: appState.authRows || [],
+            authType: appState.authType || "none",
+            authConfig: appState.authConfig || {},
+            bodyRows: appState.bodyRows || [],
+            graphqlConfig: appState.graphqlConfig || {},
+            wsConfig: appState.wsConfig || {},
+            protocol: appState.protocol || "http",
+            requestName: appState.requestName || "New Request",
+            currentRequestId: appState.currentRequestId || ""
+        }, `draft:${appState.currentRequestId || "current"}`)
     };
 
     files[`${WORKSPACE_ROOT}/environments/environments.json`] = environments;
@@ -382,6 +566,34 @@ function buildItemsFromFiles(prefix, fileMap) {
         });
 }
 
+function buildRequestIndex(items, index = new Map()) {
+    (items || []).forEach((item) => {
+        if (item.type === "folder") {
+            buildRequestIndex(item.items || [], index);
+            return;
+        }
+        if (item.type === "request" && item.id) {
+            index.set(item.id, item);
+        }
+    });
+    return index;
+}
+
+function restoreCollectionItemsWithLocalSecrets(items, localIndex) {
+    return (items || []).map((item) => {
+        if (item.type === "folder") {
+            return {
+                ...item,
+                items: restoreCollectionItemsWithLocalSecrets(item.items || [], localIndex)
+            };
+        }
+        if (item.type === "request") {
+            return restoreRequestSecrets(item, localIndex.get(item.id));
+        }
+        return item;
+    });
+}
+
 async function fetchWorkspaceData(octokit, owner, repo, branch) {
     const tree = await getRepoTree(octokit, owner, repo, branch);
     const workspaceEntries = tree.filter((entry) => entry.type === "blob" && entry.path.startsWith(`${WORKSPACE_ROOT}/`));
@@ -522,6 +734,22 @@ export async function pullStateFromGitHub() {
             return String(a.name || a.id).localeCompare(String(b.name || b.id));
         });
 
+    const localRequestIndex = buildRequestIndex(currentAppState.collections || []);
+    const mergedCollections = collections.map((collection) => ({
+        ...collection,
+        items: restoreCollectionItemsWithLocalSecrets(collection.items || [], localRequestIndex)
+    }));
+
+    const restoredDraft = restoreRequestSecrets(draft, {
+        headersText: currentAppState.headersText,
+        authRows: currentAppState.authRows,
+        headersRows: currentAppState.headersRows,
+        paramsRows: currentAppState.paramsRows,
+        authConfig: currentAppState.authConfig,
+        graphqlConfig: currentAppState.graphqlConfig,
+        wsConfig: currentAppState.wsConfig
+    });
+
     const history = Object.keys(fileMap)
         .filter((path) => path.startsWith(`${WORKSPACE_ROOT}/history/`) && path.endsWith(".json"))
         .sort()
@@ -530,8 +758,8 @@ export async function pullStateFromGitHub() {
     const nextAppState = {
         ...currentAppState,
         ...settings,
-        ...draft,
-        collections,
+        ...restoredDraft,
+        collections: mergedCollections,
         environments,
         activeCollectionId: settings.activeCollectionId || currentAppState.activeCollectionId || null,
         activeEnvId: settings.activeEnvId || currentAppState.activeEnvId || null,
@@ -540,7 +768,10 @@ export async function pullStateFromGitHub() {
 
     await saveAppStateSnapshot(nextAppState);
     writeWorkspaceStateToStorage(nextAppState, history);
-    return true;
+    return {
+        appState: nextAppState,
+        history
+    };
 }
 
 export async function testGitHubConnection() {

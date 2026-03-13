@@ -1,5 +1,11 @@
 # ai-api-client
 
+## 0.2.1
+
+### Patch Changes
+
+- Improved GitHub sync so request auth secrets are replaced with placeholders during sync and restored from local values on pull when available. Added background push and pull behavior with top-bar sync status feedback instead of blocking the sync modal.
+
 ## 0.2.0
 
 ### Minor Changes

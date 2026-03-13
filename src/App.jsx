@@ -449,6 +449,11 @@ function App() {
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showGitHubSyncModal, setShowGitHubSyncModal] = useState(false);
+  const [gitHubSyncState, setGitHubSyncState] = useState({
+    status: "idle",
+    label: "",
+    detail: ""
+  });
   const [exportTargetNode, setExportTargetNode] = useState(null);
   const [exportSelections, setExportSelections] = useState(new Set());
   const [exportCollapsedFolders, setExportCollapsedFolders] = useState(new Set());
@@ -774,6 +779,93 @@ function App() {
     return localStorage.getItem("appState");
   }
 
+  const applyPersistedState = useCallback((state, historyValue) => {
+    if (!state) return;
+    try {
+      if (state.method) setMethod(state.method);
+      if (state.url) setUrl(state.url);
+      if (state.headersText) setHeadersText(state.headersText);
+      if (state.bodyText !== undefined) setBodyText(state.bodyText);
+      if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
+      if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
+      if (state.testsInputText) setTestsInputText(state.testsInputText);
+      if (state.httpVersion) setHttpVersion(state.httpVersion);
+      if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
+      if (state.bodyType) setBodyType(state.bodyType);
+      if (state.paramsRows) setParamsRows(state.paramsRows);
+      if (state.headersRows) setHeadersRows(state.headersRows);
+      if (state.authRows) setAuthRows(state.authRows);
+      if (state.authType !== undefined) setAuthType(state.authType);
+      if (state.authConfig) setAuthConfig(state.authConfig);
+      if (state.bodyRows) setBodyRows(state.bodyRows);
+      if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
+      if (state.wsConfig) setWsConfig(state.wsConfig);
+      if (state.protocol) setProtocol(state.protocol);
+      if (state.requestName !== undefined) setRequestName(state.requestName);
+      if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
+      if (state.activeRequestTab) setActiveRequestTab(state.activeRequestTab);
+      if (state.activeResponseTab) setActiveResponseTab(state.activeResponseTab);
+      if (Array.isArray(state.collections) && state.collections.length > 0) {
+        setCollections(state.collections);
+      }
+      if (state.activeCollectionId) setActiveCollectionId(state.activeCollectionId);
+      if (Array.isArray(state.environments)) {
+        setEnvironments(state.environments);
+      }
+      if (state.activeEnvId !== undefined) setActiveEnvId(state.activeEnvId);
+      if (state.search !== undefined) setSearch(state.search);
+      if (state.searchKey !== undefined) setSearchKey(state.searchKey);
+      if (state.sortKey !== undefined) setSortKey(state.sortKey);
+      if (state.sortDirection) setSortDirection(state.sortDirection);
+      if (state.selectedTablePath) setSelectedTablePath(state.selectedTablePath);
+      if (state.headersMode) setHeadersMode(state.headersMode);
+      if (state.testsMode) setTestsMode(state.testsMode);
+      if (state.historyRetentionDays !== undefined) setHistoryRetentionDays(state.historyRetentionDays);
+      if (Array.isArray(historyValue)) {
+        setHistory(historyValue);
+      }
+    } catch (err) {
+      // ignore corrupt state
+    }
+  }, [
+    setMethod,
+    setUrl,
+    setHeadersText,
+    setBodyText,
+    setTestsPreText,
+    setTestsPostText,
+    setTestsInputText,
+    setHttpVersion,
+    setRequestTimeoutMs,
+    setBodyType,
+    setParamsRows,
+    setHeadersRows,
+    setAuthRows,
+    setAuthType,
+    setAuthConfig,
+    setBodyRows,
+    setGraphqlConfig,
+    setWsConfig,
+    setProtocol,
+    setRequestName,
+    setCurrentRequestId,
+    setActiveRequestTab,
+    setActiveResponseTab,
+    setCollections,
+    setActiveCollectionId,
+    setEnvironments,
+    setActiveEnvId,
+    setSearch,
+    setSearchKey,
+    setSortKey,
+    setSortDirection,
+    setSelectedTablePath,
+    setHeadersMode,
+    setTestsMode,
+    setHistoryRetentionDays,
+    setHistory
+  ]);
+
   function savePersisted(value) {
     if (window.api?.saveState) {
       window.api.saveState("appState", value).catch(() => {
@@ -790,45 +882,7 @@ function App() {
       if (!isMounted || !value) return;
       try {
         const state = JSON.parse(value);
-        if (state.method) setMethod(state.method);
-        if (state.url) setUrl(state.url);
-        if (state.headersText) setHeadersText(state.headersText);
-        if (state.bodyText !== undefined) setBodyText(state.bodyText);
-        if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
-        if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
-        if (state.testsInputText) setTestsInputText(state.testsInputText);
-        if (state.httpVersion) setHttpVersion(state.httpVersion);
-        if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
-        if (state.bodyType) setBodyType(state.bodyType);
-        if (state.paramsRows) setParamsRows(state.paramsRows);
-        if (state.headersRows) setHeadersRows(state.headersRows);
-        if (state.authRows) setAuthRows(state.authRows);
-        if (state.authType !== undefined) setAuthType(state.authType);
-        if (state.authConfig) setAuthConfig(state.authConfig);
-        if (state.bodyRows) setBodyRows(state.bodyRows);
-        if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
-        if (state.wsConfig) setWsConfig(state.wsConfig);
-        if (state.protocol) setProtocol(state.protocol);
-        if (state.requestName !== undefined) setRequestName(state.requestName);
-        if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
-        if (state.activeRequestTab) setActiveRequestTab(state.activeRequestTab);
-        if (state.activeResponseTab) setActiveResponseTab(state.activeResponseTab);
-        if (Array.isArray(state.collections) && state.collections.length > 0) {
-          setCollections(state.collections);
-        }
-        if (state.activeCollectionId) setActiveCollectionId(state.activeCollectionId);
-        if (Array.isArray(state.environments) && state.environments.length > 0) {
-          setEnvironments(state.environments);
-        }
-        if (state.activeEnvId) setActiveEnvId(state.activeEnvId);
-        if (state.search !== undefined) setSearch(state.search);
-        if (state.searchKey !== undefined) setSearchKey(state.searchKey);
-        if (state.sortKey !== undefined) setSortKey(state.sortKey);
-        if (state.sortDirection) setSortDirection(state.sortDirection);
-        if (state.selectedTablePath) setSelectedTablePath(state.selectedTablePath);
-        if (state.headersMode) setHeadersMode(state.headersMode);
-        if (state.testsMode) setTestsMode(state.testsMode);
-        if (state.historyRetentionDays !== undefined) setHistoryRetentionDays(state.historyRetentionDays);
+        applyPersistedState(state);
       } catch (err) {
         // ignore corrupt state
       }
@@ -836,7 +890,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [applyPersistedState]);
 
   useEffect(() => {
     const payload = {
@@ -918,6 +972,41 @@ function App() {
     headersMode,
     testsMode
   ]);
+
+  const handleGitHubSyncStateChange = useCallback((nextState) => {
+    setGitHubSyncState(nextState || { status: "idle", label: "", detail: "" });
+  }, []);
+
+  const handlePulledState = useCallback((result) => {
+    if (!result) return;
+    applyPersistedState(result.appState, result.history);
+  }, [applyPersistedState]);
+
+  const gitHubSyncBadgeStyle = useMemo(() => {
+    const status = gitHubSyncState?.status;
+    if (status === "syncing" || status === "pulling") {
+      return {
+        color: "#7dd3fc",
+        background: "rgba(56, 189, 248, 0.12)",
+        border: "1px solid rgba(56, 189, 248, 0.24)"
+      };
+    }
+    if (status === "synced" || status === "pulled") {
+      return {
+        color: "#34d399",
+        background: "rgba(16, 185, 129, 0.12)",
+        border: "1px solid rgba(16, 185, 129, 0.24)"
+      };
+    }
+    if (status === "error") {
+      return {
+        color: "#f87171",
+        background: "rgba(239, 68, 68, 0.12)",
+        border: "1px solid rgba(239, 68, 68, 0.24)"
+      };
+    }
+    return null;
+  }, [gitHubSyncState]);
 
   useEffect(() => {
     const handler = () => {
@@ -3002,9 +3091,31 @@ function App() {
             onChange={(e) => setTopSearch(e.target.value)}
           />
           <Button variant="ghost" size="sm" onClick={() => setShowWorkspace(true)}>Workspace: Default</Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowGitHubSyncModal(true)} className="gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowGitHubSyncModal(true)}
+            className="gap-2"
+            title={gitHubSyncState.detail || "Open GitHub sync"}
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
             GitHub Sync
+            {gitHubSyncState.label && gitHubSyncBadgeStyle && (
+              <span
+                style={{
+                  ...gitHubSyncBadgeStyle,
+                  marginLeft: 4,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  lineHeight: 1.4,
+                  whiteSpace: "nowrap"
+                }}
+              >
+                {gitHubSyncState.label}
+              </span>
+            )}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>Settings</Button>
         </div>
@@ -3316,6 +3427,8 @@ function App() {
       <GitHubSyncModal
         isOpen={showGitHubSyncModal}
         onClose={() => setShowGitHubSyncModal(false)}
+        onSyncStateChange={handleGitHubSyncStateChange}
+        onPulledState={handlePulledState}
       />
 
       {cmEnvEdit && (

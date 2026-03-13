@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { getGitHubToken, setGitHubToken, requestDeviceCode, pollForToken } from "../../services/githubAuth.js";
 import { testGitHubConnection, pushStateToGitHub, pullStateFromGitHub, pushHistoryToGitHub, previewEnvironmentsForSync } from "../../services/githubSync.js";
 
-export function GitHubSyncModal({ isOpen, onClose }) {
+export function GitHubSyncModal({ isOpen, onClose, onSyncStateChange, onPulledState }) {
     const [user, setUser] = useState(null);
     const [statusText, setStatusText] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
@@ -100,36 +100,54 @@ export function GitHubSyncModal({ isOpen, onClose }) {
     };
 
     const performActualPush = async (maskedIds) => {
-        setIsProcessing(true);
-        setStatusText("Pushing State & History to GitHub...");
+        onSyncStateChange?.({
+            status: "syncing",
+            label: "Syncing...",
+            detail: "Pushing workspace and history to GitHub"
+        });
+        onClose?.();
         try {
             await pushStateToGitHub(maskedIds);
             await pushHistoryToGitHub();
-            setStatusText(`Successfully pushed to GitHub! (${new Date().toLocaleTimeString()})`);
-            setAuthStep("connected");
+            onSyncStateChange?.({
+                status: "synced",
+                label: "Synced",
+                detail: `Last sync ${new Date().toLocaleTimeString()}`
+            });
         } catch (e) {
             console.error(e);
-            setStatusText(`Failed to push: ${e.message}`);
-        } finally {
-            setIsProcessing(false);
+            onSyncStateChange?.({
+                status: "error",
+                label: "Sync failed",
+                detail: e.message || "Failed to push to GitHub"
+            });
         }
     };
 
     const handlePull = async () => {
-        if (!window.confirm("Are you sure? Pulling from GitHub will overwrite your current local state and reload the app.")) return;
+        if (!window.confirm("Are you sure? Pulling from GitHub will overwrite your current local state with the synced workspace.")) return;
 
-        setIsProcessing(true);
-        setStatusText("Pulling from GitHub...");
+        onSyncStateChange?.({
+            status: "pulling",
+            label: "Pulling...",
+            detail: "Fetching workspace from GitHub"
+        });
+        onClose?.();
         try {
-            await pullStateFromGitHub();
-            setStatusText(`Successfully pulled! Reloading app...`);
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
+            const result = await pullStateFromGitHub();
+            onPulledState?.(result);
+            onSyncStateChange?.({
+                status: "pulled",
+                label: "Pulled",
+                detail: `Last pull ${new Date().toLocaleTimeString()}`
+            });
         } catch (e) {
             console.error(e);
-            setStatusText(`Failed to pull: ${e.message}`);
-            setIsProcessing(false);
+            onSyncStateChange?.({
+                status: "error",
+                label: "Pull failed",
+                detail: e.message || "Failed to pull from GitHub"
+            });
         }
     };
 
