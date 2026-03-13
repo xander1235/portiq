@@ -2,13 +2,13 @@ const SAFE_EXPRESSION = /^[\w\s+\-*/()."'`]+$/;
 
 export function createDerivedError(message) {
   return {
-    __commuDerivedError: true,
+    __portiqDerivedError: true,
     message: message || "Derived field evaluation failed"
   };
 }
 
 export function isDerivedError(value) {
-  return Boolean(value && typeof value === "object" && value.__commuDerivedError);
+  return Boolean(value && typeof value === "object" && value.__portiqDerivedError);
 }
 
 function normalizeValue(value) {

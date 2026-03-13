@@ -1,4 +1,10 @@
-# ai-api-client
+# Portiq
+
+## 0.2.2
+
+### Patch Changes
+
+- Completed the Portiq rebrand by updating remaining internal identifiers, repository-facing metadata, and documentation naming. Renamed the GitHub repository from `commu` to `portiq` and aligned release-facing branding with the new product name.
 
 ## 0.2.1
 

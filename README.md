@@ -450,8 +450,8 @@ Key areas:
 
 Contributions are welcome.
 
-- Read [/Users/ss/Documents/Commu/CONTRIBUTING.md](CONTRIBUTING.md)
-- Review [/Users/ss/Documents/Commu/CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Read [/Users/ss/Documents/Portiq/CONTRIBUTING.md](CONTRIBUTING.md)
+- Review [/Users/ss/Documents/Portiq/CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 If you are opening issues or pull requests, it helps a lot to include:
 

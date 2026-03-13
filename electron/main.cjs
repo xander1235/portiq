@@ -120,7 +120,7 @@ function buildHttpResult({ status, statusText, headers, body, duration, httpVers
 }
 
 function buildMultipartBody(parts) {
-  const boundary = `----CommuBoundary${Date.now().toString(16)}`;
+  const boundary = `----PortiqBoundary${Date.now().toString(16)}`;
   const buffers = [];
 
   for (const part of parts || []) {
