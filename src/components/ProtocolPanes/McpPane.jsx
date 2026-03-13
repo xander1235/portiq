@@ -25,7 +25,7 @@ export function McpPane({ url, setUrl }) {
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
           protocolVersion: "2025-03-26",
           capabilities: {},
-          clientInfo: { name: "Commu", version: "0.1.0" },
+          clientInfo: { name: "Portiq", version: "0.2.1" },
         }}),
       });
       const data = await res.json();

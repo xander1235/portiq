@@ -1,5 +1,5 @@
 {
-  "name": "ai-api-client",
+  "name": "portiq",
   "version": "0.2.1",
   "private": true,
   "type": "module",
@@ -13,11 +13,11 @@
     "lint": "eslint .",
     "package": "vite build && electron-builder build --mac"
   },
-  "description": "Commu - The modern AI-powered API Client",
-  "author": "Commu Contributors",
+  "description": "Portiq - The modern AI-powered API client",
+  "author": "Portiq Contributors",
   "build": {
-    "appId": "com.commu.app",
-    "productName": "Commu",
+    "appId": "com.portiq.app",
+    "productName": "Portiq",
     "directories": {
       "output": "release"
     },
@@ -28,10 +28,10 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": "build/icon.png"
+      "icon": "src/assets/logo.png"
     },
     "win": {
-      "icon": "build/icon.png",
+      "icon": "src/assets/logo.png",
       "target": "nsis"
     },
     "nsis": {
@@ -40,7 +40,7 @@
       "deleteAppDataOnUninstall": true
     },
     "linux": {
-      "icon": "build/icon.png"
+      "icon": "src/assets/logo.png"
     }
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 import { Octokit } from "@octokit/rest";
 import { getGitHubToken } from "./githubAuth.js";
 
-const SYNC_REPO_NAME = "commu-sync";
+const SYNC_REPO_NAME = "portiq-sync";
 const WORKSPACE_ROOT = "workspace";
 const LEGACY_STATE_FILE = "state.json";
 const SECRET_PLACEHOLDER_PREFIX = "__COMMU_SECRET__:";
@@ -28,7 +28,7 @@ async function ensureSyncRepo(octokit) {
                 name: SYNC_REPO_NAME,
                 private: true,
                 auto_init: true,
-                description: "Commu App Sync Repository"
+                description: "Portiq App Sync Repository"
             });
             return { owner, repo: SYNC_REPO_NAME, defaultBranch: createdRepo.default_branch || "main" };
         }
@@ -356,7 +356,7 @@ function buildWorkspaceFiles(appState, maskedVarIds = new Set()) {
     files[`${WORKSPACE_ROOT}/manifest.json`] = {
         version: 2,
         updatedAt: new Date().toISOString(),
-        format: "commu-workspace-tree"
+        format: "portiq-workspace-tree"
     };
 
     files[`${WORKSPACE_ROOT}/settings.json`] = {

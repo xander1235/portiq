@@ -1,10 +1,11 @@
+# Portiq
+
 <p align="center">
-  <img src="src/assets/logo.png" width="180" alt="Commu logo" />
+  <img src="src/assets/logo_bg.png" width="180" alt="Portiq logo" />
 </p>
 
-# Commu
 
-Commu is an open-source desktop API client built with React, Vite, and Electron. It combines everyday API workflows with AI-assisted request generation, response exploration, local persistence, and GitHub-based sync.
+Portiq is an open-source desktop API client built with React, Vite, and Electron. It combines everyday API workflows with AI-assisted request generation, response exploration, local persistence, and GitHub-based sync.
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0f172a?style=for-the-badge&labelColor=111827&color=22c55e"></a>
@@ -15,12 +16,12 @@ Commu is an open-source desktop API client built with React, Vite, and Electron.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="860" alt="Commu dashboard" />
+  <img src="docs/screenshots/dashboard.png" width="860" alt="Portiq dashboard" />
 </p>
 
 ## Quick Start
 
-If you just want to run Commu locally:
+If you just want to run Portiq locally:
 
 ```bash
 npm install
@@ -72,7 +73,7 @@ Start here if you want the product overview first. Each item links to the detail
 
 ## Protocol Support
 
-Commu is multi-protocol, but not every protocol has the same maturity yet.
+Portiq is multi-protocol, but not every protocol has the same maturity yet.
 
 | Protocol | Status | Notes |
 | --- | --- | --- |
@@ -92,7 +93,7 @@ Important notes:
 
 ## Request Building
 
-Commu supports day-to-day API request authoring with a desktop-first editor layout.
+Portiq supports day-to-day API request authoring with a desktop-first editor layout.
 
 ### HTTP request capabilities
 
@@ -143,7 +144,7 @@ Commu supports day-to-day API request authoring with a desktop-first editor layo
 
 ## Collections, Workspaces, and History
 
-Commu is designed around reusable request organization, not one-off tabs only.
+Portiq is designed around reusable request organization, not one-off tabs only.
 
 - collections with nested folders
 - request tree grouped inside collections
@@ -172,7 +173,7 @@ Environments help you move between local, staging, and production configurations
 
 ## Response Inspection and Data Tools
 
-Commu includes several ways to inspect the same response without switching tools.
+Portiq includes several ways to inspect the same response without switching tools.
 
 ### Response views
 
@@ -202,7 +203,7 @@ Commu includes several ways to inspect the same response without switching tools
 
 ## Scripts and Tests
 
-Commu supports request lifecycle scripting and lightweight assertion workflows.
+Portiq supports request lifecycle scripting and lightweight assertion workflows.
 
 - pre-request scripts
 - post-response scripts
@@ -219,7 +220,7 @@ Current scripting focus:
 
 ## AI Features
 
-Commu includes built-in AI helpers for request authoring and analysis.
+Portiq includes built-in AI helpers for request authoring and analysis.
 
 - natural-language request generation
 - AI-generated tests from a response
@@ -234,7 +235,7 @@ AI behavior is configurable in [Settings](#settings).
 
 ## Import and Export
 
-Commu supports moving request data in and out of the app.
+Portiq supports moving request data in and out of the app.
 
 ### Import
 
@@ -250,7 +251,7 @@ Commu supports moving request data in and out of the app.
 
 ## GitHub Sync
 
-Commu does not require a custom backend for sync. Instead, it can sync to a private GitHub repository named `commu-sync`.
+Portiq does not require a custom backend for sync. Instead, it can sync to a private GitHub repository named `portiq-sync`.
 
 ### What gets synced
 
@@ -263,7 +264,7 @@ Commu does not require a custom backend for sync. Instead, it can sync to a priv
 
 ### Sync layout
 
-Instead of writing everything into a single `state.json`, Commu stores sync data in isolated files:
+Instead of writing everything into a single `state.json`, Portiq stores sync data in isolated files:
 
 ```text
 workspace/
@@ -333,7 +334,7 @@ All primary settings live in the in-app Settings modal.
 
 ## Local Storage and Data Paths
 
-Commu stores data locally on your machine.
+Portiq stores data locally on your machine.
 
 - Electron app state is persisted in the app data directory
 - SQLite is used for local persistence
@@ -341,9 +342,9 @@ Commu stores data locally on your machine.
 
 Typical app data locations:
 
-- macOS: `~/Library/Application Support/Commu/`
-- Windows: `%APPDATA%/Commu/`
-- Linux: `~/.config/Commu/`
+- macOS: `~/Library/Application Support/Portiq/`
+- Windows: `%APPDATA%/Portiq/`
+- Linux: `~/.config/Portiq/`
 
 You can also check the exact path from the app through `Settings -> Data Management -> Show Data Location`.
 
@@ -461,4 +462,4 @@ If you are opening issues or pull requests, it helps a lot to include:
 
 ## License
 
-Commu is released under the [MIT License](LICENSE).
+Portiq is released under the [MIT License](LICENSE).

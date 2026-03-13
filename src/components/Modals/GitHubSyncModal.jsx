@@ -166,7 +166,7 @@ export function GitHubSyncModal({ isOpen, onClose, onSyncStateChange, onPulledSt
                     {authStep === "start" && (
                         <div style={{ textAlign: 'center', padding: '16px' }}>
                             <p style={{ fontSize: '0.9rem', color: 'var(--muted)', marginBottom: '16px' }}>
-                                Connect your GitHub account to sync your collections across devices. We will create a private repository called <code>commu-sync</code> to securely store your data.
+                                Connect your GitHub account to sync your collections across devices. We will create a private repository called <code>portiq-sync</code> to securely store your data.
                             </p>
                             <button className="primary" style={{ width: '100%', padding: '12px' }} onClick={handleLogin} disabled={isProcessing}>
                                 {isProcessing ? "Loading..." : "Log in with GitHub"}

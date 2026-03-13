@@ -23,7 +23,7 @@ const STATUS = {
 };
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const METHOD_COLORS = { GET: "#22c55e", POST: "#f59e0b", PUT: "#3b82f6", PATCH: "#a78bfa", DELETE: "#ff5555", HEAD: "#64748b", OPTIONS: "#64748b" };
-const STORAGE_KEY = "commu_dag_flow_state_v1";
+const STORAGE_KEY = "portiq_dag_flow_state_v1";
 const REQUEST_TABS = ["Params", "Headers", "Auth", "Body", "Tests"];
 const RESPONSE_TABS = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 

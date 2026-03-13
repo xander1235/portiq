@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import ReactDOM from "react-dom";
 import styles from "./App.module.css";
-import logo from "./assets/logo.png";
+import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
@@ -1446,7 +1446,7 @@ function App() {
           const parsedCol = parseImportData(imported);
           if (parsedCol === false) return; // Handled by collision modal
           if (!parsedCol) {
-            alert("Invalid collection format. Expected Commu or HTTPie format.");
+            alert("Invalid collection format. Expected Portiq or HTTPie format.");
             return;
           }
           setCollections((prev) => [...prev, parsedCol]);
@@ -1471,7 +1471,7 @@ function App() {
         return;
       }
       if (!parsedCol) {
-        alert("Invalid collection format. Expected Commu or HTTPie format.");
+        alert("Invalid collection format. Expected Portiq or HTTPie format.");
         return;
       }
       setCollections((prev) => [...prev, parsedCol]);
@@ -1510,7 +1510,7 @@ function App() {
           return;
         }
         if (!parsedCol) {
-          alert("Invalid collection format. Expected Commu or HTTPie format.");
+          alert("Invalid collection format. Expected Portiq or HTTPie format.");
           return;
         }
         setCollections((prev) => [...prev, parsedCol]);
@@ -1668,7 +1668,7 @@ function App() {
 
     const exportData = {
       info: {
-        name: exportTargetNode.name || "Commu Collection",
+        name: exportTargetNode.name || "Portiq Collection",
         schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
       },
       item: postmanItems
@@ -3011,8 +3011,8 @@ function App() {
     <div className={styles.app}>
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, #141a28, #10131c)" }}>
         <div className="flex items-center gap-2">
-          <img src={logo} alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
-          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>commu</div>
+          <img src={logo} alt="Portiq Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>portiq</div>
           <Button
             variant={activeSidebar === "Collections" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}

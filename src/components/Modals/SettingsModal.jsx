@@ -245,7 +245,7 @@ export function SettingsModal({
                       const p = await window.api.getDataPath();
                       alert("Your app data is stored at:\n\n" + p + "\n\nYou can manually delete this folder for a complete cleanup after uninstalling.");
                     } catch {
-                      alert("Data path: ~/Library/Application Support/Commu/");
+                      alert("Data path: ~/Library/Application Support/Portiq/");
                     }
                   }}
                 >
