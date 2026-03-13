@@ -276,6 +276,7 @@ export function RequestEditor({
                                     <SelectValue placeholder="Select Type" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
                                     <SelectItem value="json">JSON</SelectItem>
                                     <SelectItem value="xml">XML</SelectItem>
                                     <SelectItem value="form">x-www-form-urlencoded</SelectItem>
@@ -604,6 +605,7 @@ export function RequestEditor({
                                     <SelectValue placeholder="Select Type" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
                                     <SelectItem value="json">JSON</SelectItem>
                                     <SelectItem value="xml">XML</SelectItem>
                                     <SelectItem value="form">x-www-form-urlencoded</SelectItem>
@@ -641,6 +643,11 @@ export function RequestEditor({
                             className={styles.bodyEditor}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}
                         >
+                            {bodyType === "none" && (
+                                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: isFullScreen ? "none" : "1px solid var(--border)", borderRadius: "4px", fontSize: "0.9rem" }}>
+                                    This request will be sent without a body.
+                                </div>
+                            )}
                             {(bodyType === "json" || bodyType === "xml" || bodyType === "raw") && (() => {
                                 const envAutoComplete = createEnvAutoComplete(getEnvVars);
                                 const envHoverTooltip = createEnvHoverTooltip(getEnvVars, setCmEnvEdit);

@@ -21,6 +21,7 @@ export function Sidebar({
     importCollection,
     setShowImportTextModal,
     setShowImportApiModal,
+    setShowImportCurlModal,
     collections,
     activeCollectionId,
     setActiveCollectionId,
@@ -343,10 +344,39 @@ export function Sidebar({
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="sm" className="h-7 text-xs px-2">Import</Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40 bg-panel border-border text-foreground">
-                                    <DropdownMenuItem onClick={() => { importCollection(); setShowImportMenu(false); }} className="cursor-pointer text-xs">From File</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => { setShowImportTextModal(true); setShowImportMenu(false); }} className="cursor-pointer text-xs">From Text</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => { setShowImportApiModal(true); setShowImportMenu(false); }} className="cursor-pointer text-xs">From API URL</DropdownMenuItem>
+                                <DropdownMenuContent align="end" className="menu w-40 bg-panel border-border text-foreground">
+                                    <DropdownMenuItem
+                                        onSelect={() => {
+                                            setTimeout(() => importCollection(), 0);
+                                        }}
+                                        className="cursor-pointer text-xs"
+                                    >
+                                        From File
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onSelect={() => {
+                                            setTimeout(() => setShowImportTextModal(true), 0);
+                                        }}
+                                        className="cursor-pointer text-xs"
+                                    >
+                                        From Text
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onSelect={() => {
+                                            setTimeout(() => setShowImportCurlModal(true), 0);
+                                        }}
+                                        className="cursor-pointer text-xs"
+                                    >
+                                        From cURL
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onSelect={() => {
+                                            setTimeout(() => setShowImportApiModal(true), 0);
+                                        }}
+                                        className="cursor-pointer text-xs"
+                                    >
+                                        From API URL
+                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>

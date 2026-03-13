@@ -76,15 +76,56 @@ function findArrayPaths(value, prefix = "$") {
   return paths;
 }
 
+function tokenizeJsonPath(path) {
+  if (!path || path === "$") return [];
+  const cleaned = path.replace(/^\$\.?/, "");
+  const tokenPattern = /([^.[\]]+)|\[(\d+|\*)\]/g;
+  const tokens = [];
+  let match;
+  while ((match = tokenPattern.exec(cleaned))) {
+    if (match[1]) {
+      tokens.push({ type: "property", value: match[1] });
+    } else if (match[2] === "*") {
+      tokens.push({ type: "wildcard" });
+    } else {
+      tokens.push({ type: "index", value: Number(match[2]) });
+    }
+  }
+  return tokens;
+}
+
 function getValueByPath(root, path) {
   if (!path || path === "$") return root;
-  const cleaned = path.replace(/^\$\./, "");
-  const parts = cleaned.split(".").flatMap((part) => {
-    const match = part.match(/(\w+)\[(\d+)\]/);
-    if (match) return [match[1], Number(match[2])];
-    return [part];
-  });
-  return parts.reduce((acc, key) => (acc == null ? acc : acc[key]), root);
+  const tokens = tokenizeJsonPath(path);
+  let current = [root];
+
+  for (const token of tokens) {
+    const next = [];
+    for (const item of current) {
+      if (token.type === "property") {
+        if (item != null && typeof item === "object" && token.value in item) {
+          next.push(item[token.value]);
+        }
+        continue;
+      }
+      if (token.type === "index") {
+        if (Array.isArray(item) && token.value < item.length) {
+          next.push(item[token.value]);
+        }
+        continue;
+      }
+      if (token.type === "wildcard") {
+        if (Array.isArray(item)) {
+          next.push(...item);
+        }
+      }
+    }
+    current = next;
+    if (current.length === 0) return undefined;
+  }
+
+  if (current.length === 1) return current[0];
+  return current;
 }
 
 const SnippetLanguageSelector = ({ value, onChange }) => {
@@ -392,11 +433,13 @@ function App() {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
+  const [showImportCurlModal, setShowImportCurlModal] = useState(false);
   const [showImportCollisionModal, setShowImportCollisionModal] = useState(false);
   const [importCollisionData, setImportCollisionData] = useState(null);
   const [importCollisionNameDraft, setImportCollisionNameDraft] = useState("");
   const [importTextDraft, setImportTextDraft] = useState("");
   const [importApiDraft, setImportApiDraft] = useState("");
+  const [importCurlDraft, setImportCurlDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
 
@@ -636,7 +679,12 @@ function App() {
   const tableRows = useMemo(() => {
     if (!parsedJson) return [];
     const target = getValueByPath(parsedJson, selectedTablePath);
-    if (Array.isArray(target)) return target;
+    if (Array.isArray(target)) {
+      if (target.every((item) => Array.isArray(item))) {
+        return target.flat();
+      }
+      return target;
+    }
     if (target && typeof target === "object") return [target];
     return [];
   }, [parsedJson, selectedTablePath]);
@@ -1026,6 +1074,275 @@ function App() {
     setImportCollisionData(null);
   }
 
+  function tokenizeShellCommand(command) {
+    const input = String(command || "").replace(new RegExp("\\\\\r?\\n", "g"), " ").trim();
+    const tokens = [];
+    let current = "";
+    let quote = null;
+    let escaping = false;
+
+    for (let i = 0; i < input.length; i += 1) {
+      const char = input[i];
+      if (escaping) {
+        current += char;
+        escaping = false;
+        continue;
+      }
+      if (char === "\\" && quote !== "'") {
+        escaping = true;
+        continue;
+      }
+      if (quote) {
+        if (char === quote) {
+          quote = null;
+        } else {
+          current += char;
+        }
+        continue;
+      }
+      if (char === "\"" || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (/\s/.test(char)) {
+        if (current) {
+          tokens.push(current);
+          current = "";
+        }
+        continue;
+      }
+      current += char;
+    }
+
+    if (current) tokens.push(current);
+    return tokens;
+  }
+
+  function inferRequestNameFromUrl(value) {
+    try {
+      const parsed = new URL(value);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      return segments.length ? segments[segments.length - 1] : parsed.hostname;
+    } catch {
+      return "Imported cURL Request";
+    }
+  }
+
+  function parseCurlCommand(command) {
+    const tokens = tokenizeShellCommand(command);
+    if (tokens.length === 0 || tokens[0] !== "curl") {
+      throw new Error("Command must start with curl");
+    }
+
+    let method = "";
+    let urlValue = "";
+    let explicitMethod = false;
+    let useQueryString = false;
+    const headers = {};
+    const dataParts = [];
+    const formParts = [];
+
+    const readValue = (index, label) => {
+      const value = tokens[index + 1];
+      if (value == null) throw new Error(`Missing value for ${label}`);
+      return value;
+    };
+
+    for (let i = 1; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      const nextValue = () => {
+        const value = readValue(i, token);
+        i += 1;
+        return value;
+      };
+
+      if (token === "-X" || token === "--request") {
+        method = nextValue().toUpperCase();
+        explicitMethod = true;
+        continue;
+      }
+      if (token.startsWith("--request=")) {
+        method = token.split("=", 2)[1].toUpperCase();
+        explicitMethod = true;
+        continue;
+      }
+      if (token === "-H" || token === "--header") {
+        const header = nextValue();
+        const idx = header.indexOf(":");
+        if (idx !== -1) {
+          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
+        }
+        continue;
+      }
+      if (token.startsWith("--header=")) {
+        const header = token.split("=", 2)[1];
+        const idx = header.indexOf(":");
+        if (idx !== -1) {
+          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
+        }
+        continue;
+      }
+      if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
+        dataParts.push(nextValue());
+        continue;
+      }
+      if (token.startsWith("--data=") || token.startsWith("--data-raw=") || token.startsWith("--data-binary=") || token.startsWith("--data-ascii=") || token.startsWith("--data-urlencode=")) {
+        dataParts.push(token.split("=", 2)[1]);
+        continue;
+      }
+      if (token === "-F" || token === "--form" || token === "--form-string") {
+        formParts.push(nextValue());
+        continue;
+      }
+      if (token.startsWith("--form=") || token.startsWith("--form-string=")) {
+        formParts.push(token.split("=", 2)[1]);
+        continue;
+      }
+      if (token === "-G" || token === "--get") {
+        useQueryString = true;
+        continue;
+      }
+      if (token === "--url") {
+        urlValue = nextValue();
+        continue;
+      }
+      if (token.startsWith("--url=")) {
+        urlValue = token.split("=", 2)[1];
+        continue;
+      }
+      if (token === "-u" || token === "--user") {
+        const creds = nextValue();
+        headers["Authorization"] = `Basic ${btoa(creds)}`;
+        continue;
+      }
+      if (!token.startsWith("-") && !urlValue) {
+        urlValue = token;
+      }
+    }
+
+    if (!urlValue) {
+      throw new Error("cURL command does not contain a URL");
+    }
+
+    const normalizedMethod = explicitMethod
+      ? method
+      : (formParts.length > 0 || dataParts.length > 0) && !useQueryString
+        ? "POST"
+        : "GET";
+
+    let finalUrl = urlValue;
+    let bodyType = "none";
+    let bodyTextValue = "";
+    let bodyRowsValue = [{ key: "", value: "", enabled: true }];
+
+    if (useQueryString && dataParts.length > 0) {
+      const urlObject = new URL(finalUrl);
+      dataParts.forEach((part) => {
+        const [key, value = ""] = part.split("=", 2);
+        urlObject.searchParams.append(key, value);
+      });
+      finalUrl = urlObject.toString();
+    } else if (formParts.length > 0) {
+      bodyType = "multipart";
+      bodyRowsValue = formParts.map((part) => {
+        const [key, rawValue = ""] = part.split("=", 2);
+        if (rawValue.startsWith("@")) {
+          const filePath = rawValue.slice(1);
+          const fileName = filePath.split(/[\/]/).pop() || "upload.bin";
+          return {
+            key,
+            value: "",
+            enabled: true,
+            kind: "file",
+            fileName,
+            fileBase64: "",
+            mimeType: "application/octet-stream",
+            sourcePath: filePath
+          };
+        }
+        return { key, value: rawValue, enabled: true, kind: "text" };
+      });
+    } else if (dataParts.length > 0 && !useQueryString) {
+      const joined = dataParts.join("&");
+      const contentType = Object.keys(headers).find((key) => key.toLowerCase() === "content-type");
+      const contentTypeValue = contentType ? headers[contentType].toLowerCase() : "";
+      if (contentTypeValue.includes("application/json") || /^[\[{]/.test(joined.trim())) {
+        bodyType = "json";
+        bodyTextValue = joined;
+      } else if (contentTypeValue.includes("application/x-www-form-urlencoded") || dataParts.every((part) => part.includes("="))) {
+        bodyType = "form";
+        bodyRowsValue = dataParts.map((part) => {
+          const [key, value = ""] = part.split("=", 2);
+          return { key, value, enabled: true };
+        });
+      } else {
+        bodyType = "raw";
+        bodyTextValue = joined;
+      }
+    }
+
+    let paramsRowsValue = [{ key: "", value: "", enabled: true }];
+    try {
+      const urlObject = new URL(finalUrl);
+      const paramRows = Array.from(urlObject.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true }));
+      paramsRowsValue = paramRows.length > 0 ? paramRows : paramsRowsValue;
+      urlObject.search = "";
+      finalUrl = urlObject.toString();
+    } catch {
+      // ignore URL parsing failure
+    }
+
+    const headersRowsValue = Object.keys(headers).length > 0 ? objectToRows(headers) : [{ key: "", value: "", enabled: true }];
+    const requestName = inferRequestNameFromUrl(finalUrl);
+
+    return {
+      type: "request",
+      id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: requestName,
+      description: "",
+      tags: [],
+      protocol: "http",
+      method: normalizedMethod,
+      url: finalUrl,
+      headersText: JSON.stringify(headers, null, 2),
+      bodyText: bodyTextValue,
+      testsPreText: "",
+      testsPostText: "",
+      testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
+      httpVersion: "auto",
+      requestTimeoutMs: 30000,
+      bodyType,
+      paramsRows: paramsRowsValue,
+      headersRows: headersRowsValue,
+      authRows: [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }],
+      authType: "none",
+      authConfig: {
+        bearer: { token: "" },
+        basic: { username: "", password: "" },
+        api_key: { key: "", value: "", add_to: "header" }
+      },
+      bodyRows: bodyRowsValue,
+      graphqlConfig: {
+        query: "",
+        variables: "{}",
+        operationName: "",
+        headers: {}
+      },
+      wsConfig: {
+        headersText: "{\n}",
+        headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+        headersMode: "table",
+        protocolsText: "",
+        protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+        autoReconnect: false,
+        reconnectInterval: 3000,
+        connectTimeout: 10000,
+        messageType: "text",
+        messages: []
+      }
+    };
+  }
+
   function importCollection() {
     const input = document.createElement("input");
     input.type = "file";
@@ -1074,6 +1391,21 @@ function App() {
       setImportTextDraft("");
     } catch (err) {
       alert("Failed to parse the provided text as JSON. Error: " + err.message);
+    }
+  }
+
+  function handleImportCurlSubmit() {
+    if (!importCurlDraft.trim()) return;
+    try {
+      const parsedReq = parseCurlCommand(importCurlDraft);
+      const createdReq = addRequestToCollection(null, (req) => Object.assign(req, parsedReq));
+      if (createdReq) {
+        handleRequestClick(createdReq);
+      }
+      setShowImportCurlModal(false);
+      setImportCurlDraft("");
+    } catch (err) {
+      alert("Failed to parse the provided cURL command. Error: " + err.message);
     }
   }
 
@@ -1772,8 +2104,8 @@ function App() {
     try {
       const headers = parseHeaders();
       if (headers === null) return;
-      let body = bodyText;
-      let multipartParts = null;
+      let body = bodyType === "none" ? undefined : bodyText;
+      let multipartParts;
       if (bodyType === "json") {
         const strippedJson = stripJsonComments(interpolate(bodyText));
         if (strippedJson.trim()) {
@@ -2696,6 +3028,7 @@ function App() {
           importCollection={importCollection}
           setShowImportTextModal={setShowImportTextModal}
           setShowImportApiModal={setShowImportApiModal}
+          setShowImportCurlModal={setShowImportCurlModal}
           collections={collections}
           activeCollectionId={activeCollectionId}
           setActiveCollectionId={handleCollectionSwitch}
@@ -3225,7 +3558,7 @@ function App() {
 
       {
         showImportTextModal && (
-          <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)}>
+          <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-title">Import JSON from Text</div>
               <textarea
@@ -3245,8 +3578,32 @@ function App() {
       }
 
       {
+        showImportCurlModal && (
+          <div className="modal-backdrop" onClick={() => setShowImportCurlModal(false)} style={{ zIndex: 9999 }}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Import Request from cURL</div>
+              <textarea
+                className="input code-editor"
+                value={importCurlDraft}
+                onChange={(e) => setImportCurlDraft(e.target.value)}
+                placeholder="Paste a cURL command here..."
+                style={{ width: '100%', height: '220px', marginBottom: '10px' }}
+              />
+              <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '-4px' }}>
+                Supports common flags like -X, -H, -d, --data-raw, -F, -G, --url and -u.
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="ghost" onClick={() => setShowImportCurlModal(false)}>Cancel</button>
+                <button className="primary" onClick={handleImportCurlSubmit}>Import</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {
         showImportApiModal && (
-          <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)}>
+          <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-title">Import JSON from API URL</div>
               <input

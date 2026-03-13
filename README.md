@@ -1,166 +1,434 @@
 <p align="center">
-  <img src="src/assets/logo.png" width="200" alt="Commu Logo" />
+  <img src="src/assets/logo.png" width="180" alt="Commu logo" />
 </p>
 
 # Commu
 
-A modern, fast, and beautifully designed desktop API client built with **React**, **Vite**, and **Electron**. 
-
-Commu (AI API Client) provides an intuitive interface for testing, organizing, and managing your API requests with built-in productivity features:
+Commu is an open-source desktop API client built with React, Vite, and Electron. It combines everyday API workflows with AI-assisted request generation, response exploration, local persistence, and GitHub-based sync.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="800" alt="Dashboard" />
+  <img src="docs/screenshots/dashboard.png" width="860" alt="Commu dashboard" />
 </p>
 
-<div align="center">
-  <h3>✨ Modern • 🤖 AI-Powered • 🔒 Secure</h3>
-</div>
+## Functionality
 
----
+Start here if you want the product overview first. Each item links to the detailed section below.
+
+- [Protocol Support](#protocol-support)
+- [Request Building](#request-building)
+- [Collections, Workspaces, and History](#collections-workspaces-and-history)
+- [Environments and Variables](#environments-and-variables)
+- [Response Inspection and Data Tools](#response-inspection-and-data-tools)
+- [Scripts and Tests](#scripts-and-tests)
+- [AI Features](#ai-features)
+- [Import and Export](#import-and-export)
+- [GitHub Sync](#github-sync)
+- [Settings](#settings)
+- [Local Storage and Data Paths](#local-storage-and-data-paths)
+- [Development Setup](#development-setup)
+- [Packaging and Release](#packaging-and-release)
+
+## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/request.png" width="45%" alt="Request Editor" />
-  <img src="docs/screenshots/ai_assistant.png" width="45%" alt="AI Assistant" />
+  <img src="docs/screenshots/request.png" width="45%" alt="Request editor" />
+  <img src="docs/screenshots/ai_assistant.png" width="45%" alt="AI assistant" />
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/environments.png" width="45%" alt="Environment Management" />
-  <img src="docs/screenshots/settings.png" width="45%" alt="Settings and Data" />
+  <img src="docs/screenshots/environments.png" width="45%" alt="Environment management" />
+  <img src="docs/screenshots/settings.png" width="45%" alt="Settings modal" />
 </p>
 
-## ✨ Features
+## Protocol Support
 
-- **Organized Collections**: Nest requests deeply into folders. Drag and drop to reorder or move items easily.
-- **Dynamic Workspaces**: Collapsible sidebar, tabs, and adjustable layout panels for a clutter-free environment. All layout resizing and toggles automatically persist across restarts.
-- **Smart Environments**: Manage basic URL presets, auth tokens, and specific variables per environment.
-  - Mark sensitive variables as **Secrets** to hide their values locally.
-  - Default 'No Environment' mode to easily disable interpolation when not needed.
-- **Beautiful UI Components**:
-  - **Unified Variable Interpolation**: Real-time highlighting and pixel-perfect character cursor alignment for `{{variable}}` patterns across all inputs, including URL, Table editors (Headers/Params), and all Authentication fields.
-  - Hover over inline variables (e.g. `{{baseUrl}}`) anywhere in your request, headers, or body to instantly see their resolved values with a quick-edit button for immediate context.
-  - Custom, highly-polished premium dropdowns for Workspaces, Environments, Request Body Type, and Auth Type.
-  - Redesigned History cards for a compact, fast overview of past requests.
-  - **Dynamic Model Names**: AI model lists automatically trim redundant date suffixes (e.g. `claude-3-5` instead of `claude-3-5-20240620`) for a cleaner look. 
-- **Advanced GitHub Sync**: Safely backup and restore your collections, variables, and workspace state securely to a private `commu-sync` GitHub repository.
-  - Interactive Review Screen before pushing allows you to selectively **mask** variables. Masked variables leave your device as placeholders, completely protecting your secrets.
-- **Comprehensive Request Builder**: 
-  - Visual editors for Query Params, Headers, and Auth.
-  - Multi-format request body support (JSON, XML, form-data, urlencoded, raw).
-  - Your active request (method, URL, headers, body) fully persists across reloads.
-  - **Premium Search Experience**: Integrated `Command+F` and `Command+R` search functionality with a custom **top-positioned panel** that automatically scrolls occurrences into view.
-- **AI Assistant**: Built-in intelligent prompting to generate tests, suggest mock data, and analyze responses. **Verify connectivity** instantly via the new "Test Connection" button in Settings.
-- **Response Visualization**: View raw data, pretty-printed JSON, tabular data, XML, or CSV exports.
-- **Pre & Post Scripts**: Write scripts to run before a request is fired or to assert tests against the response.
-- **Log Management**: Redesigned **App Logs** and **Execution Outputs** with compact typography and instant-clear functionality for a cleaner developer experience.
-- **Import / Export**: Easily share collections via JSON files, text pasting, or direct URL links.
+Commu is multi-protocol, but not every protocol has the same maturity yet.
 
-## 🚀 Getting Started Locally
+| Protocol | Status | Notes |
+| --- | --- | --- |
+| HTTP / REST | Stable | Full request editor, auth, body modes, timeout, cancel, response tools |
+| GraphQL | Stable for queries and mutations | Variables, schema fetch, HTTP execution, shared response tools |
+| WebSocket | Stable | Persistent connections, headers, subprotocols, timeout, reconnect, message viewer |
+| SSE / Socket | Available | Stream viewer support |
+| Mock Server | Available | Local mock server configuration and route generation |
+| DAG Flow | Available | Visual multi-step flow editor |
+| MCP | Available | MCP server connection and prompt/resource browsing |
+| gRPC | Experimental | UI exists, native transport is not fully enabled yet |
+
+Important notes:
+
+- GraphQL subscriptions are not yet handled as a first-class GraphQL-over-WebSocket flow inside the GraphQL pane.
+- gRPC currently needs additional native transport work before it should be treated as production-ready.
+
+## Request Building
+
+Commu supports day-to-day API request authoring with a desktop-first editor layout.
+
+### HTTP request capabilities
+
+- Methods: `GET`, `POST`, `PATCH`, `PUT`, `DELETE`, `HEAD`, `OPTIONS`
+- HTTP versions: `Auto`, `HTTP/1.1`, `HTTP/2`
+- Per-request timeout
+- Request cancel while in flight
+- Query params editor with enable/disable controls
+- Headers editor in `Table` or `JSON` mode
+- Auth editor with structured fields
+- Request templates in the request bar
+
+### Body modes
+
+- `none`
+- `json`
+- `xml`
+- `raw`
+- `x-www-form-urlencoded`
+- `form-data`
+
+### JSON editing quality-of-life
+
+- comment-tolerant JSON editing
+- prettify support
+- linting and validation before send
+- environment interpolation support
+- CodeMirror-based editing with search
+
+### WebSocket request capabilities
+
+- connection URL and connect/disconnect flow
+- connection timeout
+- auto-reconnect
+- handshake headers
+- subprotocols
+- message composer for `Text`, `JSON`, and `Binary`
+- WebSocket message response panel with sent/received filtering
+
+### GraphQL request capabilities
+
+- query editor
+- variables editor
+- operation name
+- schema fetch
+- schema browsing
+- shared response viewer
+
+## Collections, Workspaces, and History
+
+Commu is designed around reusable request organization, not one-off tabs only.
+
+- collections with nested folders
+- request tree grouped inside collections
+- inline request and folder rename flows
+- per-request protocol identity in the sidebar
+- current request loading directly from the collection tree
+- history tracking with persisted entries
+- workspace-aware layout and app state persistence
+
+## Environments and Variables
+
+Environments help you move between local, staging, and production configurations.
+
+- multiple named environments
+- active environment selection
+- key/value variable editor
+- enable or disable individual variables
+- `{{variable}}` interpolation in:
+  - URL
+  - params
+  - headers
+  - auth inputs
+  - request body
+  - WebSocket message bodies
+- environment management modal for create, edit, and delete flows
+
+## Response Inspection and Data Tools
+
+Commu includes several ways to inspect the same response without switching tools.
+
+### Response views
+
+- Pretty JSON
+- Raw
+- XML
+- Table
+- Visualize
+- Headers
+- Full Screen
+
+### Table tools
+
+- load table data from a detected or manually entered JSON path
+- wildcard path support such as `$.items[*].children`
+- search across all keys or a specific key
+- sort by column
+- export as CSV or JSON
+- derived fields
+- hover errors for failed derived fields
+
+### Data transforms
+
+- JSON to XML
+- JSON to CSV
+- JSON object and array normalization for table view
+
+## Scripts and Tests
+
+Commu supports request lifecycle scripting and lightweight assertion workflows.
+
+- pre-request scripts
+- post-response scripts
+- run scripts without hitting the API by using test input
+- Postman-style `pm.*` helpers
+- structured log output with type labels
+- collapsible output drawer
+- generated tests from AI assistance
+
+Current scripting focus:
+
+- useful for request shaping, checks, and exploratory testing
+- not yet a complete Postman runtime replacement
+
+## AI Features
+
+Commu includes built-in AI helpers for request authoring and analysis.
+
+- natural-language request generation
+- AI-generated tests from a response
+- response summarization and debugging hints
+- provider support for:
+  - OpenAI
+  - Anthropic
+  - Google Gemini
+- semantic search with local embeddings
+
+AI behavior is configurable in [Settings](#settings).
+
+## Import and Export
+
+Commu supports moving request data in and out of the app.
+
+### Import
+
+- from text
+- from API URL
+- from file
+- from cURL
+
+### Export
+
+- request/collection export flows
+- CSV and JSON export from response tables
+
+## GitHub Sync
+
+Commu does not require a custom backend for sync. Instead, it can sync to a private GitHub repository named `commu-sync`.
+
+### What gets synced
+
+- collections
+- folders
+- requests
+- environments
+- app state
+- history snapshots
+
+### Sync layout
+
+Instead of writing everything into a single `state.json`, Commu stores sync data in isolated files:
+
+```text
+workspace/
+  manifest.json
+  collections/
+    <collection-name>__<collection-id>/
+      collection.json
+      root/
+      <folder-path>/
+        folder.json
+        <request-id>.request.json
+  history/
+    YYYY-MM-DD/
+      <collection-name>__<collection-id>/
+        root/
+        <folder-path>/
+          <timestamp>-<request-id>.json
+```
+
+Why this structure is used:
+
+- request-level conflicts stay isolated
+- folder edits do not rewrite unrelated collections
+- history is partitioned by date and request location
+- repo contents remain inspectable and easy to recover manually
+
+### GitHub sync behavior
+
+- device-code GitHub auth
+- push local state to GitHub
+- pull remote state into the app
+- environment variable masking before push
+- private repo workflow
+
+Important limitation:
+
+- GitHub sync is file-based cloud sync, not a full custom backend with conflict resolution, user sessions, or multi-user collaboration rules.
+
+## Settings
+
+All primary settings live in the in-app Settings modal.
+
+### AI Configuration
+
+- AI provider selector
+  - OpenAI
+  - Anthropic
+  - Google Gemini
+- provider-specific API key input
+- `Test Connection` button to validate the key and fetch supported models
+
+### Preferences
+
+- `Enable AI Semantic Search`
+  - uses local embeddings for semantic lookup
+  - shows download/index progress when needed
+  - if no download progress appears, the model is likely already cached locally
+- `Enable AI request generation`
+- `Enable response summaries`
+- `Redact secrets before AI`
+- `History Retention (Days)`
+
+### Data Management
+
+- `Clear All App Data`
+- `Show Data Location`
+
+## Local Storage and Data Paths
+
+Commu stores data locally on your machine.
+
+- Electron app state is persisted in the app data directory
+- SQLite is used for local persistence
+- browser-compatible fallbacks are also used in some development paths
+
+Typical app data locations:
+
+- macOS: `~/Library/Application Support/Commu/`
+- Windows: `%APPDATA%/Commu/`
+- Linux: `~/.config/Commu/`
+
+You can also check the exact path from the app through `Settings -> Data Management -> Show Data Location`.
+
+## Development Setup
 
 ### Prerequisites
 
-Ensure you have the following installed on your machine:
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
-- [npm](https://www.npmjs.com/) (comes with Node.js)
+- Node.js 20 or newer recommended
+- npm
 
-### Installation
+### Install
 
-1. Clone or download the repository to your local machine.
-2. Open a terminal and navigate to the project directory:
-   ```bash
-   cd Commu
-   ```
-3. Install the dependencies:
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
 
-### Running the App in Development Mode
+If native module bindings mismatch on your machine:
 
-You can run the full Electron desktop app alongside the Vite dev server by running:
+```bash
+npm run rebuild
+```
+
+### Run in development
 
 ```bash
 npm run dev
 ```
 
-*Note: Since the project uses native modules like `better-sqlite3`, if you encounter architecture or Node version mismatches during install, you may need to run `npm run rebuild` to rebuild the SQLite bindings for your specific machine.*
+If you use Nix:
 
-## 📦 Building for Production
+```bash
+nix-shell -p nodejs_20 --run "npm install"
+nix-shell -p nodejs_20 --run "npm run dev"
+```
 
-This project leverages Vite and Electron Builder. You can compile the project and generate native application binaries for various platforms.
+### Useful scripts
 
-### Desktop Apps (Mac, Windows, Linux)
-First, ensure you build the React frontend:
+```bash
+npm run dev
+npm run dev:nix
+npm run build
+npm run preview
+npm run lint
+npm run rebuild
+npm run package
+```
+
+## Packaging and Release
+
+Build the renderer:
+
 ```bash
 npm run build
 ```
 
-Then, use `electron-builder` to package the app for your target OS:
+Create a packaged macOS build:
 
-- **macOS (Intel & Apple Silicon)**
+```bash
+npm run package
+```
+
+Electron Builder can also be used directly for platform-specific targets:
+
+- macOS
   ```bash
-  # Builds both x64 and arm64 targets
   npx electron-builder --mac --x64 --arm64
   ```
-- **Windows**
+- Windows
   ```bash
   npx electron-builder --win
   ```
-- **Linux**
+- Linux
   ```bash
   npx electron-builder --linux
   ```
 
-### Website / Web App
-To host the app as a standard website (without Electron's native filesystem APIs):
-```bash
-npm run build
-# The resulting static site will be located in the /dist folder, ready to be deployed.
+Build output is written to `release/`.
+
+## Repository Structure
+
+```text
+src/
+  components/
+  hooks/
+  protocols/
+  services/
+  utils/
+electron/
+docs/
 ```
 
-### Mobile Apps (iOS & Android)
-Because this is currently architected as an Electron desktop environment, direct compilation to iOS and Android requires porting the web build (`/dist`) via a wrapper framework like **Capacitor** or **Cordova**. 
-1. Build the web app: `npm run build`
-2. Initialize Capacitor: `npx cap init`
-3. Add native platforms: `npx cap add ios` / `npx cap add android`
-4. Sync & Build: `npx cap sync` and then open Xcode/Android Studio to compile to device.
+Key areas:
 
-## 🛠 Tech Stack
+- `src/App.jsx` - main app orchestration
+- `src/components/RequestPane/` - request editing UI
+- `src/components/ResponsePane/` - response rendering and table tools
+- `src/components/ProtocolPanes/` - protocol-specific editors
+- `src/services/` - AI, formatting, sync, mock server, and data helpers
+- `src/protocols/` - protocol-specific request/response adapters
+- `electron/` - Electron main and preload processes
 
-- **Frontend**: React 18, Vite
-- **Desktop Environment**: Electron
-- **Database / Storage**: `better-sqlite3` (for local persistence)
-- **Styling**: Custom CSS with responsive grid layouts and Flexbox.
+## Contributing
 
----
+Contributions are welcome.
 
-## 🗑️ Uninstalling
+- Read [/Users/ss/Documents/Commu/CONTRIBUTING.md](CONTRIBUTING.md)
+- Review [/Users/ss/Documents/Commu/CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
-### Clearing Data from Within the App
+If you are opening issues or pull requests, it helps a lot to include:
 
-Go to **Settings → Data Management** and click **"Clear All App Data"** to wipe all collections, history, environments, and settings before uninstalling.
+- protocol type
+- exact reproduction steps
+- request sample or import payload
+- screenshot or screen recording for UI issues
 
-### Complete Cleanup by Platform
+## License
 
-**macOS**: Drag Commu to Trash, then remove the data folder:
-```bash
-rm -rf ~/Library/Application\ Support/Commu/
-```
-
-**Windows**: Use "Add or Remove Programs" — the uninstaller will prompt you to optionally delete app data.
-
-**Linux**: Remove the app, then delete the data folder:
-```bash
-rm -rf ~/.config/Commu/
-```
-
----
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Whether it's adding a feature, fixing a bug, or improving documentation, your help is appreciated.
-
-Please read our [Contributing Guidelines](CONTRIBUTING.md) to understand how you can help out. Also, make sure to review our [Code of Conduct](CODE_OF_CONDUCT.md).
-
-## 📄 License
-
-This project is open-source and licensed under the [MIT License](LICENSE).
+Commu is released under the [MIT License](LICENSE).

@@ -8,9 +8,13 @@ import { keymap } from '@codemirror/view';
 import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel.js";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import styles from "./ResponseViewer.module.css";
+import { isDerivedError } from "../../services/table.js";
 
 function RenderCell({ val }) {
     const [expanded, setExpanded] = useState(false);
+    if (isDerivedError(val)) {
+        return <span className="cell-error" title={val.message}>#ERR</span>;
+    }
     if (val === null || val === undefined) {
         return <span className="cell-null">{val === null ? "null" : "—"}</span>;
     }
@@ -106,6 +110,7 @@ export function ResponseViewer({
     const [dragOverCol, setDragOverCol] = useState(null);
     const [wsFilter, setWsFilter] = useState("all");
     const [wsAutoScroll, setWsAutoScroll] = useState(true);
+    const [tablePathDraft, setTablePathDraft] = useState(selectedTablePath || "$");
     const wsMessagesEndRef = useRef(null);
 
     const columnFilteredRows = useMemo(() => {
@@ -120,8 +125,21 @@ export function ResponseViewer({
         );
     }, [computedRows, columnFilters]);
 
-    // Derive ordered keys
-    const rawKeys = computedRows[0] ? Object.keys(computedRows[0]) : [];
+    // Derive ordered keys from the full row set without transforming names.
+    const rawKeys = useMemo(() => {
+        const seen = new Set();
+        const keys = [];
+        (computedRows || []).forEach((row) => {
+            Object.keys(row || {}).forEach((key) => {
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    keys.push(key);
+                }
+            });
+        });
+        return keys;
+    }, [computedRows]);
+
     const orderedKeys = useMemo(() => {
         if (!columnOrder) return rawKeys;
         // Only keep keys that still exist, and append any new ones
@@ -231,6 +249,11 @@ export function ResponseViewer({
         if (wsFilter === "all") return websocketMessages;
         return websocketMessages.filter((msg) => msg.direction === wsFilter);
     }, [websocketMessages, wsFilter]);
+
+
+    useEffect(() => {
+        setTablePathDraft(selectedTablePath || "$");
+    }, [selectedTablePath]);
 
     const sentWebSocketCount = useMemo(
         () => websocketMessages.filter((msg) => msg.direction === "outgoing").length,
@@ -398,17 +421,28 @@ export function ResponseViewer({
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
-                            {tableCandidates.length > 1 && (
-                                <select
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "min(420px, 42vw)", flex: "1 1 360px" }}>
+                                <input
                                     className="input"
-                                    value={selectedTablePath}
-                                    onChange={(e) => setSelectedTablePath(e.target.value)}
-                                >
+                                    list="table-path-options"
+                                    placeholder="Load table from path, e.g. $.data.items"
+                                    value={tablePathDraft}
+                                    onChange={(e) => setTablePathDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            setSelectedTablePath(tablePathDraft || "$");
+                                        }
+                                    }}
+                                    style={{ minWidth: 0, flex: 1 }}
+                                />
+                                <datalist id="table-path-options">
                                     {tableCandidates.map((path) => (
-                                        <option key={path} value={path}>{path}</option>
+                                        <option key={path} value={path} />
                                     ))}
-                                </select>
-                            )}
+                                </datalist>
+                                <button className="ghost compact" onClick={() => setSelectedTablePath(tablePathDraft || "$")}>Load</button>
+                            </div>
                             <button className="ghost compact" onClick={() => downloadText("table.csv", csv)}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px', verticalAlign: 'middle' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                                 CSV

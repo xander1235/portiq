@@ -1,5 +1,23 @@
 const SAFE_EXPRESSION = /^[\w\s+\-*/()."'`]+$/;
 
+export function createDerivedError(message) {
+  return {
+    __commuDerivedError: true,
+    message: message || "Derived field evaluation failed"
+  };
+}
+
+export function isDerivedError(value) {
+  return Boolean(value && typeof value === "object" && value.__commuDerivedError);
+}
+
+function normalizeValue(value) {
+  if (isDerivedError(value)) {
+    return "#ERR";
+  }
+  return value;
+}
+
 export function applyDerivedFields(rows, derivedFields) {
   if (!Array.isArray(rows) || derivedFields.length === 0) return rows;
   return rows.map((row) => {
@@ -8,7 +26,7 @@ export function applyDerivedFields(rows, derivedFields) {
       try {
         next[name] = evaluateExpression(expression, row);
       } catch (err) {
-        next[name] = `#ERR`;
+        next[name] = createDerivedError(err.message);
       }
     });
     return next;
@@ -36,8 +54,8 @@ export function sortRows(rows, sortKey, direction) {
   if (!sortKey) return rows;
   const dir = direction === "desc" ? -1 : 1;
   return [...rows].sort((a, b) => {
-    const aVal = a?.[sortKey];
-    const bVal = b?.[sortKey];
+    const aVal = normalizeValue(a?.[sortKey]);
+    const bVal = normalizeValue(b?.[sortKey]);
     if (aVal === bVal) return 0;
     if (aVal === undefined) return 1;
     if (bVal === undefined) return -1;
@@ -56,8 +74,8 @@ export function filterRows(rows, query, key) {
   const lower = query.toLowerCase();
   return rows.filter((row) => {
     if (key) {
-      return String(row?.[key] ?? "").toLowerCase().includes(lower);
+      return String(normalizeValue(row?.[key]) ?? "").toLowerCase().includes(lower);
     }
-    return Object.values(row).some((value) => String(value).toLowerCase().includes(lower));
+    return Object.values(row).some((value) => String(normalizeValue(value)).toLowerCase().includes(lower));
   });
 }
