@@ -10,12 +10,21 @@ import { xmlLinter } from "../../utils/codemirror/xmlExtensions.js";
 import { customJsonLinter } from "../../utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "../../utils/codemirror/environmentExtensions.js";
 import { search } from '@codemirror/search';
+import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel.js";
+
+const searchWithReplace = () => [
+    search({ top: true, createPanel: createCustomSearchPanel }),
+    customSearchKeymap
+];
 
 import { TableEditor } from "../TableEditor.jsx";
 import { EnvInput } from "../TableEditor.jsx";
 import { FullScreenModal } from "../Modals/FullScreenModal.jsx";
 import { prettifyXml } from "../../services/format.js";
 import styles from "./RequestEditor.module.css";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function RequestEditor({
     editingMainRequestName,
@@ -64,6 +73,10 @@ export function RequestEditor({
     setAuthConfig,
     authRows,
     setAuthRows,
+    httpVersion,
+    setHttpVersion,
+    requestTimeoutMs,
+    setRequestTimeoutMs,
     setCmEnvEdit,
     bodyRows,
     setBodyRows,
@@ -73,13 +86,53 @@ export function RequestEditor({
     setTestsPreText,
     testsPostText,
     setTestsPostText,
-    testsOutput
+    testsOutput,
+    handleCancelSend
 }) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
     const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
     const [showBearerToken, setShowBearerToken] = useState(false);
     const [showApiKeyValue, setShowApiKeyValue] = useState(false);
+
+    const updateBodyRowsState = (nextRows) => {
+        setBodyRows(nextRows);
+        if (currentRequestId) updateRequestState(currentRequestId, "bodyRows", nextRows);
+    };
+
+    const updateMultipartRow = (index, patch) => {
+        updateBodyRowsState((bodyRows || []).map((row, rowIndex) => (
+            rowIndex === index ? { ...row, ...patch } : row
+        )));
+    };
+
+    const addMultipartRow = () => {
+        updateBodyRowsState([...(bodyRows || []), { key: "", value: "", enabled: true, kind: "text" }]);
+    };
+
+    const removeMultipartRow = (index) => {
+        const nextRows = (bodyRows || []).filter((_, rowIndex) => rowIndex !== index);
+        updateBodyRowsState(nextRows.length > 0 ? nextRows : [{ key: "", value: "", enabled: true, kind: "text" }]);
+    };
+
+    const handleMultipartFileSelect = async (index, file) => {
+        if (!file) {
+            updateMultipartRow(index, { fileName: "", mimeType: "", fileBase64: "" });
+            return;
+        }
+        const arrayBuffer = await file.arrayBuffer();
+        let binary = "";
+        new Uint8Array(arrayBuffer).forEach((byte) => {
+            binary += String.fromCharCode(byte);
+        });
+        updateMultipartRow(index, {
+            kind: "file",
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            fileBase64: btoa(binary),
+            value: ""
+        });
+    };
 
     return (
         <section className={styles.request}>
@@ -121,21 +174,23 @@ export function RequestEditor({
                 </button>
             </div>
             <div className={styles.requestBar}>
-                <select
-                    className="input method"
-                    value={method}
-                    onChange={(e) => {
-                        setMethod(e.target.value);
-                        if (currentRequestId) {
-                            updateRequestMethod(currentRequestId, e.target.value);
-                        }
-                    }}
-                >
-                    <option>GET</option>
-                    <option>POST</option>
-                    <option>PUT</option>
-                    <option>DELETE</option>
-                </select>
+                <Select value={method} onValueChange={(val) => {
+                    setMethod(val);
+                    if (currentRequestId) updateRequestMethod(currentRequestId, val);
+                }}>
+                    <SelectTrigger className="w-[100px] h-[36px] bg-panel-2 border-border text-foreground font-semibold">
+                        <SelectValue placeholder="Method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="GET" className="font-semibold text-[var(--ok)]">GET</SelectItem>
+                        <SelectItem value="POST" className="font-semibold text-[var(--warn)]">POST</SelectItem>
+                        <SelectItem value="PATCH" className="font-semibold text-[var(--accent-purple)]">PATCH</SelectItem>
+                        <SelectItem value="PUT" className="font-semibold text-[var(--info)]">PUT</SelectItem>
+                        <SelectItem value="DELETE" className="font-semibold text-[var(--error)]">DELETE</SelectItem>
+                        <SelectItem value="HEAD">HEAD</SelectItem>
+                        <SelectItem value="OPTIONS">OPTIONS</SelectItem>
+                    </SelectContent>
+                </Select>
                 <EnvInput
                     className={`input ${styles.url}`}
                     value={url}
@@ -145,8 +200,12 @@ export function RequestEditor({
                     placeholder="https://api.example.com/v1/users/{{id}}"
                     style={{ flex: 1 }}
                 />
-                <button className="primary" onClick={handleSend} disabled={isSending}>
-                    {isSending ? "Sending..." : "Send"}
+                <button
+                    className={isSending ? "ghost" : "primary"}
+                    onClick={isSending ? handleCancelSend : handleSend}
+                    style={isSending ? { color: "#ef4444", borderColor: "#ef4444" } : undefined}
+                >
+                    {isSending ? "Cancel" : "Send"}
                 </button>
             </div>
 
@@ -163,6 +222,34 @@ export function RequestEditor({
                     ))}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Select value={httpVersion} onValueChange={(val) => {
+                        setHttpVersion(val);
+                        if (currentRequestId) updateRequestState(currentRequestId, "httpVersion", val);
+                    }}>
+                        <SelectTrigger className="w-[128px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                            <SelectValue placeholder="HTTP" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="auto">Auto</SelectItem>
+                            <SelectItem value="1.1">HTTP/1.1</SelectItem>
+                            <SelectItem value="2">HTTP/2</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Timeout</span>
+                        <Input
+                            value={requestTimeoutMs}
+                            type="number"
+                            min="1000"
+                            step="500"
+                            className="w-[104px] h-[28px] text-[12px] bg-panel border-border text-foreground"
+                            onChange={(e) => {
+                                const nextValue = Number(e.target.value) || 30000;
+                                setRequestTimeoutMs(nextValue);
+                                if (currentRequestId) updateRequestState(currentRequestId, "requestTimeoutMs", nextValue);
+                            }}
+                        />
+                    </div>
                     {activeRequestTab === "Headers" && (
                         <div className={styles.tabs} style={{ marginBottom: 0 }}>
                             <button
@@ -181,131 +268,22 @@ export function RequestEditor({
                     )}
                     {activeRequestTab === "Body" && (
                         <>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    style={{
-                                        width: '180px',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        textAlign: 'left',
-                                        cursor: 'pointer',
-                                        padding: '4px 10px',
-                                        height: '28px',
-                                        background: 'var(--panel)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text)',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: showBodyTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
-                                        borderColor: showBodyTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!showBodyTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                            e.currentTarget.style.background = 'var(--panel-3)';
-                                        }
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!showBodyTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'var(--border)';
-                                            e.currentTarget.style.background = 'var(--panel)';
-                                        }
-                                    }}
-                                    onClick={() => setShowBodyTypeDropdown(prev => !prev)}
-                                >
-                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {
-                                            bodyType === "json" ? "JSON" :
-                                                bodyType === "xml" ? "XML" :
-                                                    bodyType === "form" ? "x-www-form-urlencoded" :
-                                                        bodyType === "multipart" ? "form-data (simple)" :
-                                                            bodyType === "raw" ? "Raw" : "Select Type"
-                                        }
-                                    </span>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '16px',
-                                        height: '16px',
-                                        borderRadius: '3px',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        transition: 'transform 0.3s ease',
-                                        transform: showBodyTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
-                                    }}>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </div>
-                                </button>
-                                {showBodyTypeDropdown && (
-                                    <>
-                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowBodyTypeDropdown(false)}></div>
-                                        <div className="menu" style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 4px)',
-                                            left: 0,
-                                            width: '200px',
-                                            zIndex: 100,
-                                            background: 'var(--panel)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            padding: '4px',
-                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
-                                        }}>
-                                            {[
-                                                { value: "json", label: "JSON" },
-                                                { value: "xml", label: "XML" },
-                                                { value: "form", label: "x-www-form-urlencoded" },
-                                                { value: "multipart", label: "form-data (simple)" },
-                                                { value: "raw", label: "Raw" }
-                                            ].map((opt) => {
-                                                const isActive = bodyType === opt.value;
-                                                return (
-                                                    <button
-                                                        key={opt.value}
-                                                        style={{
-                                                            width: '100%',
-                                                            textAlign: 'left',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            fontSize: '12px',
-                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                                                            fontWeight: isActive ? 600 : 400,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            transition: 'background 0.1s'
-                                                        }}
-                                                        onMouseOver={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
-                                                        }}
-                                                        onMouseOut={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                                                        }}
-                                                        onClick={() => {
-                                                            setBodyType(opt.value);
-                                                            setContentType(opt.value);
-                                                            setShowBodyTypeDropdown(false);
-                                                        }}
-                                                    >
-                                                        {opt.label}
-                                                        {isActive && (
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                                                <polyline points="20 6 9 17 4 12"></polyline>
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                            <Select value={bodyType} onValueChange={(val) => {
+                                setBodyType(val);
+                                setContentType(val);
+                            }}>
+                                <SelectTrigger className="w-[180px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
+                                    <SelectItem value="json">JSON</SelectItem>
+                                    <SelectItem value="xml">XML</SelectItem>
+                                    <SelectItem value="form">x-www-form-urlencoded</SelectItem>
+                                    <SelectItem value="multipart">form-data</SelectItem>
+                                    <SelectItem value="raw">Raw</SelectItem>
+                                </SelectContent>
+                            </Select>
                             {(bodyType === "json" || bodyType === "xml") && (
                                 <button
                                     className="ghost compact"
@@ -387,11 +365,11 @@ export function RequestEditor({
                             />
                         )}
                         {headersMode === "json" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={headersText}
                                     theme={vscodeDark}
-                                    extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                    extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
                                     onChange={(value) => handleHeadersTextChange(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -405,131 +383,21 @@ export function RequestEditor({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Type</span>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    style={{
-                                        width: '200px',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        textAlign: 'left',
-                                        cursor: 'pointer',
-                                        padding: '4px 10px',
-                                        height: '28px',
-                                        background: 'var(--panel)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text)',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: showAuthTypeDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.05)',
-                                        borderColor: showAuthTypeDropdown ? 'var(--accent-2)' : 'var(--border)'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!showAuthTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                            e.currentTarget.style.background = 'var(--panel-3)';
-                                        }
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!showAuthTypeDropdown) {
-                                            e.currentTarget.style.borderColor = 'var(--border)';
-                                            e.currentTarget.style.background = 'var(--panel)';
-                                        }
-                                    }}
-                                    onClick={() => setShowAuthTypeDropdown(prev => !prev)}
-                                >
-                                    <span style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {
-                                            authType === "none" ? "No Auth" :
-                                                authType === "bearer" ? "Bearer Token" :
-                                                    authType === "basic" ? "Basic Auth" :
-                                                        authType === "api_key" ? "API Key" :
-                                                            authType === "custom" ? "Custom (Legacy)" : "Select Auth Type"
-                                        }
-                                    </span>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '16px',
-                                        height: '16px',
-                                        borderRadius: '3px',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        transition: 'transform 0.3s ease',
-                                        transform: showAuthTypeDropdown ? 'rotate(180deg)' : 'rotate(0)'
-                                    }}>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </div>
-                                </button>
-                                {showAuthTypeDropdown && (
-                                    <>
-                                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowAuthTypeDropdown(false)}></div>
-                                        <div className="menu" style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 4px)',
-                                            left: 0,
-                                            width: '200px',
-                                            zIndex: 100,
-                                            background: 'var(--panel)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            padding: '4px',
-                                            boxShadow: '0 8px 16px rgba(0,0,0,0.2)'
-                                        }}>
-                                            {[
-                                                { value: "none", label: "No Auth" },
-                                                { value: "bearer", label: "Bearer Token" },
-                                                { value: "basic", label: "Basic Auth" },
-                                                { value: "api_key", label: "API Key" },
-                                                { value: "custom", label: "Custom (Legacy)" }
-                                            ].map((opt) => {
-                                                const isActive = authType === opt.value;
-                                                return (
-                                                    <button
-                                                        key={opt.value}
-                                                        style={{
-                                                            width: '100%',
-                                                            textAlign: 'left',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            fontSize: '12px',
-                                                            background: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                                                            color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                                                            fontWeight: isActive ? 600 : 400,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            transition: 'background 0.1s'
-                                                        }}
-                                                        onMouseOver={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'var(--panel-2)';
-                                                        }}
-                                                        onMouseOut={(e) => {
-                                                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                                                        }}
-                                                        onClick={() => {
-                                                            setAuthType(opt.value);
-                                                            if (currentRequestId) updateRequestState(currentRequestId, "authType", opt.value);
-                                                            setShowAuthTypeDropdown(false);
-                                                        }}
-                                                    >
-                                                        {opt.label}
-                                                        {isActive && (
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                                                <polyline points="20 6 9 17 4 12"></polyline>
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                            <Select value={authType} onValueChange={(val) => {
+                                setAuthType(val);
+                                if (currentRequestId) updateRequestState(currentRequestId, "authType", val);
+                            }}>
+                                <SelectTrigger className="w-[200px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Auth Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No Auth</SelectItem>
+                                    <SelectItem value="bearer">Bearer Token</SelectItem>
+                                    <SelectItem value="basic">Basic Auth</SelectItem>
+                                    <SelectItem value="api_key">API Key</SelectItem>
+                                    <SelectItem value="custom">Custom (Legacy)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
@@ -544,24 +412,40 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Token</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <input
-                                                type={showBearerToken ? "text" : "password"}
-                                                className="input"
-                                                placeholder="Token"
-                                                value={authConfig.bearer?.token || ""}
-                                                onChange={(e) => {
-                                                    const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                style={{ paddingRight: '36px' }}
-                                            />
+                                            {showBearerToken ? (
+                                                <EnvInput
+                                                    className="input"
+                                                    placeholder="Token"
+                                                    value={authConfig.bearer?.token || ""}
+                                                    onChange={(val) => {
+                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: val } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    style={{ flex: 1, paddingRight: '36px' }}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder="Token"
+                                                    value={authConfig.bearer?.token || ""}
+                                                    onChange={(e) => {
+                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    style={{ paddingRight: '36px' }}
+                                                />
+                                            )}
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
                                                 onClick={() => setShowBearerToken(prev => !prev)}
                                                 title={showBearerToken ? "Hide token" : "Show token"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showBearerToken ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
@@ -578,30 +462,34 @@ export function RequestEditor({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Username</span>
-                                        <input
-                                            type="text"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Username"
                                             value={authConfig.basic?.username || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, username: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, basic: { ...authConfig.basic, username: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Password</span>
-                                        <input
-                                            type="password"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Password"
                                             value={authConfig.basic?.password || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, password: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                 </div>
@@ -611,39 +499,57 @@ export function RequestEditor({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Key</span>
-                                        <input
-                                            type="text"
+                                        <EnvInput
                                             className="input"
                                             placeholder="Key"
                                             value={authConfig.api_key?.key || ""}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, key: e.target.value } };
+                                            onChange={(val) => {
+                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, key: val } };
                                                 setAuthConfig(next);
                                                 if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
                                             }}
+                                            envVars={getEnvVars()}
+                                            onUpdateEnvVar={handleUpdateEnvVar}
+                                            style={{ flex: 1 }}
                                         />
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Value</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <input
-                                                type={showApiKeyValue ? "text" : "password"}
-                                                className="input"
-                                                placeholder="Value"
-                                                value={authConfig.api_key?.value || ""}
-                                                onChange={(e) => {
-                                                    const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                style={{ paddingRight: '36px' }}
-                                            />
+                                            {showApiKeyValue ? (
+                                                <EnvInput
+                                                    className="input"
+                                                    placeholder="Value"
+                                                    value={authConfig.api_key?.value || ""}
+                                                    onChange={(val) => {
+                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: val } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    style={{ flex: 1, paddingRight: '36px' }}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder="Value"
+                                                    value={authConfig.api_key?.value || ""}
+                                                    onChange={(e) => {
+                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    style={{ paddingRight: '36px' }}
+                                                />
+                                            )}
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
                                                 onClick={() => setShowApiKeyValue(prev => !prev)}
                                                 title={showApiKeyValue ? "Hide value" : "Show value"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showApiKeyValue ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
@@ -691,20 +597,22 @@ export function RequestEditor({
                 {activeRequestTab === "Body" && (() => {
                     const bodyActions = (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <select
-                                className="input compact"
-                                value={bodyType}
-                                onChange={(e) => {
-                                    setBodyType(e.target.value);
-                                    setContentType(e.target.value);
-                                }}
-                            >
-                                <option value="json">JSON</option>
-                                <option value="xml">XML</option>
-                                <option value="form">x-www-form-urlencoded</option>
-                                <option value="multipart">form-data (simple)</option>
-                                <option value="raw">Raw</option>
-                            </select>
+                            <Select value={bodyType} onValueChange={(val) => {
+                                setBodyType(val);
+                                setContentType(val);
+                            }}>
+                                <SelectTrigger className="w-[180px] h-[28px] text-[12px] bg-panel border-border text-foreground">
+                                    <SelectValue placeholder="Select Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
+                                    <SelectItem value="json">JSON</SelectItem>
+                                    <SelectItem value="xml">XML</SelectItem>
+                                    <SelectItem value="form">x-www-form-urlencoded</SelectItem>
+                                    <SelectItem value="multipart">form-data</SelectItem>
+                                    <SelectItem value="raw">Raw</SelectItem>
+                                </SelectContent>
+                            </Select>
                             {(bodyType === "json" || bodyType === "xml") && (
                                 <button
                                     className="ghost compact"
@@ -735,22 +643,27 @@ export function RequestEditor({
                             className={styles.bodyEditor}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}
                         >
+                            {bodyType === "none" && (
+                                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: isFullScreen ? "none" : "1px solid var(--border)", borderRadius: "4px", fontSize: "0.9rem" }}>
+                                    This request will be sent without a body.
+                                </div>
+                            )}
                             {(bodyType === "json" || bodyType === "xml" || bodyType === "raw") && (() => {
                                 const envAutoComplete = createEnvAutoComplete(getEnvVars);
                                 const envHoverTooltip = createEnvHoverTooltip(getEnvVars, setCmEnvEdit);
 
                                 return (
-                                    <div style={{ flex: 1, overflow: 'auto', border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                    <div style={{ flex: 1, border: isFullScreen ? 'none' : '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                         <CodeMirror
                                             value={bodyText}
                                             height="100%"
                                             theme={vscodeDark}
                                             extensions={
                                                 bodyType === "json"
-                                                    ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
+                                                    ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                                     : bodyType === "xml"
-                                                        ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
-                                                        : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, search()]
+                                                        ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
+                                                        : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                             }
                                             onChange={(value) => setBodyText(value)}
                                             basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
@@ -759,17 +672,90 @@ export function RequestEditor({
                                     </div>
                                 );
                             })()}
-                            {(bodyType === "form" || bodyType === "multipart") && (
+                            {bodyType === "form" && (
                                 <TableEditor
                                     rows={bodyRows}
-                                    onChange={(r) => {
-                                        setBodyRows(r);
-                                        if (currentRequestId) updateRequestState(currentRequestId, "bodyRows", r);
-                                    }}
+                                    onChange={updateBodyRowsState}
                                     keyPlaceholder="Field"
                                     valuePlaceholder="Value"
                                     envVars={getEnvVars()}
                                 />
+                            )}
+                            {bodyType === "multipart" && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                        <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
+                                            Add text fields or file parts to the multipart body.
+                                        </div>
+                                        <button className="ghost compact" onClick={addMultipartRow}>Add Part</button>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflow: "auto", minHeight: 0 }}>
+                                        {(bodyRows || []).map((row, index) => (
+                                            <div
+                                                key={index}
+                                                style={{
+                                                    display: "grid",
+                                                    gridTemplateColumns: "24px 1.2fr 110px 2fr 32px",
+                                                    gap: "8px",
+                                                    alignItems: "center",
+                                                    padding: "8px",
+                                                    border: "1px solid var(--border)",
+                                                    borderRadius: "8px",
+                                                    background: "rgba(255,255,255,0.02)"
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={row.enabled !== false}
+                                                    onChange={(e) => updateMultipartRow(index, { enabled: e.target.checked })}
+                                                />
+                                                <EnvInput
+                                                    className="input"
+                                                    value={row.key || ""}
+                                                    onChange={(value) => updateMultipartRow(index, { key: value })}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    placeholder="Part name"
+                                                />
+                                                <Select
+                                                    value={row.kind || "text"}
+                                                    onValueChange={(value) => updateMultipartRow(index, { kind: value })}
+                                                >
+                                                    <SelectTrigger className="w-full h-[32px] text-[12px] bg-panel border-border text-foreground">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="text">Text</SelectItem>
+                                                        <SelectItem value="file">File</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {row.kind === "file" ? (
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                                                        <input
+                                                            className="input"
+                                                            type="file"
+                                                            style={{ flex: 1, minWidth: 0, padding: "4px" }}
+                                                            onChange={(e) => handleMultipartFileSelect(index, e.target.files?.[0])}
+                                                        />
+                                                        <span style={{ fontSize: "0.72rem", color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                            {row.fileName || "No file"}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <EnvInput
+                                                        className="input"
+                                                        value={row.value || ""}
+                                                        onChange={(value) => updateMultipartRow(index, { value })}
+                                                        envVars={getEnvVars()}
+                                                        onUpdateEnvVar={handleUpdateEnvVar}
+                                                        placeholder="Part value"
+                                                    />
+                                                )}
+                                                <button className="ghost compact" onClick={() => removeMultipartRow(index)}>×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     );
@@ -788,11 +774,11 @@ export function RequestEditor({
                         {showTestInput && (
                             <div className={styles.testsInputInline}>
                                 <div className="panel-title">Test Input (JSON)</div>
-                                <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
+                                <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
                                     <CodeMirror
                                         value={testsInputText}
                                         theme={vscodeDark}
-                                        extensions={[json(), customJsonLinter, lintGutter(), search()]}
+                                        extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
                                         onChange={(value) => setTestsInputText(value)}
                                         basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                         style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -801,11 +787,11 @@ export function RequestEditor({
                             </div>
                         )}
                         {testsMode === "pre" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={testsPreText}
                                     theme={vscodeDark}
-                                    extensions={[javascript(), search()]}
+                                    extensions={[javascript(), ...searchWithReplace()]}
                                     onChange={(value) => setTestsPreText(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -814,11 +800,11 @@ export function RequestEditor({
                             </div>
                         )}
                         {testsMode === "post" && (
-                            <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <CodeMirror
                                     value={testsPostText}
                                     theme={vscodeDark}
-                                    extensions={[javascript(), search()]}
+                                    extensions={[javascript(), ...searchWithReplace()]}
                                     onChange={(value) => setTestsPostText(value)}
                                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -848,5 +834,3 @@ export function RequestEditor({
         </section>
     );
 }
-
-

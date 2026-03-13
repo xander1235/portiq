@@ -18,11 +18,32 @@ export function useRequestState() {
         basic: { username: "", password: "" },
         api_key: { key: "", value: "", add_to: "header" }
     });
+    const [httpVersion, setHttpVersion] = useLocalStorage("ui_httpVersion", "auto");
+    const [requestTimeoutMs, setRequestTimeoutMs] = useLocalStorage("ui_requestTimeoutMs", 30000);
     const [bodyType, setBodyType] = useLocalStorage("ui_bodyType", "json");
     const [bodyRows, setBodyRows] = useLocalStorage("ui_bodyRows", [{ key: "", value: "", comment: "", enabled: true }]);
+    const [graphqlConfig, setGraphqlConfig] = useLocalStorage("ui_graphqlConfig", {
+        query: "",
+        variables: "{}",
+        operationName: "",
+        headers: {}
+    });
+    const [wsConfig, setWsConfig] = useLocalStorage("ui_wsConfig", {
+        headersText: "{\n}",
+        headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+        headersMode: "table",
+        protocolsText: "",
+        protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+        autoReconnect: false,
+        reconnectInterval: 3000,
+        connectTimeout: 10000,
+        messageType: "text",
+        messages: []
+    });
 
     const [requestName, setRequestName] = useLocalStorage("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage("ui_currentRequestId", "");
+    const [protocol, setProtocol] = useLocalStorage("ui_protocol", "http");
     const [collectionActiveRequestIds, setCollectionActiveRequestIds] = useLocalStorage("ui_collectionActiveRequestIds", {});
 
     const [collections, setCollections] = useLocalStorage("ui_collections", [
@@ -112,6 +133,7 @@ export function useRequestState() {
             name,
             description: "",
             tags: [],
+            protocol: "http",
             method: "GET",
             url: "",
             headersText: "",
@@ -119,19 +141,41 @@ export function useRequestState() {
             testsPreText: "",
             testsPostText: "",
             testsInputText: "",
+            httpVersion: "auto",
+            requestTimeoutMs: 30000,
             bodyType: "json",
             paramsRows: [{ key: "", value: "", enabled: true }],
             headersRows: [{ key: "", value: "", enabled: true }],
             authRows: [{ key: "", value: "", enabled: false }],
-            bodyRows: [{ key: "", value: "", enabled: true }]
+            bodyRows: [{ key: "", value: "", enabled: true }],
+            graphqlConfig: {
+                query: "",
+                variables: "{}",
+                operationName: "",
+                headers: {}
+            },
+            wsConfig: {
+                headersText: "{\n}",
+                headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+                headersMode: "table",
+                protocolsText: "",
+                protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+                autoReconnect: false,
+                reconnectInterval: 3000,
+                connectTimeout: 10000,
+                messageType: "text",
+                messages: []
+            }
         };
+
+        // Allow the caller to customise the request (e.g. set protocol) before it is inserted
+        setupNewRequest(req);
 
         if (!folderId) {
             const nextItems = Array.isArray(col.items) ? [...col.items, req] : [req];
             setCollections((prev) =>
                 prev.map((item) => (item.id === col.id ? { ...item, items: nextItems } : item))
             );
-            setupNewRequest(req);
             return req;
         }
 
@@ -150,7 +194,6 @@ export function useRequestState() {
         setCollections((prev) =>
             prev.map((item) => (item.id === col.id ? { ...item, items: insertIntoFolder(item.items || []) } : item))
         );
-        setupNewRequest(req);
         return req;
     }
 
@@ -158,6 +201,7 @@ export function useRequestState() {
         if (!req) {
             setRequestName("New Request");
             setCurrentRequestId("");
+            setProtocol("http");
             setMethod("GET");
             setUrl("");
             setHeadersText("");
@@ -168,12 +212,33 @@ export function useRequestState() {
             setParamsRows([{ key: "", value: "", enabled: true }]);
             setAuthRows([{ key: "", value: "", enabled: false }]);
             setAuthType("none");
+            setHttpVersion("auto");
+            setRequestTimeoutMs(30000);
             setBodyType("json");
             setBodyRows([{ key: "", value: "", enabled: true }]);
+            setGraphqlConfig({
+                query: "",
+                variables: "{}",
+                operationName: "",
+                headers: {}
+            });
+            setWsConfig({
+                headersText: "{\n}",
+                headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+                headersMode: "table",
+                protocolsText: "",
+                protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+                autoReconnect: false,
+                reconnectInterval: 3000,
+                connectTimeout: 10000,
+                messageType: "text",
+                messages: []
+            });
             return;
         };
         setRequestName(req.name || "New Request");
         setCurrentRequestId(req.id || "");
+        setProtocol(req.protocol || "http");
         setMethod(req.method || "GET");
         setUrl(req.url || "");
         setHeadersText(req.headersText || "");
@@ -181,7 +246,27 @@ export function useRequestState() {
         setTestsPreText(req.testsPreText || "");
         setTestsPostText(req.testsPostText || "");
         setTestsInputText(req.testsInputText || "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
+        setHttpVersion(req.httpVersion || "auto");
+        setRequestTimeoutMs(req.requestTimeoutMs || 30000);
         setBodyType(req.bodyType || "json");
+        setGraphqlConfig(req.graphqlConfig || {
+            query: "",
+            variables: "{}",
+            operationName: "",
+            headers: {}
+        });
+        setWsConfig(req.wsConfig || {
+            headersText: "{\n}",
+            headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+            headersMode: "table",
+            protocolsText: "",
+            protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+            autoReconnect: false,
+            reconnectInterval: 3000,
+            connectTimeout: 10000,
+            messageType: "text",
+            messages: []
+        });
         setParamsRows(req.paramsRows || [{ key: "", value: "", enabled: true }]);
         setHeadersRows(req.headersRows || [{ key: "", value: "", enabled: true }]);
         setAuthRows(req.authRows || [{ key: "", value: "", enabled: false }]);
@@ -210,6 +295,7 @@ export function useRequestState() {
         if (!currentRequestId || !activeCollectionId) return;
 
         const draft = {
+            protocol,
             method,
             url,
             headersText,
@@ -217,6 +303,8 @@ export function useRequestState() {
             testsPreText,
             testsPostText,
             testsInputText,
+            httpVersion,
+            requestTimeoutMs,
             paramsRows,
             headersRows,
             authRows,
@@ -224,6 +312,8 @@ export function useRequestState() {
             authConfig,
             bodyType,
             bodyRows,
+            graphqlConfig,
+            wsConfig,
             name: requestName
         };
 
@@ -532,6 +622,8 @@ export function useRequestState() {
                     headersRows: (req.headers || []).map(h => ({ key: h.name, value: h.value, enabled: true })),
                     paramsRows: (req.queryParams || []).map(q => ({ key: q.name, value: q.value, enabled: true })),
                     authRows: [{ key: "", value: "", enabled: false }],
+                    httpVersion: "auto",
+                    requestTimeoutMs: 30000,
                     bodyRows: [{ key: "", value: "", enabled: true }],
                     authType: "none",
                     authConfig: {
@@ -608,6 +700,8 @@ export function useRequestState() {
                         headersRows: (pmReq.header || []).map(h => ({ key: h.key, value: h.value, enabled: true })),
                         paramsRows: (pmReq.url?.query || []).map(q => ({ key: q.key, value: q.value, enabled: true })),
                         authRows: [{ key: "", value: "", enabled: false }],
+                        httpVersion: "auto",
+                        requestTimeoutMs: 30000,
                         bodyRows: [{ key: "", value: "", enabled: true }],
                         authType: "none",
                         authConfig: {
@@ -698,8 +792,13 @@ export function useRequestState() {
         authRows, setAuthRows,
         authType, setAuthType,
         authConfig, setAuthConfig,
+        httpVersion, setHttpVersion,
+        requestTimeoutMs, setRequestTimeoutMs,
         bodyType, setBodyType,
         bodyRows, setBodyRows,
+        graphqlConfig, setGraphqlConfig,
+        wsConfig, setWsConfig,
+        protocol, setProtocol,
         requestName, setRequestName,
         currentRequestId, setCurrentRequestId,
         collections, setCollections,

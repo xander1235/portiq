@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import logo from "./assets/logo.png";
@@ -20,11 +20,24 @@ import { customJsonLinter } from "./utils/codemirror/jsonExtensions.js";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions.js";
 import { SemanticSearch } from "./utils/semanticSearch.js";
 import { flattenCollections } from "./utils/fuzzySearch.js";
+import { get, set } from "idb-keyval";
 
 import { TableEditor } from "./components/TableEditor.jsx";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal.jsx";
 import { ExportModal } from "./components/Modals/ExportModal.jsx";
 import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal.jsx";
+import { SettingsModal } from "./components/Modals/SettingsModal.jsx";
+import { RightRail } from "./components/RightRail/RightRail.jsx";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 
 import { Sidebar } from "./components/Sidebar/Sidebar.jsx";
 import { RequestEditor } from "./components/RequestPane/RequestEditor.jsx";
@@ -32,6 +45,16 @@ import { ResponseViewer } from "./components/ResponsePane/ResponseViewer.jsx";
 import { useRequestState } from "./hooks/useRequestState.js";
 import layoutStyles from "./components/Layout/Layout.module.css";
 import rightRailStyles from "./components/Layout/RightRail.module.css";
+
+import { GraphQLPane } from "./components/ProtocolPanes/GraphQLPane.jsx";
+import { WebSocketPane } from "./components/ProtocolPanes/WebSocketPane.jsx";
+import { GrpcPane } from "./components/ProtocolPanes/GrpcPane.jsx";
+import { MockServerPane } from "./components/ProtocolPanes/MockServerPane.jsx";
+import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane.jsx";
+import { McpPane } from "./components/ProtocolPanes/McpPane.jsx";
+import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane.jsx";
+import { ProtocolRegistry, GrpcProtocol } from "./protocols/index.js"; // register all built-in protocols
+import { GraphQLProtocol } from "./protocols/graphql.js";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -53,15 +76,56 @@ function findArrayPaths(value, prefix = "$") {
   return paths;
 }
 
+function tokenizeJsonPath(path) {
+  if (!path || path === "$") return [];
+  const cleaned = path.replace(/^\$\.?/, "");
+  const tokenPattern = /([^.[\]]+)|\[(\d+|\*)\]/g;
+  const tokens = [];
+  let match;
+  while ((match = tokenPattern.exec(cleaned))) {
+    if (match[1]) {
+      tokens.push({ type: "property", value: match[1] });
+    } else if (match[2] === "*") {
+      tokens.push({ type: "wildcard" });
+    } else {
+      tokens.push({ type: "index", value: Number(match[2]) });
+    }
+  }
+  return tokens;
+}
+
 function getValueByPath(root, path) {
   if (!path || path === "$") return root;
-  const cleaned = path.replace(/^\$\./, "");
-  const parts = cleaned.split(".").flatMap((part) => {
-    const match = part.match(/(\w+)\[(\d+)\]/);
-    if (match) return [match[1], Number(match[2])];
-    return [part];
-  });
-  return parts.reduce((acc, key) => (acc == null ? acc : acc[key]), root);
+  const tokens = tokenizeJsonPath(path);
+  let current = [root];
+
+  for (const token of tokens) {
+    const next = [];
+    for (const item of current) {
+      if (token.type === "property") {
+        if (item != null && typeof item === "object" && token.value in item) {
+          next.push(item[token.value]);
+        }
+        continue;
+      }
+      if (token.type === "index") {
+        if (Array.isArray(item) && token.value < item.length) {
+          next.push(item[token.value]);
+        }
+        continue;
+      }
+      if (token.type === "wildcard") {
+        if (Array.isArray(item)) {
+          next.push(...item);
+        }
+      }
+    }
+    current = next;
+    if (current.length === 0) return undefined;
+  }
+
+  if (current.length === 1) return current[0];
+  return current;
 }
 
 const SnippetLanguageSelector = ({ value, onChange }) => {
@@ -161,8 +225,13 @@ function App() {
     authRows, setAuthRows,
     authType, setAuthType,
     authConfig, setAuthConfig,
+    httpVersion, setHttpVersion,
+    requestTimeoutMs, setRequestTimeoutMs,
     bodyType, setBodyType,
     bodyRows, setBodyRows,
+    graphqlConfig, setGraphqlConfig,
+    wsConfig, setWsConfig,
+    protocol, setProtocol,
     requestName, setRequestName,
     currentRequestId, setCurrentRequestId,
     collections, setCollections,
@@ -191,11 +260,63 @@ function App() {
   const [activeRequestTab, setActiveRequestTab] = useLocalStorage("ui_activeRequestTab", "Body");
   const [activeResponseTab, setActiveResponseTab] = useLocalStorage("ui_activeResponseTab", "Pretty");
   const [aiPrompt, setAiPrompt] = useLocalStorage("ui_aiPrompt", "");
-  const [aiChatHistory, setAiChatHistory] = useLocalStorage("ui_aiChatHistory", [
-    { role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }
+  const [aiChatSessions, setAiChatSessions] = useState([
+    { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] }
   ]);
+  const [activeAiSessionId, setActiveAiSessionId] = useState(aiChatSessions[0].id);
+
+  const aiChatHistory = useMemo(() => {
+    const session = aiChatSessions.find(s => s.id === activeAiSessionId);
+    return session ? session.messages : [];
+  }, [aiChatSessions, activeAiSessionId]);
+
+  const updateAiChatHistory = useCallback((updater) => {
+    setAiChatSessions(prevSessions => {
+      const sessionIndex = prevSessions.findIndex(s => s.id === activeAiSessionId);
+      if (sessionIndex === -1) return prevSessions;
+
+      const session = prevSessions[sessionIndex];
+      const newHistory = typeof updater === 'function' ? updater(session.messages) : updater;
+      
+      const newSessions = [...prevSessions];
+      newSessions[sessionIndex] = { ...session, messages: newHistory, timestamp: Date.now() };
+      
+      if (currentRequestId) {
+        set(`ai_sessions_${currentRequestId}`, newSessions).catch(console.error);
+      }
+      return newSessions;
+    });
+  }, [activeAiSessionId, currentRequestId]);
+
+  const createNewAiSession = useCallback(() => {
+    const newSession = {
+      id: "session_" + Date.now() + "_" + Math.random().toString(36).substring(2,9),
+      timestamp: Date.now(),
+      messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }]
+    };
+    setAiChatSessions(prev => {
+      const newSessions = [newSession, ...prev];
+      if (currentRequestId) {
+        set(`ai_sessions_${currentRequestId}`, newSessions).catch(console.error);
+      }
+      return newSessions;
+    });
+    setActiveAiSessionId(newSession.id);
+  }, [currentRequestId]);
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [activeRightTab, setActiveRightTab] = useLocalStorage("ui_activeRightTab", "ai");
+  const [appLogs, setAppLogs] = useLocalStorage("ui_appLogs", []);
   const chatEndRef = useRef(null);
+
+  const addLog = useCallback((logEntry) => {
+    setAppLogs(prev => {
+      const MAX_LOGS = 200;
+      const newLogs = [...(prev || []), { timestamp: Date.now(), ...logEntry }];
+      if (newLogs.length > MAX_LOGS) return newLogs.slice(newLogs.length - MAX_LOGS);
+      return newLogs;
+    });
+  }, [setAppLogs]);
 
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
@@ -219,7 +340,7 @@ function App() {
         return;
       }
 
-      const models = await fetchModels(aiProvider, key) || [];
+      const models = await fetchModels(aiProvider, key, addLog) || [];
       if (isMounted) {
         setAvailableModels(models);
         // Auto-select cheapest/default if nothing selected or current not in list
@@ -251,6 +372,7 @@ function App() {
         setTimeout(() => setSemanticProgress(null), 3000);
       }).catch(err => {
         setSemanticProgress('Error: ' + err.message);
+        addLog({ source: "System", type: "error", message: `Semantic Search Error: ${err.message}` });
       });
     } else {
       setSemanticProgress(null);
@@ -259,13 +381,19 @@ function App() {
 
   const [response, setResponse] = useState(null);
   const [responseSummary, setResponseSummary] = useState({ summary: "No response yet.", hints: [] });
+  const responseCacheRef = React.useRef(new Map());
   const [error, setError] = useState("");
   const [activeSidebar, setActiveSidebar] = useLocalStorage("ui_activeSidebar", "Collections");
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const [showRightRail, setShowRightRail] = useLocalStorage("ui_showRightRail", false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage("ui_sidebarCollapsed", false);
   const [isSending, setIsSending] = useState(false);
-  const [isAiModelDropdownOpen, setIsAiModelDropdownOpen] = useState(false);
+  const [activeHttpRequestId, setActiveHttpRequestId] = useState(null);
+
+  // Protocol system state (per-request protocol is in useRequestState; these are protocol-specific UI state)
+  const [graphqlResponse, setGraphqlResponse] = useState(null);
+  const [grpcConfig, setGrpcConfig] = useState({});
+  const [grpcResponse, setGrpcResponse] = useState(null);
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -305,11 +433,13 @@ function App() {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
+  const [showImportCurlModal, setShowImportCurlModal] = useState(false);
   const [showImportCollisionModal, setShowImportCollisionModal] = useState(false);
   const [importCollisionData, setImportCollisionData] = useState(null);
   const [importCollisionNameDraft, setImportCollisionNameDraft] = useState("");
   const [importTextDraft, setImportTextDraft] = useState("");
   const [importApiDraft, setImportApiDraft] = useState("");
+  const [importCurlDraft, setImportCurlDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
 
@@ -340,6 +470,7 @@ function App() {
   const [itemToMove, setItemToMove] = useState(null);
   const [moveTargetId, setMoveTargetId] = useState("root");
   const [moveSearchQuery, setMoveSearchQuery] = useState("");
+  const [wsClearSignal, setWsClearSignal] = useState(0);
 
   const [search, setSearch] = useState("");
   const [searchKey, setSearchKey] = useState("");
@@ -349,19 +480,126 @@ function App() {
   const [derivedExpr, setDerivedExpr] = useState("");
   const [derivedFields, setDerivedFields] = useState([]);
 
+  function setActiveProtocolResponse(protocolId, nextResponse) {
+    setResponse(nextResponse);
+    if (protocolId === "graphql") {
+      setGraphqlResponse(nextResponse);
+      setGrpcResponse(null);
+      return;
+    }
+    setGraphqlResponse(null);
+    if (protocolId !== "grpc") {
+      setGrpcResponse(null);
+    }
+  }
+
+  function cacheResponseForRequest(requestId, nextResponse, nextSummary) {
+    if (!requestId) return;
+    const dataToSave = { response: nextResponse, responseSummary: nextSummary };
+    responseCacheRef.current.set(requestId, dataToSave);
+    set(`response_cache_${requestId}`, dataToSave).catch(console.error);
+  }
+
+  function restoreResponseForRequest(req, cached) {
+    const nextResponse = cached?.response || null;
+    const nextSummary = cached?.responseSummary || { summary: "No response yet.", hints: [] };
+    setActiveProtocolResponse(req?.protocol || "http", nextResponse);
+    setResponseSummary(nextSummary);
+  }
+
+  function clearActiveResponse(protocolId = protocol) {
+    setActiveProtocolResponse(protocolId, null);
+    setResponseSummary({ summary: "No response yet.", hints: [] });
+  }
+
+  function findRequestInItems(items, targetRequestId, folderPath = []) {
+    for (const item of items || []) {
+      if (item.type === "folder") {
+        const nested = findRequestInItems(item.items || [], targetRequestId, [...folderPath, item.name]);
+        if (nested) return nested;
+        continue;
+      }
+      if (item.type === "request" && item.id === targetRequestId) {
+        return { request: item, folderPath };
+      }
+    }
+    return null;
+  }
+
+  function getCurrentRequestSyncContext() {
+    const activeCollection = (collections || []).find((collection) => collection.id === activeCollectionId) || null;
+    const located = activeCollection && currentRequestId
+      ? findRequestInItems(activeCollection.items || [], currentRequestId)
+      : null;
+
+    return {
+      requestId: currentRequestId || "",
+      collectionId: activeCollection?.id || "",
+      collectionName: activeCollection?.name || "Unassigned",
+      folderPath: located?.folderPath || [],
+      requestName: located?.request?.name || requestName || "New Request",
+      protocol: protocol || "http"
+    };
+  }
+
   function handleCollectionSwitch(id) {
     syncDraftToCollection();
     setActiveCollectionId(id);
   }
 
   function handleRequestClick(req) {
+    // Save current response to cache before switching
+    if (currentRequestId) {
+      cacheResponseForRequest(currentRequestId, response, responseSummary);
+    }
     syncDraftToCollection();
     loadRequest(req);
+    // Restore cached response for the target request
+    if (req?.id) {
+      if (responseCacheRef.current.has(req.id)) {
+        restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
+      } else {
+        // Try to load from persistent storage
+        clearActiveResponse(req.protocol || "http");
+        setResponseSummary({ summary: "Loading past response...", hints: [] });
+        get(`response_cache_${req.id}`).then(cached => {
+          if (cached) {
+            responseCacheRef.current.set(req.id, cached);
+            restoreResponseForRequest(req, cached);
+          } else {
+            clearActiveResponse(req.protocol || "http");
+          }
+
+          get(`ai_sessions_${req.id}`).then(sessions => {
+            if (sessions && sessions.length > 0) {
+              setAiChatSessions(sessions);
+              setActiveAiSessionId(sessions[0].id);
+            } else {
+              const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+              setAiChatSessions([fresh]);
+              setActiveAiSessionId(fresh.id);
+            }
+          }).catch(console.error);
+        }).catch(() => {
+          clearActiveResponse(req.protocol || "http");
+        });
+      }
+    } else {
+      clearActiveResponse(req?.protocol || "http");
+      const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+      setAiChatSessions([fresh]);
+      setActiveAiSessionId(fresh.id);
+    }
+    setError("");
   }
 
   // Effect to load the last active request when switching collections
   useEffect(() => {
     const lastRequestId = collectionActiveRequestIds[activeCollectionId];
+    // Save current response before switching
+    if (currentRequestId) {
+      cacheResponseForRequest(currentRequestId, response, responseSummary);
+    }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
         const col = getActiveCollection();
@@ -378,15 +616,46 @@ function App() {
         const req = findReq(col?.items || []);
         if (req) {
           loadRequest(req);
+          // Restore cached response
+          if (responseCacheRef.current.has(req.id)) {
+            restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
+          } else {
+            clearActiveResponse(req.protocol || "http");
+            setResponseSummary({ summary: "Loading past response...", hints: [] });
+            get(`response_cache_${req.id}`).then(cached => {
+              if (cached) {
+                responseCacheRef.current.set(req.id, cached);
+                restoreResponseForRequest(req, cached);
+              } else {
+                clearActiveResponse(req.protocol || "http");
+              }
+
+              get(`ai_sessions_${req.id}`).then(sessions => {
+                if (sessions && sessions.length > 0) {
+                  setAiChatSessions(sessions);
+                  setActiveAiSessionId(sessions[0].id);
+                } else {
+                  const fresh = { id: "session_" + Date.now(), timestamp: Date.now(), messages: [{ role: "assistant", text: "Hi! How can I help you? Ask me to generate a request, or write tests for your last response." }] };
+                  setAiChatSessions([fresh]);
+                  setActiveAiSessionId(fresh.id);
+                }
+              }).catch(console.error);
+            }).catch(() => {
+              clearActiveResponse(req.protocol || "http");
+            });
+          }
         } else {
           loadRequest(null);
+          clearActiveResponse();
         }
       }
     } else {
       if (currentRequestId) {
         loadRequest(null);
+        clearActiveResponse();
       }
     }
+    setError("");
   }, [activeCollectionId]);
 
   const parsedJson = useMemo(() => {
@@ -410,7 +679,12 @@ function App() {
   const tableRows = useMemo(() => {
     if (!parsedJson) return [];
     const target = getValueByPath(parsedJson, selectedTablePath);
-    if (Array.isArray(target)) return target;
+    if (Array.isArray(target)) {
+      if (target.every((item) => Array.isArray(item))) {
+        return target.flat();
+      }
+      return target;
+    }
     if (target && typeof target === "object") return [target];
     return [];
   }, [parsedJson, selectedTablePath]);
@@ -523,11 +797,20 @@ function App() {
         if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
         if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
         if (state.testsInputText) setTestsInputText(state.testsInputText);
+        if (state.httpVersion) setHttpVersion(state.httpVersion);
+        if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
         if (state.bodyType) setBodyType(state.bodyType);
         if (state.paramsRows) setParamsRows(state.paramsRows);
         if (state.headersRows) setHeadersRows(state.headersRows);
         if (state.authRows) setAuthRows(state.authRows);
+        if (state.authType !== undefined) setAuthType(state.authType);
+        if (state.authConfig) setAuthConfig(state.authConfig);
         if (state.bodyRows) setBodyRows(state.bodyRows);
+        if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
+        if (state.wsConfig) setWsConfig(state.wsConfig);
+        if (state.protocol) setProtocol(state.protocol);
+        if (state.requestName !== undefined) setRequestName(state.requestName);
+        if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
         if (state.activeRequestTab) setActiveRequestTab(state.activeRequestTab);
         if (state.activeResponseTab) setActiveResponseTab(state.activeResponseTab);
         if (Array.isArray(state.collections) && state.collections.length > 0) {
@@ -545,6 +828,7 @@ function App() {
         if (state.selectedTablePath) setSelectedTablePath(state.selectedTablePath);
         if (state.headersMode) setHeadersMode(state.headersMode);
         if (state.testsMode) setTestsMode(state.testsMode);
+        if (state.historyRetentionDays !== undefined) setHistoryRetentionDays(state.historyRetentionDays);
       } catch (err) {
         // ignore corrupt state
       }
@@ -563,11 +847,21 @@ function App() {
       testsPreText,
       testsPostText,
       testsInputText,
+      httpVersion,
+      requestTimeoutMs,
       bodyType,
       paramsRows,
       headersRows,
       authRows,
+      authType,
+      authConfig,
       bodyRows,
+      graphqlConfig,
+      wsConfig,
+      protocol,
+      requestName,
+      currentRequestId,
+      historyRetentionDays,
       activeRequestTab,
       activeResponseTab,
       collections,
@@ -595,11 +889,21 @@ function App() {
     testsPreText,
     testsPostText,
     testsInputText,
+    httpVersion,
+    requestTimeoutMs,
     bodyType,
     paramsRows,
     headersRows,
     authRows,
+    authType,
+    authConfig,
     bodyRows,
+    graphqlConfig,
+    wsConfig,
+    protocol,
+    requestName,
+    currentRequestId,
+    historyRetentionDays,
     activeRequestTab,
     activeResponseTab,
     collections,
@@ -625,11 +929,21 @@ function App() {
         testsPreText,
         testsPostText,
         testsInputText,
+        httpVersion,
+        requestTimeoutMs,
         bodyType,
         paramsRows,
         headersRows,
         authRows,
+        authType,
+        authConfig,
         bodyRows,
+        graphqlConfig,
+        wsConfig,
+        protocol,
+        requestName,
+        currentRequestId,
+        historyRetentionDays,
         activeRequestTab,
         activeResponseTab,
         collections,
@@ -657,11 +971,21 @@ function App() {
     testsPreText,
     testsPostText,
     testsInputText,
+    httpVersion,
+    requestTimeoutMs,
     bodyType,
     paramsRows,
     headersRows,
     authRows,
+    authType,
+    authConfig,
     bodyRows,
+    graphqlConfig,
+    wsConfig,
+    protocol,
+    requestName,
+    currentRequestId,
+    historyRetentionDays,
     activeRequestTab,
     activeResponseTab,
     collections,
@@ -678,8 +1002,8 @@ function App() {
   ]);
 
   function parseHeaders() {
+    let parsed = {};
     try {
-      let parsed = {};
       if (headersText && headersText.trim().length > 0) {
         parsed = JSON.parse(headersText);
       } else {
@@ -687,13 +1011,16 @@ function App() {
           .filter((row) => row.key && row.enabled !== false)
           .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
       }
-
-      const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, (v) => v);
-      return { ...authHeaders, ...parsed };
     } catch (err) {
-      setError("Headers must be valid JSON.");
-      return null;
+      // If JSON is invalid, fall back to table rows if they exist, otherwise empty
+      parsed = (headersRows || [])
+        .filter((row) => row.key && row.enabled !== false)
+        .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+      console.warn("Header JSON invalid, falling back to table rows");
     }
+
+    const authHeaders = getCompiledAuthHeaders(authType, authConfig, authRows, (v) => v);
+    return { ...authHeaders, ...parsed };
   }
 
   function getCompiledAuthHeaders(type, config, customRows, valFn) {
@@ -747,6 +1074,275 @@ function App() {
     setImportCollisionData(null);
   }
 
+  function tokenizeShellCommand(command) {
+    const input = String(command || "").replace(new RegExp("\\\\\r?\\n", "g"), " ").trim();
+    const tokens = [];
+    let current = "";
+    let quote = null;
+    let escaping = false;
+
+    for (let i = 0; i < input.length; i += 1) {
+      const char = input[i];
+      if (escaping) {
+        current += char;
+        escaping = false;
+        continue;
+      }
+      if (char === "\\" && quote !== "'") {
+        escaping = true;
+        continue;
+      }
+      if (quote) {
+        if (char === quote) {
+          quote = null;
+        } else {
+          current += char;
+        }
+        continue;
+      }
+      if (char === "\"" || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (/\s/.test(char)) {
+        if (current) {
+          tokens.push(current);
+          current = "";
+        }
+        continue;
+      }
+      current += char;
+    }
+
+    if (current) tokens.push(current);
+    return tokens;
+  }
+
+  function inferRequestNameFromUrl(value) {
+    try {
+      const parsed = new URL(value);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      return segments.length ? segments[segments.length - 1] : parsed.hostname;
+    } catch {
+      return "Imported cURL Request";
+    }
+  }
+
+  function parseCurlCommand(command) {
+    const tokens = tokenizeShellCommand(command);
+    if (tokens.length === 0 || tokens[0] !== "curl") {
+      throw new Error("Command must start with curl");
+    }
+
+    let method = "";
+    let urlValue = "";
+    let explicitMethod = false;
+    let useQueryString = false;
+    const headers = {};
+    const dataParts = [];
+    const formParts = [];
+
+    const readValue = (index, label) => {
+      const value = tokens[index + 1];
+      if (value == null) throw new Error(`Missing value for ${label}`);
+      return value;
+    };
+
+    for (let i = 1; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      const nextValue = () => {
+        const value = readValue(i, token);
+        i += 1;
+        return value;
+      };
+
+      if (token === "-X" || token === "--request") {
+        method = nextValue().toUpperCase();
+        explicitMethod = true;
+        continue;
+      }
+      if (token.startsWith("--request=")) {
+        method = token.split("=", 2)[1].toUpperCase();
+        explicitMethod = true;
+        continue;
+      }
+      if (token === "-H" || token === "--header") {
+        const header = nextValue();
+        const idx = header.indexOf(":");
+        if (idx !== -1) {
+          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
+        }
+        continue;
+      }
+      if (token.startsWith("--header=")) {
+        const header = token.split("=", 2)[1];
+        const idx = header.indexOf(":");
+        if (idx !== -1) {
+          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
+        }
+        continue;
+      }
+      if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
+        dataParts.push(nextValue());
+        continue;
+      }
+      if (token.startsWith("--data=") || token.startsWith("--data-raw=") || token.startsWith("--data-binary=") || token.startsWith("--data-ascii=") || token.startsWith("--data-urlencode=")) {
+        dataParts.push(token.split("=", 2)[1]);
+        continue;
+      }
+      if (token === "-F" || token === "--form" || token === "--form-string") {
+        formParts.push(nextValue());
+        continue;
+      }
+      if (token.startsWith("--form=") || token.startsWith("--form-string=")) {
+        formParts.push(token.split("=", 2)[1]);
+        continue;
+      }
+      if (token === "-G" || token === "--get") {
+        useQueryString = true;
+        continue;
+      }
+      if (token === "--url") {
+        urlValue = nextValue();
+        continue;
+      }
+      if (token.startsWith("--url=")) {
+        urlValue = token.split("=", 2)[1];
+        continue;
+      }
+      if (token === "-u" || token === "--user") {
+        const creds = nextValue();
+        headers["Authorization"] = `Basic ${btoa(creds)}`;
+        continue;
+      }
+      if (!token.startsWith("-") && !urlValue) {
+        urlValue = token;
+      }
+    }
+
+    if (!urlValue) {
+      throw new Error("cURL command does not contain a URL");
+    }
+
+    const normalizedMethod = explicitMethod
+      ? method
+      : (formParts.length > 0 || dataParts.length > 0) && !useQueryString
+        ? "POST"
+        : "GET";
+
+    let finalUrl = urlValue;
+    let bodyType = "none";
+    let bodyTextValue = "";
+    let bodyRowsValue = [{ key: "", value: "", enabled: true }];
+
+    if (useQueryString && dataParts.length > 0) {
+      const urlObject = new URL(finalUrl);
+      dataParts.forEach((part) => {
+        const [key, value = ""] = part.split("=", 2);
+        urlObject.searchParams.append(key, value);
+      });
+      finalUrl = urlObject.toString();
+    } else if (formParts.length > 0) {
+      bodyType = "multipart";
+      bodyRowsValue = formParts.map((part) => {
+        const [key, rawValue = ""] = part.split("=", 2);
+        if (rawValue.startsWith("@")) {
+          const filePath = rawValue.slice(1);
+          const fileName = filePath.split(/[\/]/).pop() || "upload.bin";
+          return {
+            key,
+            value: "",
+            enabled: true,
+            kind: "file",
+            fileName,
+            fileBase64: "",
+            mimeType: "application/octet-stream",
+            sourcePath: filePath
+          };
+        }
+        return { key, value: rawValue, enabled: true, kind: "text" };
+      });
+    } else if (dataParts.length > 0 && !useQueryString) {
+      const joined = dataParts.join("&");
+      const contentType = Object.keys(headers).find((key) => key.toLowerCase() === "content-type");
+      const contentTypeValue = contentType ? headers[contentType].toLowerCase() : "";
+      if (contentTypeValue.includes("application/json") || /^[\[{]/.test(joined.trim())) {
+        bodyType = "json";
+        bodyTextValue = joined;
+      } else if (contentTypeValue.includes("application/x-www-form-urlencoded") || dataParts.every((part) => part.includes("="))) {
+        bodyType = "form";
+        bodyRowsValue = dataParts.map((part) => {
+          const [key, value = ""] = part.split("=", 2);
+          return { key, value, enabled: true };
+        });
+      } else {
+        bodyType = "raw";
+        bodyTextValue = joined;
+      }
+    }
+
+    let paramsRowsValue = [{ key: "", value: "", enabled: true }];
+    try {
+      const urlObject = new URL(finalUrl);
+      const paramRows = Array.from(urlObject.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true }));
+      paramsRowsValue = paramRows.length > 0 ? paramRows : paramsRowsValue;
+      urlObject.search = "";
+      finalUrl = urlObject.toString();
+    } catch {
+      // ignore URL parsing failure
+    }
+
+    const headersRowsValue = Object.keys(headers).length > 0 ? objectToRows(headers) : [{ key: "", value: "", enabled: true }];
+    const requestName = inferRequestNameFromUrl(finalUrl);
+
+    return {
+      type: "request",
+      id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: requestName,
+      description: "",
+      tags: [],
+      protocol: "http",
+      method: normalizedMethod,
+      url: finalUrl,
+      headersText: JSON.stringify(headers, null, 2),
+      bodyText: bodyTextValue,
+      testsPreText: "",
+      testsPostText: "",
+      testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
+      httpVersion: "auto",
+      requestTimeoutMs: 30000,
+      bodyType,
+      paramsRows: paramsRowsValue,
+      headersRows: headersRowsValue,
+      authRows: [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }],
+      authType: "none",
+      authConfig: {
+        bearer: { token: "" },
+        basic: { username: "", password: "" },
+        api_key: { key: "", value: "", add_to: "header" }
+      },
+      bodyRows: bodyRowsValue,
+      graphqlConfig: {
+        query: "",
+        variables: "{}",
+        operationName: "",
+        headers: {}
+      },
+      wsConfig: {
+        headersText: "{\n}",
+        headersRows: [{ key: "", value: "", comment: "", enabled: true }],
+        headersMode: "table",
+        protocolsText: "",
+        protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
+        autoReconnect: false,
+        reconnectInterval: 3000,
+        connectTimeout: 10000,
+        messageType: "text",
+        messages: []
+      }
+    };
+  }
+
   function importCollection() {
     const input = document.createElement("input");
     input.type = "file";
@@ -795,6 +1391,21 @@ function App() {
       setImportTextDraft("");
     } catch (err) {
       alert("Failed to parse the provided text as JSON. Error: " + err.message);
+    }
+  }
+
+  function handleImportCurlSubmit() {
+    if (!importCurlDraft.trim()) return;
+    try {
+      const parsedReq = parseCurlCommand(importCurlDraft);
+      const createdReq = addRequestToCollection(null, (req) => Object.assign(req, parsedReq));
+      if (createdReq) {
+        handleRequestClick(createdReq);
+      }
+      setShowImportCurlModal(false);
+      setImportCurlDraft("");
+    } catch (err) {
+      alert("Failed to parse the provided cURL command. Error: " + err.message);
     }
   }
 
@@ -1270,9 +1881,12 @@ function App() {
         curl += ` \\\n  -H '${k}: ${v}'`;
       });
       if (isMultipart && reqMethod !== "GET") {
-        const data = rowsToObject(bodyRows, snippetInterpolate);
-        Object.entries(data).forEach(([k, v]) => {
-          curl += ` \\\n  -F '${k}=${v}'`;
+        (bodyRows || []).filter((row) => row.key && row.enabled !== false).forEach((row) => {
+          if (row.kind === "file") {
+            curl += ` \\\n  -F '${val(row.key)}=@${row.fileName || "upload.bin"}'`;
+            return;
+          }
+          curl += ` \\\n  -F '${val(row.key)}=${val(row.value || "")}'`;
         });
       } else if (reqBody && reqMethod !== "GET") {
         curl += ` \\\n  -d '${reqBody.replace(/'/g, "'\\''")}'`;
@@ -1436,11 +2050,23 @@ function App() {
 
     const mockReq = {
       name: "History Request",
+      protocol: req.protocol || "http",
       method: req.method,
       url: req.url,
       bodyText: req.body || "",
+      httpVersion: req.httpVersion || "auto",
+      requestTimeoutMs: req.timeoutMs || 30000,
       bodyType: req.body ? "raw" : "none"
     };
+
+    if (req.protocol === "graphql") {
+      mockReq.graphqlConfig = {
+        query: req.query || "",
+        variables: typeof req.variables === "string" ? req.variables : JSON.stringify(req.variables || {}, null, 2),
+        operationName: req.operationName || "",
+        headers: req.headers || {}
+      };
+    }
 
     if (req.headers && Object.keys(req.headers).length > 0) {
       const hRows = Object.entries(req.headers).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
@@ -1454,40 +2080,69 @@ function App() {
 
     // Restore the response
     if (res) {
-      setResponse(res);
+      setActiveProtocolResponse(mockReq.protocol, res);
       const summary = await summarizeResponse(res);
       setResponseSummary(summary);
     } else {
-      setResponse(null);
+      clearActiveResponse(mockReq.protocol);
       setResponseSummary({ summary: "No response recorded.", hints: [] });
     }
   }
 
+  async function handleCancelHttpSend() {
+    if (!activeHttpRequestId || !window.api?.cancelRequest) return;
+    await window.api.cancelRequest({ requestId: activeHttpRequestId });
+  }
+
   async function handleSend() {
     setIsSending(true);
+    const requestId = `http-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setActiveHttpRequestId(requestId);
     setResponse(null);
     setResponseSummary({ summary: "Sending request...", hints: [] });
     setError("");
     try {
       const headers = parseHeaders();
       if (headers === null) return;
-      let body = bodyText;
+      let body = bodyType === "none" ? undefined : bodyText;
+      let multipartParts;
       if (bodyType === "json") {
-        body = stripJsonComments(interpolate(bodyText));
+        const strippedJson = stripJsonComments(interpolate(bodyText));
+        if (strippedJson.trim()) {
+          try {
+            body = JSON.stringify(JSON.parse(strippedJson));
+          } catch (err) {
+            setError(`Invalid JSON body: ${err.message}`);
+            setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
+            return;
+          }
+        } else {
+          body = "";
+        }
       }
       if (bodyType === "form") {
         const data = rowsToObject(bodyRows);
         body = new URLSearchParams(data).toString();
       }
       if (bodyType === "multipart") {
-        const boundary = `----CommuBoundary${Date.now()}`;
-        const data = rowsToObject(bodyRows);
-        const parts = Object.entries(data).map(([key, value]) =>
-          `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}`
-        );
-        body = parts.join("\r\n") + `\r\n--${boundary}--\r\n`;
-        // Override Content-Type header with the boundary
-        headers["Content-Type"] = `multipart/form-data; boundary=${boundary}`;
+        multipartParts = (bodyRows || [])
+          .filter((row) => row.key && row.enabled !== false)
+          .map((row) => (
+            row.kind === "file"
+              ? {
+                  kind: "file",
+                  name: interpolate(row.key),
+                  filename: row.fileName || "upload.bin",
+                  contentType: row.mimeType || "application/octet-stream",
+                  dataBase64: row.fileBase64 || ""
+                }
+              : {
+                  kind: "text",
+                  name: interpolate(row.key),
+                  value: interpolate(row.value || "")
+                }
+          ));
+        body = undefined;
       }
       if (bodyType === "xml") {
         body = interpolate(bodyText);
@@ -1496,10 +2151,14 @@ function App() {
         body = interpolate(bodyText);
       }
       const payload = {
+        requestId,
         method,
         url: buildUrlWithParams(),
         headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
-        body
+        body,
+        multipartParts,
+        timeoutMs: requestTimeoutMs,
+        httpVersion
       };
 
       const preOutput = [];
@@ -1513,25 +2172,43 @@ function App() {
         },
         response: null
       };
-      runScript(testsPreText, preContext, preOutput);
+      await runScript(testsPreText, preContext, preOutput);
       payload.method = preContext.request.method || payload.method;
       payload.url = preContext.request.url || payload.url;
       payload.headers = preContext.request.headers || payload.headers;
       payload.body = preContext.request.body ?? payload.body;
       if (preOutput.length) {
-        setTestsOutput(preOutput.join("\n"));
+        setTestsOutput(preOutput);
         setShowTestOutput(true);
       }
 
+      addLog({ source: "API", type: "info", message: `Sending ${payload.method} ${payload.url}` });
+
       const result = await window.api.sendRequest(payload);
+
+      if (result.cancelled) {
+        addLog({ source: "API", type: "info", message: `Request cancelled: ${payload.method} ${payload.url}` });
+        setResponseSummary({ summary: "Request cancelled.", hints: [] });
+        return;
+      }
 
       if (result.error) {
         setError(result.error);
+        addLog({ source: "API", type: "error", message: `Request Error: ${payload.method} ${payload.url}`, data: result.error });
+      } else {
+        addLog({ source: "API", type: result.status >= 400 ? "error" : "success", message: `Response: ${result.status} ${result.statusText} (${result.time}ms) ${result.httpVersion ? `[${result.httpVersion}]` : ""}`.trim() });
       }
 
       setResponse(result);
       const summary = await summarizeResponse(result);
       setResponseSummary(summary);
+
+      // Cache response for this request so it persists on navigation and app reload
+      if (currentRequestId) {
+        const dataToSave = { response: result, responseSummary: summary };
+        responseCacheRef.current.set(currentRequestId, dataToSave);
+        set(`response_cache_${currentRequestId}`, dataToSave).catch(console.error);
+      }
 
       const now = Date.now();
 
@@ -1546,9 +2223,16 @@ function App() {
         redactedPayload.body = redactSecrets(redactedPayload.body);
       }
 
+      const requestContext = getCurrentRequestSyncContext();
       const historyEntry = {
         timestamp: now,
-        request: redactedPayload,
+        request: {
+          ...redactedPayload,
+          ...requestContext,
+          protocol: "http",
+          httpVersion,
+          timeoutMs: requestTimeoutMs
+        },
         response: result
       };
       const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;
@@ -1558,13 +2242,159 @@ function App() {
       });
 
       const postOutput = [];
-      runScript(testsPostText, { request: payload, response: result }, postOutput);
+      await runScript(testsPostText, { request: payload, response: result }, postOutput);
       if (postOutput.length) {
-        setTestsOutput(postOutput.join("\n"));
+        setTestsOutput(postOutput);
         setShowTestOutput(true);
       }
     } finally {
+      setActiveHttpRequestId(null);
       setIsSending(false);
+    }
+  }
+
+  async function handleGraphQLSend() {
+    if (!url.trim()) return;
+    setIsSending(true);
+    clearActiveResponse("graphql");
+    setResponseSummary({ summary: "Sending request...", hints: [] });
+    setError("");
+    try {
+      const headers = parseHeaders();
+      if (headers === null) return;
+
+      const validation = GraphQLProtocol.validateRequest({
+        url: interpolate(url),
+        query: interpolate(graphqlConfig.query || ""),
+        variables: interpolate(graphqlConfig.variables || "{}")
+      });
+      if (!validation.valid) {
+        const message = validation.errors.join("\n");
+        setError(message);
+        setActiveProtocolResponse("graphql", GraphQLProtocol.parseResponse({ error: message }));
+        return;
+      }
+
+      const requestPayload = GraphQLProtocol.buildRequest({
+        url: interpolate(url),
+        query: interpolate(graphqlConfig.query || ""),
+        variables: interpolate(graphqlConfig.variables || "{}"),
+        operationName: interpolate(graphqlConfig.operationName || ""),
+        headers: headers ? Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])) : {}
+      });
+
+      const preOutput = [];
+      const preContext = {
+        request: {
+          method: "POST",
+          url: requestPayload.url,
+          headers: { ...requestPayload.headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: requestPayload.query,
+            variables: requestPayload.variables,
+            operationName: requestPayload.operationName || undefined
+          })
+        },
+        response: null
+      };
+      await runScript(testsPreText, preContext, preOutput);
+      if (preOutput.length) {
+        setTestsOutput(preOutput);
+        setShowTestOutput(true);
+      }
+
+      addLog({ source: "API", type: "info", message: `Sending GraphQL POST ${requestPayload.url}` });
+
+      const rawResult = await window.api.sendGraphQL(requestPayload);
+      const result = GraphQLProtocol.parseResponse(rawResult);
+
+      if (result.error) {
+        setError(result.error);
+        addLog({ source: "API", type: "error", message: `GraphQL Error: POST ${requestPayload.url}`, data: result.error });
+      } else {
+        addLog({
+          source: "API",
+          type: result.status >= 400 || result.hasErrors ? "error" : "success",
+          message: `GraphQL Response: ${result.status} ${result.statusText} (${result.time || result.duration}ms)`
+        });
+      }
+
+      setActiveProtocolResponse("graphql", result);
+      const summary = await summarizeResponse(result);
+      setResponseSummary(summary);
+      cacheResponseForRequest(currentRequestId, result, summary);
+
+      const now = Date.now();
+      const requestContext = getCurrentRequestSyncContext();
+      const historyEntry = {
+        timestamp: now,
+        request: {
+          ...requestContext,
+          protocol: "graphql",
+          method: "POST",
+          url: redactSecrets(requestPayload.url),
+          headers: Object.fromEntries(
+            Object.entries(requestPayload.headers || {}).map(([k, v]) => [k, redactSecrets(v)])
+          ),
+          query: redactSecrets(requestPayload.query || ""),
+          variables: requestPayload.variables,
+          operationName: requestPayload.operationName || ""
+        },
+        response: result
+      };
+      const retentionMs = historyRetentionDays * 24 * 60 * 60 * 1000;
+      setHistory(prev => [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs));
+
+      const postOutput = [];
+      await runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
+      if (postOutput.length) {
+        setTestsOutput(postOutput);
+        setShowTestOutput(true);
+      }
+    } catch (err) {
+      const result = GraphQLProtocol.parseResponse({ error: err.message });
+      setActiveProtocolResponse("graphql", result);
+      setError(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleGrpcSend() {
+    if (!url.trim()) return;
+    setIsSending(true);
+    setGrpcResponse(null);
+    try {
+      // gRPC calls are currently a placeholder - requires native module
+      // For now we show the config validation
+      const validation = GrpcProtocol.validateRequest({
+        url,
+        service: grpcConfig.service,
+        method: grpcConfig.method,
+        requestBody: grpcConfig.requestBody
+      });
+      if (!validation.valid) {
+        setGrpcResponse({ error: validation.errors.join("\n"), statusCode: 2 });
+      } else {
+        setGrpcResponse({
+          error: "gRPC native transport not yet available. Install @grpc/grpc-js to enable.",
+          statusCode: 12 // UNIMPLEMENTED
+        });
+      }
+    } catch (err) {
+      setGrpcResponse({ error: err.message, statusCode: 13 });
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  // Unified send dispatcher that routes to the right protocol
+  function handleProtocolSend() {
+    switch (protocol) {
+      case "graphql": return handleGraphQLSend();
+      case "grpc": return handleGrpcSend();
+      case "http":
+      default: return handleSend();
     }
   }
 
@@ -1595,7 +2425,16 @@ function App() {
   }
 
   async function handleGenerateTests() {
-    const tests = await generateTestsFromResponse({ method, url }, response);
+    const aiSettings = {
+      provider: aiProvider,
+      model: activeModel,
+      keys: {
+        openai: aiApiKeyOpenAI,
+        anthropic: aiApiKeyAnthropic,
+        gemini: aiApiKeyGemini
+      }
+    };
+    const tests = await generateTestsFromResponse({ method, url }, response, aiSettings);
     setActiveRequestTab("Tests");
     setTestsPostText(tests.join("\n"));
   }
@@ -1606,7 +2445,7 @@ function App() {
 
     const userMsg = { role: "user", text: textToSubmit };
     const newHistory = [...aiChatHistory, userMsg];
-    setAiChatHistory(newHistory);
+    updateAiChatHistory(newHistory);
 
     const currentPrompt = textToSubmit;
     if (typeof overridePrompt !== 'string') {
@@ -1624,22 +2463,47 @@ function App() {
       },
       semanticSearchEnabled: aiSemanticSearchEnabled
     };
-    const currentState = { method, url, headersText, bodyText };
+    const currentState = { method, url, headersText, bodyText, protocol, graphqlConfig };
+    const responseData = response ? { status: response.status, statusText: response.statusText, headers: response.headers, body: response.body || (response.json ? JSON.stringify(response.json) : "") } : null;
+
+    // Feature 1: Pre-flight check. If asking about response but no response exists, abort the API call.
+    const promptLower = textToSubmit.toLowerCase();
+    const needsResponse = promptLower.includes("response") || promptLower.includes("extract") || promptLower.includes("result");
+    
+    if (needsResponse && !responseData) {
+      setTimeout(() => {
+        setIsAiTyping(false);
+        updateAiChatHistory(prev => [...prev, { 
+          role: "assistant", 
+          text: "It looks like you want me to analyze the response, but you haven't clicked **Send** on the request yet. Please run the request first so I have data to extract!" 
+        }]);
+      }, 600); // Small delay to feel natural
+      return;
+    }
 
     try {
-      if (currentPrompt.toLowerCase().includes("test")) {
-        const tests = await generateTestsFromResponse({ method, url }, response);
-        setActiveRequestTab("Tests");
-        setTestsPostText(tests.join("\n"));
-        setIsAiTyping(false);
-        setAiChatHistory([...newHistory, { role: "assistant", text: "I've generated tests based on the response and added them to your Tests > Post-response script tab." }]);
-      } else {
+      {
         const finalPrompt = currentPrompt;
-        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings);
+        const output = await generateRequestFromPrompt(finalPrompt, currentState, collections, aiSettings, activeAiSessionId, aiChatSessions, responseData);
         console.log("[AI DEBUG] Raw AI output:", JSON.stringify(output, null, 2));
 
         let assistantMsg = output.message || "I have updated the workspace.";
+        
+        // Some AI models append extra data fields (like "extractedData") outside the designated schema.
+        // Catch all unrecognized top-level keys and append them as a formatted markdown block.
+        const knownKeys = ['message', 'operations', '_usage', '_model'];
+        const extraFields = {};
+        for (const [key, value] of Object.entries(output)) {
+          if (!knownKeys.includes(key) && value) {
+             extraFields[key] = value;
+          }
+        }
+        if (Object.keys(extraFields).length > 0) {
+          assistantMsg += '\n\n```json\n' + JSON.stringify(extraFields, null, 2) + '\n```';
+        }
+
         let suggestedEndpoints = null;
+        let shouldSend = false;
 
         if (output.operations && Array.isArray(output.operations)) {
           console.log("[AI DEBUG] Found", output.operations.length, "operations");
@@ -1649,7 +2513,16 @@ function App() {
               if (op.payload.method) setMethod(op.payload.method);
               if (op.payload.url) setUrl(op.payload.url);
               if (op.payload.headersText) setHeadersText(op.payload.headersText);
-              if (op.payload.bodyText) setBodyText(op.payload.bodyText);
+              
+              if (protocol === "graphql" || (op.payload.protocol === "graphql")) {
+                setGraphqlConfig(prev => ({
+                  ...prev,
+                  query: op.payload.query || op.payload.bodyText || prev.query,
+                  variables: op.payload.variables || prev.variables
+                }));
+              } else {
+                if (op.payload.bodyText) setBodyText(op.payload.bodyText);
+              }
             } else if (op.type === "UPDATE_REQUEST_BY_ID") {
               setCollections(prev => prev.map(col => ({
                 ...col,
@@ -1657,8 +2530,25 @@ function App() {
               })));
             } else if (op.type === "SUGGEST_ENDPOINTS") {
               suggestedEndpoints = op.payload.endpoints;
+            } else if (op.type === "SEND_REQUEST") {
+              shouldSend = true;
+            } else if (op.type === "GENERATE_TESTS") {
+              if (op.payload && op.payload.tests && Array.isArray(op.payload.tests)) {
+                setActiveRequestTab("Tests");
+                setTestsPostText(op.payload.tests.join("\n"));
+                assistantMsg += "\n\n*(Tests have been added to your Tests > Post-response script tab.)*";
+              }
+            } else if (op.type === "DELETE_REQUEST") {
+              if (op.payload && op.payload.requestId) {
+                deleteRequest(op.payload.requestId);
+                assistantMsg += "\n\n*(Request has been deleted from your workspace.)*";
+              }
+            } else if (op.type === "MOVE_REQUEST") {
+              if (op.payload && op.payload.requestId && op.payload.targetCollectionId) {
+                moveItemInCollection(op.payload.requestId, op.payload.targetFolderId || op.payload.targetCollectionId, true);
+                assistantMsg += "\n\n*(Request has been moved.)*";
+              }
             } else if (op.type === "CREATE_REQUEST") {
-              // ... existing CREATE_REQUEST block
               const newReqId = "req-" + Date.now().toString() + "-" + Math.random().toString(36).substr(2, 5);
               let targetColId = op.payload.collectionId;
               let targetColName = op.payload.newCollectionName || "";
@@ -1669,7 +2559,6 @@ function App() {
                   const parsed = JSON.parse(op.payload.headersText);
                   newHeadersRows = objectToRows(parsed);
                 } catch (e) {
-                  // headersText might be "key: value" format, try parsing that
                   try {
                     const headerObj = {};
                     op.payload.headersText.split('\n').forEach(line => {
@@ -1685,7 +2574,6 @@ function App() {
                 }
               }
 
-              // Resolve target collection
               if (op.payload.newCollectionName) {
                 const existing = collections.find(c => c.name.toLowerCase() === op.payload.newCollectionName.toLowerCase());
                 if (existing) {
@@ -1703,7 +2591,6 @@ function App() {
                 targetColName = collections.find(c => c.id === targetColId)?.name || "your workspace";
               }
 
-              // Build request object matching the real data model (type: "request" inside col.items)
               const newRequest = {
                 type: "request",
                 id: newReqId,
@@ -1726,31 +2613,18 @@ function App() {
 
               setCollections(prev => {
                 let updated = [...prev];
-
-                // Create the new collection if it doesn't exist yet
                 if (op.payload.newCollectionName && !updated.find(c => c.id === targetColId)) {
-                  updated.push({
-                    id: targetColId,
-                    name: targetColName,
-                    items: []
-                  });
+                  updated.push({ id: targetColId, name: targetColName, items: [] });
                 }
-
                 if (!targetColId) return updated;
-
-                // Add the request into the collection's items array
                 return updated.map(col => {
                   if (col.id === targetColId) {
-                    return {
-                      ...col,
-                      items: [...(col.items || []), newRequest]
-                    };
+                    return { ...col, items: [...(col.items || []), newRequest] };
                   }
                   return col;
                 });
               });
 
-              // Automatically navigate to the newly created request
               if (targetColId) {
                 setTimeout(() => {
                   setActiveCollectionId(targetColId);
@@ -1773,17 +2647,23 @@ function App() {
           };
         }
 
-        setAiChatHistory([...finalHistory, {
+        updateAiChatHistory([...finalHistory, {
           role: "assistant",
           text: assistantMsg,
           suggestedEndpoints,
           model: output._model || activeModel,
           usage: output._usage?.output ? { output: output._usage.output } : null
         }]);
+
+        if (shouldSend) {
+          setTimeout(() => {
+            handleProtocolSend();
+          }, 300);
+        }
       }
     } catch (err) {
       setIsAiTyping(false);
-      setAiChatHistory([...newHistory, { role: "assistant", text: `AI Error: ${err.message}` }]);
+      updateAiChatHistory([...newHistory, { role: "assistant", text: `AI Error: ${err.message}` }]);
     }
   }
 
@@ -1794,7 +2674,7 @@ function App() {
     }
   };
 
-  function runTests() {
+  async function runTests() {
     setTestsOutput([]);
     let input = null;
     try {
@@ -1811,9 +2691,9 @@ function App() {
         response: input.response || input
       };
       if (testsMode === "pre") {
-        runScript(testsPreText, ctx, out, "pre-script");
+        await runScript(testsPreText, ctx, out, "pre-script");
       } else {
-        runScript(testsPostText, ctx, out, "post-script");
+        await runScript(testsPostText, ctx, out, "post-script");
       }
       setTestsOutput(out.length ? out : [{ type: "info", text: "Tests executed.", label: testsMode }]);
       setShowTestOutput(true);
@@ -1823,7 +2703,7 @@ function App() {
     }
   }
 
-  function runScript(code, context, output, label) {
+  async function runScript(code, context, output, label) {
     if (!code || !code.trim()) return;
     const safeOutput = output || [];
     const request = context.request || {};
@@ -1846,12 +2726,54 @@ function App() {
         request.url = value;
       }
     };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     // eslint-disable-next-line no-new-func
-    const fn = new Function("context", "api", "pm", "output", code);
-    fn({ request, response }, api, pm, safeOutput);
+    const fn = new AsyncFunction("context", "api", "pm", "output", code);
+    await fn({ request, response }, api, pm, safeOutput);
   }
 
   function buildPm(request, response, output, label) {
+    const env = environments.find((entry) => entry.id === activeEnvId) || null;
+    const collection = collections.find((entry) => entry.id === activeCollectionId) || null;
+
+    const readCollectionVar = (key) => {
+      const vars = collection?.variables || {};
+      return vars[key];
+    };
+    const writeCollectionVar = (key, value) => {
+      setCollections((prev) => prev.map((entry) => {
+        if (entry.id !== activeCollectionId) return entry;
+        return {
+          ...entry,
+          variables: {
+            ...(entry.variables || {}),
+            [key]: value
+          }
+        };
+      }));
+    };
+    const unsetCollectionVar = (key) => {
+      setCollections((prev) => prev.map((entry) => {
+        if (entry.id !== activeCollectionId) return entry;
+        const nextVars = { ...(entry.variables || {}) };
+        delete nextVars[key];
+        return { ...entry, variables: nextVars };
+      }));
+    };
+
+    const readEnvVar = (key) => env?.vars?.find((row) => row.key === key && row.enabled !== false)?.value;
+    const writeEnvVar = (key, value) => handleUpdateEnvVar(key, value);
+    const unsetEnvVar = (key) => {
+      if (!activeEnvId) return;
+      setEnvironments((prev) => prev.map((entry) => {
+        if (entry.id !== activeEnvId) return entry;
+        return {
+          ...entry,
+          vars: (entry.vars || []).filter((row) => row.key !== key)
+        };
+      }));
+    };
+
     const pm = {
       request: {
         headers: request.headers || {},
@@ -1872,7 +2794,33 @@ function App() {
             }
           }
           return null;
+        },
+        to: {
+          have: {
+            status: (expected) => {
+              const actual = response?.status ?? response?.code ?? 0;
+              if (actual !== expected) throw new Error(`Expected status ${expected} but got ${actual}`);
+            }
+          }
         }
+      },
+      environment: {
+        get: (key) => readEnvVar(key),
+        set: (key, value) => writeEnvVar(key, value),
+        unset: (key) => unsetEnvVar(key),
+        toObject: () => getEnvVars()
+      },
+      variables: {
+        get: (key) => readEnvVar(key),
+        set: (key, value) => writeEnvVar(key, value),
+        unset: (key) => unsetEnvVar(key),
+        toObject: () => getEnvVars()
+      },
+      collectionVariables: {
+        get: (key) => readCollectionVar(key),
+        set: (key, value) => writeCollectionVar(key, value),
+        unset: (key) => unsetCollectionVar(key),
+        toObject: () => ({ ...(collection?.variables || {}) })
       },
       test: (name, fn) => {
         try {
@@ -1901,13 +2849,34 @@ function App() {
               if (value !== false) throw new Error(`Expected false but got ${value}`);
             }
           },
+          exist: () => {
+            if (value === null || value === undefined) throw new Error("Expected value to exist");
+          },
+          have: {
+            property: (prop) => {
+              if (value == null || !(prop in Object(value))) {
+                throw new Error(`Expected property ${prop} to exist`);
+              }
+            }
+          },
           contain: (expected) => {
             if (!String(value).includes(String(expected))) {
               throw new Error(`Expected ${value} to contain ${expected}`);
             }
           }
         }
-      })
+      }),
+      sendRequest: async (config) => {
+        const result = await window.api.sendRequest({
+          method: config.method || "GET",
+          url: interpolate(config.url || ""),
+          headers: config.headers || {},
+          body: config.body,
+          httpVersion: config.httpVersion || httpVersion,
+          timeoutMs: config.timeoutMs || requestTimeoutMs
+        });
+        return result;
+      }
     };
     return pm;
   }
@@ -1951,231 +2920,93 @@ function App() {
 
   return (
     <div className={styles.app}>
-      <header className={styles.topbar}>
-        <div className={styles.topbarLeft}>
-          <img src={logo} alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '8px' }} />
-          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700' }}>commu</div>
-          <button
-            className={activeSidebar === "Collections" ? "ghost active" : "ghost"}
+      <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, #141a28, #10131c)" }}>
+        <div className="flex items-center gap-2">
+          <img src={logo} alt="Commu Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>commu</div>
+          <Button
+            variant={activeSidebar === "Collections" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}
+            size="sm"
           >
             Collections
-          </button>
-          <button
-            className={activeSidebar === "History" ? "ghost active" : "ghost"}
+          </Button>
+          <Button
+            variant={activeSidebar === "History" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("History")}
+            size="sm"
           >
             History
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', position: 'relative' }}>
-            <button
-              style={{
-                width: '180px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                textAlign: 'left',
-                cursor: 'pointer',
-                padding: '6px 12px',
-                height: '32px',
-                background: 'var(--panel)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                color: 'var(--text)',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: showEnvDropdown ? '0 0 0 2px rgba(46, 211, 198, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
-                borderColor: showEnvDropdown ? 'var(--accent-2)' : 'var(--border)'
-              }}
-              onMouseOver={(e) => {
-                if (!showEnvDropdown) {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                  e.currentTarget.style.background = 'var(--panel-3)';
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!showEnvDropdown) {
-                  e.currentTarget.style.borderColor = 'var(--border)';
-                  e.currentTarget.style.background = 'var(--panel)';
-                }
-              }}
-              onClick={() => setShowEnvDropdown(prev => !prev)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                </svg>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 500 }}>
-                  {environments.find(e => e.id === activeEnvId)?.name || "No Environment"}
-                </span>
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '18px',
-                height: '18px',
-                borderRadius: '4px',
-                background: 'rgba(255,255,255,0.05)',
-                transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: showEnvDropdown ? 'rotate(180deg)' : 'rotate(0)'
-              }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-            </button>
-            {showEnvDropdown && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowEnvDropdown(false)}></div>
-                <div
-                  className="menu"
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    left: 0,
-                    width: '250px',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    padding: '6px',
-                    borderRadius: '10px',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
-                    background: 'var(--panel)',
-                    zIndex: 100,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px'
-                  }}
-                >
-                  <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
-                    Environments
-                  </div>
-                  <button
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      color: !activeEnvId ? 'var(--accent-2)' : 'var(--text)',
-                      backgroundColor: !activeEnvId ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                      fontWeight: !activeEnvId ? 600 : 500,
-                      fontSize: '13px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
-                    }}
-                    onMouseOut={(e) => {
-                      if (activeEnvId) e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    onClick={() => {
-                      setActiveEnvId(null);
-                      setShowEnvDropdown(false);
-                    }}
-                  >
-                    No Environment
-                    {!activeEnvId && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    )}
-                  </button>
-                  {environments.length > 0 && <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>}
-                  {environments.map((env) => {
-                    const isActive = env.id === activeEnvId;
-                    return (
-                      <button
-                        key={env.id}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          color: isActive ? 'var(--accent-2)' : 'var(--text)',
-                          backgroundColor: isActive ? 'rgba(46, 211, 198, 0.1)' : 'transparent',
-                          fontWeight: isActive ? 600 : 500,
-                          fontSize: '13px',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseOver={(e) => {
-                          if (!isActive) e.currentTarget.style.backgroundColor = 'var(--panel-2)';
-                        }}
-                        onMouseOut={(e) => {
-                          if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        onClick={() => {
-                          setActiveEnvId(env.id);
-                          setShowEnvDropdown(false);
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                        </svg>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {env.name}
-                        </span>
-                        {isActive && (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                        )}
-                      </button>
-                    );
-                  })}
-                  <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }}></div>
-                  <button
-                    className="ghost"
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      color: 'var(--muted)',
-                      fontSize: '13px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                    }}
-                    onClick={() => {
-                      setShowEnvDropdown(false);
-                      setShowEnvModal(true);
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3"></circle>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </Button>
+
+          <div style={{ marginLeft: '8px' }}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-[200px] justify-between h-8 bg-panel border-border">
+                  <div className="flex items-center gap-2 truncate">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
                     </svg>
-                    Manage Environments
-                  </button>
-                </div>
-              </>
-            )}
+                    <span className="truncate">{environments.find(e => e.id === activeEnvId)?.name || "No Environment"}</span>
+                  </div>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[250px] bg-panel border-border p-2">
+                <DropdownMenuLabel className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">Environments</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => setActiveEnvId(null)}
+                  className={`flex items-center gap-2 cursor-pointer ${!activeEnvId ? 'text-accent-2 bg-accent-2/10' : ''}`}
+                >
+                  No Environment
+                  {!activeEnvId && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                </DropdownMenuItem>
+                {environments.length > 0 && <DropdownMenuSeparator className="bg-border" />}
+                {environments.map((env) => {
+                  const isActive = env.id === activeEnvId;
+                  return (
+                    <DropdownMenuItem
+                      key={env.id}
+                      onClick={() => setActiveEnvId(env.id)}
+                      className={`flex items-center gap-2 cursor-pointer ${isActive ? 'text-accent-2 bg-accent-2/10' : ''}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                      </svg>
+                      <span className="truncate">{env.name}</span>
+                      {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator className="bg-border" />
+                <DropdownMenuItem onClick={() => setShowEnvModal(true)} className="flex items-center gap-2 text-muted-foreground cursor-pointer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  Manage Environments
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-        <div className={styles.topbarActions}>
-          <input
-            className={`input ${styles.topbarSearch}`}
+        <div className="flex items-center gap-2">
+          <Input
+            className="w-[240px] h-8 bg-panel-2 border-border text-sm"
             placeholder="Search collections, tags, history"
             value={topSearch}
             onChange={(e) => setTopSearch(e.target.value)}
           />
-          <button className="ghost" onClick={() => setShowWorkspace(true)}>Workspace: Default</button>
-          <button className="ghost" onClick={() => setShowGitHubSyncModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Button variant="ghost" size="sm" onClick={() => setShowWorkspace(true)}>Workspace: Default</Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowGitHubSyncModal(true)} className="gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
             GitHub Sync
-          </button>
-          <button className="ghost" onClick={() => setShowSettings(true)}>Settings</button>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>Settings</Button>
         </div>
       </header>
 
@@ -2197,6 +3028,7 @@ function App() {
           importCollection={importCollection}
           setShowImportTextModal={setShowImportTextModal}
           setShowImportApiModal={setShowImportApiModal}
+          setShowImportCurlModal={setShowImportCurlModal}
           collections={collections}
           activeCollectionId={activeCollectionId}
           setActiveCollectionId={handleCollectionSwitch}
@@ -2205,6 +3037,7 @@ function App() {
           updateCollectionName={updateCollectionName}
           addFolderToCollection={addFolderToCollection}
           addRequestToCollection={addRequestToCollection}
+          updateRequestState={updateRequestState}
           duplicateCollection={duplicateCollection}
           exportCollection={exportCollection}
           moveItemInCollection={moveItemInCollection}
@@ -2223,64 +3056,134 @@ function App() {
         <div className={layoutStyles.resizer} onMouseDown={() => setDraggingLeft(true)} />
 
         <main className={layoutStyles.main} style={{ gridTemplateRows: `${topHeight}px 10px 1fr` }}>
-          <RequestEditor
-            editingMainRequestName={editingMainRequestName}
-            setEditingMainRequestName={setEditingMainRequestName}
-            requestName={requestName}
-            setRequestName={setRequestName}
-            currentRequestId={currentRequestId}
-            updateRequestName={updateRequestName}
-            setShowSnippetModal={setShowSnippetModal}
-            method={method}
-            setMethod={setMethod}
-            updateRequestMethod={updateRequestMethod}
-            url={url}
-            setUrl={setUrl}
-            getEnvVars={getEnvVars}
-            handleUpdateEnvVar={handleUpdateEnvVar}
-            handleSend={handleSend}
-            isSending={isSending}
-            requestTabs={requestTabs}
-            activeRequestTab={activeRequestTab}
-            setActiveRequestTab={setActiveRequestTab}
-            headersMode={headersMode}
-            setHeadersMode={setHeadersMode}
-            bodyType={bodyType}
-            setBodyType={setBodyType}
-            setContentType={setContentType}
-            bodyText={bodyText}
-            setBodyText={setBodyText}
-            showTestOutput={showTestOutput}
-            setShowTestOutput={setShowTestOutput}
-            showTestInput={showTestInput}
-            setShowTestInput={setShowTestInput}
-            testsMode={testsMode}
-            setTestsMode={setTestsMode}
-            runTests={runTests}
-            paramsRows={paramsRows}
-            setParamsRows={setParamsRows}
-            updateRequestState={updateRequestState}
-            headersRows={headersRows}
-            handleHeadersRowsChange={handleHeadersRowsChange}
-            headersText={headersText}
-            handleHeadersTextChange={handleHeadersTextChange}
-            authType={authType}
-            setAuthType={setAuthType}
-            authConfig={authConfig}
-            setAuthConfig={setAuthConfig}
-            authRows={authRows}
-            setAuthRows={setAuthRows}
-            setCmEnvEdit={setCmEnvEdit}
-            bodyRows={bodyRows}
-            setBodyRows={setBodyRows}
-            testsInputText={testsInputText}
-            setTestsInputText={setTestsInputText}
-            testsPreText={testsPreText}
-            setTestsPreText={setTestsPreText}
-            testsPostText={testsPostText}
-            setTestsPostText={setTestsPostText}
-            testsOutput={testsOutput}
-          />
+          {/* Protocol-specific request panes — rendered based on the current request's protocol */}
+          <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ flex: 1, overflow: "auto" }}>
+              {(!protocol || protocol === "http") && (
+                <RequestEditor
+                  editingMainRequestName={editingMainRequestName}
+                  setEditingMainRequestName={setEditingMainRequestName}
+                  requestName={requestName}
+                  setRequestName={setRequestName}
+                  currentRequestId={currentRequestId}
+                  updateRequestName={updateRequestName}
+                  setShowSnippetModal={setShowSnippetModal}
+                  method={method}
+                  setMethod={setMethod}
+                  updateRequestMethod={updateRequestMethod}
+                  url={url}
+                  setUrl={setUrl}
+                  getEnvVars={getEnvVars}
+                  handleUpdateEnvVar={handleUpdateEnvVar}
+                  handleSend={handleSend}
+                  isSending={isSending}
+                  requestTabs={requestTabs}
+                  activeRequestTab={activeRequestTab}
+                  setActiveRequestTab={setActiveRequestTab}
+                  headersMode={headersMode}
+                  setHeadersMode={setHeadersMode}
+                  bodyType={bodyType}
+                  setBodyType={setBodyType}
+                  setContentType={setContentType}
+                  bodyText={bodyText}
+                  setBodyText={setBodyText}
+                  showTestOutput={showTestOutput}
+                  setShowTestOutput={setShowTestOutput}
+                  showTestInput={showTestInput}
+                  setShowTestInput={setShowTestInput}
+                  testsMode={testsMode}
+                  setTestsMode={setTestsMode}
+                  runTests={runTests}
+                  paramsRows={paramsRows}
+                  setParamsRows={setParamsRows}
+                  updateRequestState={updateRequestState}
+                  headersRows={headersRows}
+                  handleHeadersRowsChange={handleHeadersRowsChange}
+                  headersText={headersText}
+                  handleHeadersTextChange={handleHeadersTextChange}
+                  authType={authType}
+                  setAuthType={setAuthType}
+                  authConfig={authConfig}
+                  setAuthConfig={setAuthConfig}
+                  authRows={authRows}
+                  setAuthRows={setAuthRows}
+                  httpVersion={httpVersion}
+                  setHttpVersion={setHttpVersion}
+                  requestTimeoutMs={requestTimeoutMs}
+                  setRequestTimeoutMs={setRequestTimeoutMs}
+                  setCmEnvEdit={setCmEnvEdit}
+                  bodyRows={bodyRows}
+                  setBodyRows={setBodyRows}
+                  testsInputText={testsInputText}
+                  setTestsInputText={setTestsInputText}
+                  testsPreText={testsPreText}
+                  setTestsPreText={setTestsPreText}
+                  testsPostText={testsPostText}
+                  setTestsPostText={setTestsPostText}
+                  testsOutput={testsOutput}
+                  handleCancelSend={handleCancelHttpSend}
+                />
+              )}
+              {protocol === "graphql" && (
+                <GraphQLPane
+                  url={url}
+                  setUrl={setUrl}
+                  config={graphqlConfig}
+                  setConfig={setGraphqlConfig}
+                  onSend={handleGraphQLSend}
+                  isSending={isSending}
+                  response={graphqlResponse}
+                />
+              )}
+              {protocol === "websocket" && (
+                <WebSocketPane
+                  url={url}
+                  setUrl={setUrl}
+                  config={wsConfig}
+                  setConfig={setWsConfig}
+                  currentRequestId={currentRequestId}
+                  updateRequestState={updateRequestState}
+                  getEnvVars={getEnvVars}
+                  interpolate={interpolate}
+                  clearSignal={wsClearSignal}
+                  onResponseChange={(nextResponse) => setActiveProtocolResponse("websocket", nextResponse)}
+                />
+              )}
+              {protocol === "grpc" && (
+                <GrpcPane
+                  url={url}
+                  setUrl={setUrl}
+                  config={grpcConfig}
+                  setConfig={setGrpcConfig}
+                  onSend={handleGrpcSend}
+                  isSending={isSending}
+                  response={grpcResponse}
+                />
+              )}
+              {protocol === "mock" && (
+                <MockServerPane
+                  collections={collections}
+                />
+              )}
+              {protocol === "sse" && (
+                <SseSocketPane
+                  url={url}
+                  setUrl={setUrl}
+                />
+              )}
+              {protocol === "mcp" && (
+                <McpPane
+                  url={url}
+                  setUrl={setUrl}
+                />
+              )}
+              {protocol === "dag" && (
+                <DagFlowPane
+                  collections={collections}
+                />
+              )}
+            </div>
+          </div>
 
           <div className={`${layoutStyles.resizer} ${layoutStyles.vertical}`} onMouseDown={() => setDraggingMain(true)} />
 
@@ -2316,354 +3219,65 @@ function App() {
             handleAddDerivedField={handleAddDerivedField}
             handleSort={handleSort}
             responseSummary={responseSummary}
+            isSending={isSending}
+            onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
           />
         </main>
 
         <div className={layoutStyles.resizer} onMouseDown={() => setDraggingRight(true)} />
 
-        <aside className={showRightRail ? rightRailStyles.rightRail : `${rightRailStyles.rightRail} ${rightRailStyles.collapsed}`}>
-          {showRightRail ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <div className={rightRailStyles.rightRailHeader}>
-                <div className={styles.sectionTitle}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)', verticalAlign: 'text-bottom' }}>
-                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                  </svg>
-                  AI Assistant
-                </div>
-                <button className="ghost icon-button" onClick={() => setShowRightRail(false)} title="Collapse">
-                  →
-                </button>
-              </div>
-
-              {responseSummary && responseSummary.summary !== "No response yet." && (
-                <div className={rightRailStyles.card} style={{ padding: '8px', marginBottom: '12px', flexShrink: 0 }}>
-                  <div className={rightRailStyles.cardTitle} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Response Intelligence</div>
-                  <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: '4px' }}>{responseSummary.summary}</div>
-                  {responseSummary.hints.length > 0 && <div className={rightRailStyles.cardText} style={{ fontSize: '0.75rem', marginBottom: 0 }}>Hint: {responseSummary.hints[0]}</div>}
-                  {response?.status >= 400 && response?.status < 600 && (
-                    <button
-                      className="ghost compact"
-                      style={{ marginTop: '8px', width: '100%', justifyContent: 'center', display: 'flex', gap: '6px', backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)' }}
-                      onClick={() => {
-                        const errorMsg = typeof response?.data === 'object' ? JSON.stringify(response.data).substring(0, 100) : (response?.statusText || "Unknown error");
-                        handleAiChatSubmit(`This request failed with status ${response.status} and error '${errorMsg}'. Please fix my request.`);
-                      }}
-                      disabled={isAiTyping}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 9.36l-7.15 7.15a2 2 0 0 1-2.83-2.83l7.15-7.15a6 6 0 0 1 9.36-7.94l-3.77 3.77z" /></svg>
-                      Fix this Request
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <div className={rightRailStyles.chatContainer}>
-                <div className={rightRailStyles.messages}>
-                  {aiChatHistory.map((msg, idx) => (
-                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <div className={`${rightRailStyles.message} ${msg.role === 'user' ? rightRailStyles.messageUser : rightRailStyles.messageAssistant}`}>
-                        {msg.text}
-
-                        {msg.suggestedEndpoints && msg.suggestedEndpoints.length > 0 && (
-                          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Did you mean:</div>
-                            {msg.suggestedEndpoints.map((ep, i) => (
-                              <button
-                                key={i}
-                                className="ghost"
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: '8px',
-                                  justifyContent: 'flex-start', padding: '8px 12px',
-                                  border: '1px solid var(--border)', borderRadius: '6px',
-                                  background: 'var(--bg)', textAlign: 'left', width: '100%'
-                                }}
-                                onClick={() => {
-                                  if (ep.method) setMethod(ep.method);
-                                  if (ep.url) setUrl(ep.url);
-                                  if (ep.headersText) setHeadersText(ep.headersText);
-                                  if (ep.bodyText) setBodyText(ep.bodyText);
-                                }}
-                              >
-                                <span style={{ fontWeight: 600, color: 'var(--accent)', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--accent-alpha, rgba(var(--accent-rgb), 0.1))', borderRadius: '4px' }}>{ep.method || "GET"}</span>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
-                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{ep.name || "Request"}</span>
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{ep.url}</span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Meta for assistant (model and output tokens) or user (input tokens) */}
-                      {(msg.model || msg.usage) && (
-                        <div className={rightRailStyles.messageMeta}>
-                          {msg.model && (
-                            <span className={rightRailStyles.modelBadge}>
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
-                              {msg.model}
-                            </span>
-                          )}
-                          {msg.usage && msg.usage.input && (
-                            <span title="Input tokens" style={{ color: 'var(--accent)' }}>↑ {msg.usage.input.toLocaleString()} tokens</span>
-                          )}
-                          {msg.usage && msg.usage.output && (
-                            <span title="Output tokens">↓ {msg.usage.output.toLocaleString()} tokens</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {isAiTyping && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                      <div className={`${rightRailStyles.message} ${rightRailStyles.messageAssistant} ${rightRailStyles.typingIndicator}`}>
-                        <span></span><span></span><span></span>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                <div style={{ padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div className={rightRailStyles.inputWrapper} style={{ padding: 0, margin: 0 }}>
-                    <textarea
-                      className={rightRailStyles.chatInput}
-                      placeholder="Ask AI to generate requests or tests..."
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      onKeyDown={handleChatKeyDown}
-                      rows={1}
-                    />
-                    <button className={rightRailStyles.sendButton} onClick={handleAiChatSubmit} title="Send Message">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
-                    <div
-                      style={{
-                        fontSize: '0.65rem', padding: '4px 8px', background: 'var(--bg)', color: 'var(--text-secondary)',
-                        border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px', userSelect: 'none',
-                        transition: 'background 0.2s, color 0.2s',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                      onClick={() => setIsAiModelDropdownOpen(!isAiModelDropdownOpen)}
-                      title="Select AI Model"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
-                      {activeModel}
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '4px', transform: isAiModelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><polyline points="6 15 12 9 18 15"></polyline></svg>
-                    </div>
-
-                    {isAiModelDropdownOpen && (
-                      <>
-                        <div
-                          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-                          onClick={() => setIsAiModelDropdownOpen(false)}
-                        />
-                        <div style={{
-                          position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px', zIndex: 100,
-                          background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '8px',
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.2)', padding: '6px', minWidth: '180px',
-                          display: 'flex', flexDirection: 'column', gap: '2px'
-                        }}>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            {aiProvider} Models
-                          </div>
-                          {availableModels.length > 0 ? (
-                            availableModels.map(m => (
-                              <button
-                                key={m}
-                                className="ghost"
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: '8px',
-                                  padding: '6px 8px', borderRadius: '4px', textAlign: 'left',
-                                  fontSize: '0.75rem', color: m === activeModel ? 'var(--accent)' : 'var(--text)',
-                                  background: m === activeModel ? 'var(--bg)' : 'transparent',
-                                  border: 'none', cursor: 'pointer', width: '100%'
-                                }}
-                                onClick={() => { setActiveModel(m); setIsAiModelDropdownOpen(false); }}
-                              >
-                                {m === activeModel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                                <span style={{ marginLeft: m === activeModel ? 0 : '20px' }}>{m}</span>
-                              </button>
-                            ))
-                          ) : (
-                            <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Offline</div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
-              <button
-                className="ghost icon-button"
-                onClick={() => setShowRightRail(true)}
-                title="Expand AI Assistant"
-                style={{ padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-              </button>
-            </div>
-          )}
-        </aside>
+        <RightRail
+          activeRightTab={activeRightTab}
+          setActiveRightTab={setActiveRightTab}
+          showRightRail={showRightRail}
+          setShowRightRail={setShowRightRail}
+          responseSummary={responseSummary}
+          setResponseSummary={setResponseSummary}
+          response={response}
+          isAiTyping={isAiTyping}
+          aiChatHistory={aiChatHistory}
+          aiChatSessions={aiChatSessions}
+          activeAiSessionId={activeAiSessionId}
+          setActiveAiSessionId={setActiveAiSessionId}
+          createNewAiSession={createNewAiSession}
+          aiPrompt={aiPrompt}
+          setAiPrompt={setAiPrompt}
+          handleAiChatSubmit={handleAiChatSubmit}
+          handleChatKeyDown={handleChatKeyDown}
+          setMethod={setMethod}
+          setUrl={setUrl}
+          setHeadersText={setHeadersText}
+          setBodyText={setBodyText}
+          aiProvider={aiProvider}
+          activeModel={activeModel}
+          setActiveModel={setActiveModel}
+          availableModels={availableModels}
+          chatEndRef={chatEndRef}
+          history={history}
+          setHistory={setHistory}
+          testsOutput={testsOutput}
+          appLogs={appLogs}
+          setAppLogs={setAppLogs}
+        />
       </div>
 
-      <footer className={rightRailStyles.dock}>
-        <button className="ghost">Console</button>
-        <button className="ghost">Tests</button>
-        <button className="ghost">Timing</button>
-      </footer>
-
       {showSettings && (
-        <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Settings</div>
-
-            <h4 style={{ margin: '16px 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>AI Configuration</h4>
-            <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>AI Provider</label>
-              <select className="input" style={{ width: '180px' }} value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="gemini">Google Gemini</option>
-              </select>
-            </div>
-
-
-            {aiProvider === 'openai' && (
-              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label>OpenAI API Key</label>
-                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyOpenAI} onChange={(e) => setAiApiKeyOpenAI(e.target.value)} placeholder="sk-..." />
-              </div>
-            )}
-            {aiProvider === 'anthropic' && (
-              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label>Anthropic API Key</label>
-                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyAnthropic} onChange={(e) => setAiApiKeyAnthropic(e.target.value)} placeholder="sk-ant-..." />
-              </div>
-            )}
-            {aiProvider === 'gemini' && (
-              <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label>Gemini API Key</label>
-                <input type="password" className="input" style={{ width: '172px' }} value={aiApiKeyGemini} onChange={(e) => setAiApiKeyGemini(e.target.value)} placeholder="AIza..." />
-              </div>
-            )}
-
-            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
-            <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600 }}>Preferences</h4>
-
-            <div className="modal-row" style={{ display: 'flex', flexDirection: 'column' }}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={aiSemanticSearchEnabled}
-                  onChange={(e) => setAiSemanticSearchEnabled(e.target.checked)}
-                /> Enable AI Semantic Search (Local RAG)
-              </label>
-              {aiSemanticSearchEnabled && semanticProgress && (
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '24px', marginTop: '4px' }}>
-                  {semanticProgress}
-                </span>
-              )}
-            </div>
-            <div className="modal-row">
-              <label>
-                <input type="checkbox" defaultChecked /> Enable AI request generation
-              </label>
-            </div>
-            <div className="modal-row">
-              <label>
-                <input type="checkbox" defaultChecked /> Enable response summaries
-              </label>
-            </div>
-            <div className="modal-row">
-              <label>
-                <input type="checkbox" /> Redact secrets before AI
-              </label>
-            </div>
-
-
-            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
-
-            <div className="modal-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>History Retention (Days)</label>
-              <input
-                type="number"
-                className="input"
-                style={{ width: '80px' }}
-                min="1"
-                max="365"
-                value={historyRetentionDays}
-                onChange={(e) => setHistoryRetentionDays(Number(e.target.value))}
-              />
-            </div>
-
-            <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
-            <h4 style={{ margin: '0 0 8px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--danger, #ef4444)' }}>Data Management</h4>
-
-            <div className="modal-row" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-                Your data is stored locally on this device. Clearing data will permanently delete all collections, history, environments, and settings.
-              </p>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  className="ghost"
-                  style={{
-                    color: 'var(--danger, #ef4444)',
-                    borderColor: 'var(--danger, #ef4444)',
-                    fontSize: '0.8rem',
-                    padding: '6px 12px'
-                  }}
-                  onClick={async () => {
-                    const confirmed = window.confirm(
-                      'Are you sure you want to delete ALL app data?\n\nThis will permanently remove:\n• All collections and requests\n• All request history\n• All environments and variables\n• All settings and API keys\n\nThis action cannot be undone.'
-                    );
-                    if (confirmed) {
-                      const secondConfirm = window.confirm(
-                        'FINAL WARNING: This will erase everything. The app will reload with a fresh state.\n\nContinue?'
-                      );
-                      if (secondConfirm) {
-                        try {
-                          await window.api.clearAllData();
-                          window.location.reload();
-                        } catch (err) {
-                          alert('Failed to clear data: ' + err.message);
-                        }
-                      }
-                    }
-                  }}
-                >
-                  🗑️ Clear All App Data
-                </button>
-                <button
-                  className="ghost"
-                  style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                  onClick={async () => {
-                    try {
-                      const p = await window.api.getDataPath();
-                      alert('Your app data is stored at:\n\n' + p + '\n\nYou can manually delete this folder for a complete cleanup after uninstalling.');
-                    } catch {
-                      alert('Data path: ~/Library/Application Support/Commu/');
-                    }
-                  }}
-                >
-                  📂 Show Data Location
-                </button>
-              </div>
-            </div>
-
-            <button className="primary" onClick={() => setShowSettings(false)} style={{ marginTop: '16px', width: '100%' }}>Close</button>
-          </div>
-        </div>
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          aiProvider={aiProvider}
+          setAiProvider={setAiProvider}
+          aiApiKeyOpenAI={aiApiKeyOpenAI}
+          setAiApiKeyOpenAI={setAiApiKeyOpenAI}
+          aiApiKeyAnthropic={aiApiKeyAnthropic}
+          setAiApiKeyAnthropic={setAiApiKeyAnthropic}
+          aiApiKeyGemini={aiApiKeyGemini}
+          setAiApiKeyGemini={setAiApiKeyGemini}
+          aiSemanticSearchEnabled={aiSemanticSearchEnabled}
+          setAiSemanticSearchEnabled={setAiSemanticSearchEnabled}
+          semanticProgress={semanticProgress}
+          historyRetentionDays={historyRetentionDays}
+          setHistoryRetentionDays={setHistoryRetentionDays}
+        />
       )}
 
       {showWorkspace && (
@@ -2944,7 +3558,7 @@ function App() {
 
       {
         showImportTextModal && (
-          <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)}>
+          <div className="modal-backdrop" onClick={() => setShowImportTextModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-title">Import JSON from Text</div>
               <textarea
@@ -2964,8 +3578,32 @@ function App() {
       }
 
       {
+        showImportCurlModal && (
+          <div className="modal-backdrop" onClick={() => setShowImportCurlModal(false)} style={{ zIndex: 9999 }}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">Import Request from cURL</div>
+              <textarea
+                className="input code-editor"
+                value={importCurlDraft}
+                onChange={(e) => setImportCurlDraft(e.target.value)}
+                placeholder="Paste a cURL command here..."
+                style={{ width: '100%', height: '220px', marginBottom: '10px' }}
+              />
+              <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '-4px' }}>
+                Supports common flags like -X, -H, -d, --data-raw, -F, -G, --url and -u.
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="ghost" onClick={() => setShowImportCurlModal(false)}>Cancel</button>
+                <button className="primary" onClick={handleImportCurlSubmit}>Import</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {
         showImportApiModal && (
-          <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)}>
+          <div className="modal-backdrop" onClick={() => setShowImportApiModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-title">Import JSON from API URL</div>
               <input

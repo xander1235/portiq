@@ -141,14 +141,35 @@
     background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 0px 4px;
+    padding: 0px 6px;
     font-size: 0.65rem;
     font-weight: 600;
-    width: 44px;
+    width: 52px;
+    min-width: 52px;
     text-align: center;
     color: var(--muted);
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     text-transform: uppercase;
+}
+
+.protocolBadge {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0px 6px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    width: 52px;
+    min-width: 52px;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    background: rgba(162, 169, 184, 0.08);
+    color: var(--muted);
 }
 
 .methodBadge.get {
@@ -187,6 +208,43 @@
     color: var(--muted);
 }
 
+.protocolBadge.graphql {
+    color: #e535ab;
+    background: rgba(229, 53, 171, 0.12);
+    border-color: rgba(229, 53, 171, 0.2);
+}
+
+.protocolBadge.websocket {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+.protocolBadge.grpc {
+    color: #00bcd4;
+    background: rgba(0, 188, 212, 0.12);
+    border-color: rgba(0, 188, 212, 0.2);
+    text-transform: none;
+}
+
+.protocolBadge.sse {
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.12);
+    border-color: rgba(167, 139, 250, 0.2);
+}
+
+.protocolBadge.mcp {
+    color: #f472b6;
+    background: rgba(244, 114, 182, 0.12);
+    border-color: rgba(244, 114, 182, 0.2);
+}
+
+.protocolBadge.dag {
+    color: #fb923c;
+    background: rgba(251, 146, 60, 0.12);
+    border-color: rgba(251, 146, 60, 0.2);
+}
+
 .treeTitle {
     padding: 0;
     font-size: 0.9rem;
@@ -217,14 +275,14 @@
 .treeDesc {
     color: var(--muted);
     font-size: 0.75rem;
-    padding-left: 44px;
+    padding-left: 60px;
 }
 
 .treeTags {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
-    padding-left: 44px;
+    padding-left: 60px;
 }
 
 .treeChildren {

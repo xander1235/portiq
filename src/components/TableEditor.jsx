@@ -6,19 +6,26 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
     const inputRef = React.useRef(null);
     const textRef = React.useRef(null);
     const popupRef = React.useRef(null);
+    const suggestRef = React.useRef(null);
     const [editingKey, setEditingKey] = React.useState(null);
     const [draftValue, setDraftValue] = React.useState("");
     const [hoveredData, setHoveredData] = React.useState(null);
+    const [suggestions, setSuggestions] = React.useState([]);
+    const [suggestIndex, setSuggestIndex] = React.useState(0);
+    const [suggestRange, setSuggestRange] = React.useState(null);
 
     React.useEffect(() => {
         function handleClickOutside(event) {
             if (editingKey && popupRef.current && !popupRef.current.contains(event.target)) {
                 setEditingKey(null);
             }
+            if (suggestions.length && suggestRef.current && !suggestRef.current.contains(event.target)) {
+                setSuggestions([]);
+            }
         }
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [editingKey]);
+    }, [editingKey, suggestions.length]);
 
     const handleScroll = () => {
         if (inputRef.current && textRef.current) {
@@ -29,6 +36,85 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
     React.useEffect(() => {
         handleScroll();
     }, [value]);
+
+    function checkAutocomplete(inputEl) {
+        if (!envVars || !inputEl) {
+            setSuggestions([]);
+            return;
+        }
+        const pos = inputEl.selectionStart;
+        const text = inputEl.value;
+        // Find the nearest {{ before cursor
+        const before = text.slice(0, pos);
+        const openIdx = before.lastIndexOf("{{");
+        if (openIdx === -1) { setSuggestions([]); return; }
+        // Make sure there's no }} between {{ and cursor
+        const between = before.slice(openIdx + 2);
+        if (between.includes("}}")) { setSuggestions([]); return; }
+        const partial = between.trim().toLowerCase();
+        const keys = Object.keys(envVars).filter(k => k.toLowerCase().includes(partial));
+        if (keys.length === 0) { setSuggestions([]); return; }
+        setSuggestions(keys);
+        setSuggestIndex(0);
+        setSuggestRange({ from: openIdx, to: pos });
+    }
+
+    function applySuggestion(key) {
+        if (!suggestRange) return;
+        const before = value.slice(0, suggestRange.from);
+        // Find if there's a closing }} after cursor
+        const afterCursor = value.slice(suggestRange.to);
+        const closingIdx = afterCursor.indexOf("}}");
+        const after = closingIdx !== -1 ? afterCursor.slice(closingIdx + 2) : afterCursor;
+        const newValue = before + "{{" + key + "}}" + after;
+        onChange(newValue);
+        setSuggestions([]);
+        setSuggestRange(null);
+        // Set cursor after the inserted variable
+        setTimeout(() => {
+            if (inputRef.current) {
+                const newPos = before.length + key.length + 4; // {{ + key + }}
+                inputRef.current.setSelectionRange(newPos, newPos);
+                inputRef.current.focus();
+            }
+        }, 0);
+    }
+
+    function handleInputChange(e) {
+        onChange(e.target.value);
+        setTimeout(() => checkAutocomplete(e.target), 0);
+    }
+
+    function handleInputKeyDown(e) {
+        if (suggestions.length > 0) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSuggestIndex(i => (i + 1) % suggestions.length);
+                return;
+            }
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSuggestIndex(i => (i - 1 + suggestions.length) % suggestions.length);
+                return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                applySuggestion(suggestions[suggestIndex]);
+                return;
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                setSuggestions([]);
+                return;
+            }
+        }
+    }
+
+    function handleInputClick() {
+        setTimeout(() => {
+            if (inputRef.current) checkAutocomplete(inputRef.current);
+        }, 0);
+    }
 
     const renderHighlighted = () => {
         if (!value) {
@@ -74,7 +160,6 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             color: exists ? "var(--accent-2)" : "#ff5555",
                             backgroundColor: exists ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
                             borderRadius: "3px",
-                            padding: "0 2px",
                             cursor: onUpdateEnvVar ? "text" : "default",
                             pointerEvents: "auto"
                         }}
@@ -202,7 +287,9 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                 <input
                     ref={inputRef}
                     value={value}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={handleInputChange}
+                    onKeyDown={handleInputKeyDown}
+                    onClick={handleInputClick}
                     onScroll={handleScroll}
                     spellCheck={false}
                     style={{
@@ -227,6 +314,60 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     }}
                 />
             </div>
+            {suggestions.length > 0 && ReactDOM.createPortal(
+                <div
+                    ref={suggestRef}
+                    style={{
+                        position: "fixed",
+                        top: inputRef.current ? inputRef.current.getBoundingClientRect().bottom + 4 : 0,
+                        left: inputRef.current ? inputRef.current.getBoundingClientRect().left : 0,
+                        background: "var(--panel-2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "6px",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                        zIndex: 100000,
+                        minWidth: "180px",
+                        maxHeight: "200px",
+                        overflowY: "auto",
+                        padding: "4px 0"
+                    }}
+                >
+                    {suggestions.map((key, i) => (
+                        <div
+                            key={key}
+                            onMouseDown={(e) => { e.preventDefault(); applySuggestion(key); }}
+                            style={{
+                                padding: "5px 12px",
+                                cursor: "pointer",
+                                fontSize: "0.82rem",
+                                color: i === suggestIndex ? "var(--bg)" : "var(--text)",
+                                backgroundColor: i === suggestIndex ? "var(--accent-2)" : "transparent",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px"
+                            }}
+                        >
+                            <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"{{"}</span>
+                            <span style={{ fontWeight: 500 }}>{key}</span>
+                            <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"}}"}</span>
+                            {envVars && envVars[key] && (
+                                <span style={{
+                                    marginLeft: "auto",
+                                    fontSize: "0.72rem",
+                                    opacity: 0.6,
+                                    maxWidth: "120px",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
+                                }}>
+                                    {envVars[key]}
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>,
+                document.body
+            )}
         </div>
     );
 }
@@ -284,23 +425,38 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
                                 checked={row.enabled !== false}
                                 onChange={(e) => updateRow(index, "enabled", e.target.checked)}
                             />
-                            <input
+                            <EnvInput
                                 className="input table-input"
                                 value={row.key}
                                 placeholder={keyPlaceholder || "Key"}
-                                onChange={(e) => updateRow(index, "key", e.target.value)}
+                                onChange={(val) => updateRow(index, "key", val)}
+                                envVars={envVars}
+                                onUpdateEnvVar={onUpdateEnvVar}
+                                style={{ width: "100%" }}
                             />
                             {isMaskable ? (
-                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                    <input
-                                        type={isMasked ? "password" : "text"}
+                                isMasked ? (
+                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                        <input
+                                            type="password"
+                                            className="input table-input"
+                                            value={row.value}
+                                            placeholder={valuePlaceholder || "Value"}
+                                            onChange={(e) => updateRow(index, "value", e.target.value)}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+                                ) : (
+                                    <EnvInput
                                         className="input table-input"
                                         value={row.value}
                                         placeholder={valuePlaceholder || "Value"}
-                                        onChange={(e) => updateRow(index, "value", e.target.value)}
-                                        style={{ width: '100%' }}
+                                        onChange={(val) => updateRow(index, "value", val)}
+                                        envVars={envVars}
+                                        onUpdateEnvVar={onUpdateEnvVar}
+                                        style={{ width: "100%" }}
                                     />
-                                </div>
+                                )
                             ) : (
                                 <EnvInput
                                     className="input table-input"
