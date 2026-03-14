@@ -1,5 +1,14 @@
 # Portiq
 
+## 0.3.0
+
+### Minor Changes
+
+- 1e13a84: Rebranded the application from Commu to Portiq.
+  Fixed GitHub OAuth login issues in packaged production (DMG) builds.
+  Removed legacy secret placeholders and updated security prefixes.
+  Improved cross-environment request handling with a shared safeFetch utility.
+
 ## 0.2.2
 
 ### Patch Changes
