@@ -48,7 +48,7 @@
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-xml": "^6.1.0",
-    "@codemirror/lint": "^6.9.4",
+    "@codemirror/lint": "^6.9.5",
     "@codemirror/search": "^6.6.0",
     "@octokit/rest": "^22.0.1",
     "@radix-ui/react-dialog": "^1.1.15",
