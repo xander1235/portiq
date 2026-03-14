@@ -1,3 +1,5 @@
+import { safeFetch } from "../utils/safeFetch";
+
 export const GITHUB_TOKEN_KEY = "ui_github_token";
 export const GITHUB_CLIENT_ID = "Ov23liWUpjkSkyaC3sBq";
 
@@ -14,7 +16,7 @@ export function setGitHubToken(token) {
 }
 
 export async function requestDeviceCode() {
-    const res = await fetch("/github-oauth/login/device/code", {
+    const res = await safeFetch("/github-oauth/login/device/code", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -39,7 +41,7 @@ export async function pollForToken(deviceCode, rawInterval) {
         const poll = async () => {
             if (!isPolling) return;
             try {
-                const res = await fetch("/github-oauth/login/oauth/access_token", {
+                const res = await safeFetch("/github-oauth/login/oauth/access_token", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",

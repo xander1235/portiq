@@ -25,7 +25,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
-    title: "AI API Client",
+    title: "Portiq",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

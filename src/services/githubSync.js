@@ -4,7 +4,7 @@ import { getGitHubToken } from "./githubAuth.js";
 const SYNC_REPO_NAME = "portiq-sync";
 const WORKSPACE_ROOT = "workspace";
 const LEGACY_STATE_FILE = "state.json";
-const SECRET_PLACEHOLDER_PREFIX = "__COMMU_SECRET__:";
+const SECRET_PLACEHOLDER_PREFIX = "__PORTIQ_SECRET__:";
 
 function getOctokit() {
     const token = getGitHubToken();

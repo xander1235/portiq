@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve Commu
+about: Create a report to help us improve Portiq
 title: ''
 labels: bug
 assignees: ''
