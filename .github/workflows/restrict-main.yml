@@ -1,0 +1,24 @@
+name: Restrict Direct Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  restrict-direct-push:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Check if push is a merge commit
+        run: |
+          # Check if the commit message looks like a merge or squash merge from GitHub
+          # Default GitHub squash merge message usually contains "(#PR_NUMBER)"
+          # Default GitHub merge message starts with "Merge pull request"
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          if [[ ! "$COMMIT_MSG" =~ "Merge pull request" ]] && [[ ! "$COMMIT_MSG" =~ \(#[0-9]+\) ]]; then
+            echo "::error::Direct push to 'main' detected. Please contribute via Pull Requests."
+            exit 1
+          else
+            echo "Push accepted as it appears to be a merged Pull Request."
+          fi

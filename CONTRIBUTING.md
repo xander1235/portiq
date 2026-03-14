@@ -17,8 +17,9 @@ Have an idea for a new feature or improvement? Open an issue using our Feature R
 2. Install dependencies: `npm install`
 3. Run the development server: `npm run dev`
 4. Ensure any new functionality includes relevant context and doesn't break existing features.
-5. Create a descriptive commit message.
-6. Open a Pull Request! We'll review your changes as soon as possible.
+5. Create a descriptive commit message. (We recommend using [Conventional Commits](https://www.conventionalcommits.org/)).
+6. Open a Pull Request! Your changes will automatically undergo CI checks (linting, building).
+7. Ensure all CI checks pass before the maintainers can merge your changes.
 
 ## Development Setup
 
