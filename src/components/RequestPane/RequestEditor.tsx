@@ -252,21 +252,24 @@ export function RequestEditor({
                     setMethod(val);
                     if (currentRequestId) updateRequestMethod(currentRequestId, val);
                 }}>
-                    <SelectTrigger className="w-[100px] h-[36px] bg-panel-2 border-border text-foreground font-semibold">
+                    <SelectTrigger 
+                        className="w-[90px] h-[30px] bg-panel-2 border-border font-bold transition-colors text-[0.75rem]"
+                        style={{ color: `var(--method-${method.toLowerCase()}, var(--text))` }}
+                    >
                         <SelectValue placeholder="Method" />
                     </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="GET" className="font-semibold text-[var(--ok)]">GET</SelectItem>
-                        <SelectItem value="POST" className="font-semibold text-[var(--warn)]">POST</SelectItem>
-                        <SelectItem value="PATCH" className="font-semibold text-[var(--accent-purple)]">PATCH</SelectItem>
-                        <SelectItem value="PUT" className="font-semibold text-[var(--info)]">PUT</SelectItem>
-                        <SelectItem value="DELETE" className="font-semibold text-[var(--error)]">DELETE</SelectItem>
-                        <SelectItem value="HEAD">HEAD</SelectItem>
-                        <SelectItem value="OPTIONS">OPTIONS</SelectItem>
+                    <SelectContent className="bg-panel-2 border-border">
+                        <SelectItem value="GET" className="font-semibold text-[var(--method-get)]">GET</SelectItem>
+                        <SelectItem value="POST" className="font-semibold text-[var(--method-post)]">POST</SelectItem>
+                        <SelectItem value="PATCH" className="font-semibold text-[var(--method-patch)]">PATCH</SelectItem>
+                        <SelectItem value="PUT" className="font-semibold text-[var(--method-put)]">PUT</SelectItem>
+                        <SelectItem value="DELETE" className="font-semibold text-[var(--method-delete)]">DELETE</SelectItem>
+                        <SelectItem value="HEAD" className="font-semibold text-[var(--method-head)]">HEAD</SelectItem>
+                        <SelectItem value="OPTIONS" className="font-semibold text-[var(--method-options)]">OPTIONS</SelectItem>
                     </SelectContent>
                 </Select>
                 <EnvInput
-                    className={`input ${styles.url}`}
+                    className={`input ${styles.url} h-[30px]`}
                     value={url}
                     onChange={(val) => setUrl(val)}
                     envVars={getEnvVars()}
@@ -275,7 +278,7 @@ export function RequestEditor({
                     style={{ flex: 1 }}
                 />
                 <button
-                    className={isSending ? "ghost" : "primary"}
+                    className={`${isSending ? "ghost" : "primary"} h-[30px] w-full`}
                     onClick={isSending ? handleCancelSend : handleSend}
                     style={isSending ? { color: "#ef4444", borderColor: "#ef4444" } : undefined}
                 >

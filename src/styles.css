@@ -37,6 +37,7 @@
   --bg: #0f1115;
   --panel: #151924;
   --panel-2: #1c2233;
+  --panel-3: #252b3d;
   --accent: #ff7a59;
   --accent-2: #2ed3c6;
   --accent-green: #2ecc71;
@@ -49,6 +50,15 @@
   --text-muted: var(--muted);
   --border: #2a3042;
   --font-mono: "IBM Plex Mono", monospace;
+
+  /* Method Colors */
+  --method-get: #2ed3c6;
+  --method-post: #ffcc00;
+  --method-put: #599eff;
+  --method-patch: #bd93f9;
+  --method-delete: #ff5555;
+  --method-options: var(--muted);
+  --method-head: var(--muted);
 }
 
 @layer base {
@@ -137,10 +147,10 @@ select {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .input.template {
@@ -429,8 +439,8 @@ select {
   color: #1a0f0a;
   font-weight: 600;
   border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  padding: 4px 12px;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -455,8 +465,8 @@ select {
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.85rem;
+  padding: 4px 10px;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
