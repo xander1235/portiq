@@ -225,7 +225,29 @@ export function Sidebar({
                                 <span className={styles.folderLabelIcon}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                                 </span>
-                                <span className={styles.itemName}>{item.name}</span>
+                                {editingFolderId === item.id ? (
+                                    <input
+                                        autoFocus
+                                        className={styles.editInput}
+                                        value={folderNameDraft}
+                                        onChange={(e) => setFolderNameDraft(e.target.value)}
+                                        onBlur={() => {
+                                            if (folderNameDraft.trim()) updateFolderName(item.id, folderNameDraft.trim());
+                                            setEditingFolderId("");
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                if (folderNameDraft.trim()) updateFolderName(item.id, folderNameDraft.trim());
+                                                setEditingFolderId("");
+                                            } else if (e.key === "Escape") {
+                                                setEditingFolderId("");
+                                            }
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <span className={styles.itemName}>{item.name}</span>
+                                )}
 
                                 <div className={styles.itemActions}>
                                     <button className={styles.itemActionBtn} onClick={(e) => {
@@ -245,8 +267,8 @@ export function Sidebar({
                                 {openFolderMenuId === item.id && (
                                     <div className={styles.itemMenu} onClick={e => e.stopPropagation()}>
                                         <button onClick={() => { 
-                                            const newName = prompt("New folder name:", item.name);
-                                            if (newName) updateFolderName(item.id, newName); 
+                                            setFolderNameDraft(item.name);
+                                            setEditingFolderId(item.id);
                                             setOpenFolderMenuId(""); 
                                         }}>Rename</button>
                                         <button onClick={() => { addFolderToCollection(item.id); setOpenFolderMenuId(""); }}>New Folder</button>
@@ -304,31 +326,52 @@ export function Sidebar({
                             ) : (
                                 <span className={`${styles.methodBadge} ${item.method ? styles[item.method.toLowerCase()] : ""}`}>{item.method}</span>
                             )}
-                            <span className={styles.itemName}>{item.name}</span>
+                                {editingRequestId === item.id ? (
+                                    <input
+                                        autoFocus
+                                        className={styles.editInput}
+                                        value={requestNameDraft}
+                                        onChange={(e) => setRequestNameDraft(e.target.value)}
+                                        onBlur={() => {
+                                            if (requestNameDraft.trim()) updateRequestName(item.id, requestNameDraft.trim());
+                                            setEditingRequestId("");
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                if (requestNameDraft.trim()) updateRequestName(item.id, requestNameDraft.trim());
+                                                setEditingRequestId("");
+                                            } else if (e.key === "Escape") {
+                                                setEditingRequestId("");
+                                            }
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <span className={styles.itemName}>{item.name}</span>
+                                )}
 
-                            <div className={styles.itemActions}>
-                                <button className={styles.itemActionBtn} onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenFolderMenuId(item.id); // Re-using folder menu state for general menus
-                                }}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
-                                </button>
-                            </div>
+                                <div className={styles.itemActions}>
+                                    <button className={styles.itemActionBtn} onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenFolderMenuId(item.id); // Re-using folder menu state for general menus
+                                    }}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                                    </button>
+                                </div>
 
-                            {openFolderMenuId === item.id && (
-                                <div className={styles.itemMenu} onClick={e => e.stopPropagation()}>
-                                    <button onClick={() => { 
-                                        const newName = prompt("New request name:", item.name);
-                                        if (newName) updateRequestName(item.id, newName); 
-                                        setOpenFolderMenuId(""); 
-                                    }}>Rename</button>
+                                {openFolderMenuId === item.id && (
+                                    <div className={styles.itemMenu} onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => { 
+                                            setRequestNameDraft(item.name);
+                                            setEditingRequestId(item.id);
+                                            setOpenFolderMenuId(""); 
+                                        }}>Rename</button>
                                     <button onClick={() => { duplicateItem(item.id); setOpenFolderMenuId(""); }}>Duplicate</button>
                                     <button onClick={() => { setChangeProtocolRequestId(item.id); setOpenFolderMenuId(""); }}>Change Protocol</button>
                                     <button className={styles.delete} onClick={() => { if (confirm("Delete request?")) deleteRequest(item.id); setOpenFolderMenuId(""); }}>Delete</button>
                                 </div>
                             )}
                         </div>
-                        {item.url && <div className={styles.treeUrl}>{item.url}</div>}
                     </div>
                 ))}
             </div>

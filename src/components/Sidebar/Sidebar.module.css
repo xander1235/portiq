@@ -175,6 +175,21 @@
     text-overflow: ellipsis;
 }
 
+.editInput {
+    flex: 1;
+    background: #1e2536;
+    border: 1px solid var(--accent);
+    color: #fff;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+    font-family: inherit;
+    font-weight: 500;
+    margin: -2px 0;
+}
+
 .folderIcon {
     display: flex;
     align-items: center;

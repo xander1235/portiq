@@ -468,6 +468,11 @@ function App() {
   const [draggingLeft, setDraggingLeft] = useState(false);
   const [draggingRight, setDraggingRight] = useState(false);
   const [draggingMain, setDraggingMain] = useState(false);
+  const draggingRef = useRef({ left: false, right: false, main: false });
+
+  useEffect(() => {
+    draggingRef.current = { left: draggingLeft, right: draggingRight, main: draggingMain };
+  }, [draggingLeft, draggingRight, draggingMain]);
 
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [itemToMove, setItemToMove] = useState<any>(null);
@@ -723,32 +728,31 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Sidebar resizing
+  // Resizing logic
   useEffect(() => {
-    function handleMouseMove(e: MouseEvent) {
-      if (draggingLeft) {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (draggingRef.current.left) {
         setLeftWidth(Math.max(150, Math.min(e.clientX, window.innerWidth / 2)));
-      } else if (draggingRight) {
+      } else if (draggingRef.current.right) {
         setRightWidth(Math.max(150, Math.min(window.innerWidth - e.clientX, window.innerWidth / 2)));
-      } else if (draggingMain) {
-        setTopHeight(Math.max(100, Math.min(e.clientY - 60, window.innerHeight - 150))); 
+      } else if (draggingRef.current.main) {
+        setTopHeight(Math.max(100, Math.min(e.clientY - 60, window.innerHeight - 150)));
       }
-    }
-    function handleMouseUp() {
+    };
+
+    const handleMouseUp = () => {
       setDraggingLeft(false);
       setDraggingRight(false);
       setDraggingMain(false);
-    }
+    };
+
     if (draggingLeft || draggingRight || draggingMain) {
-      document.addEventListener("mousemove", (e) => handleMouseMove(e as MouseEvent));
+      document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
       document.body.style.userSelect = "none";
-      if (draggingMain) {
-        document.body.style.cursor = "row-resize";
-      } else {
-        document.body.style.cursor = "col-resize";
-      }
+      document.body.style.cursor = draggingMain ? "row-resize" : "col-resize";
     }
+
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
