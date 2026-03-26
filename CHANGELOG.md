@@ -1,5 +1,11 @@
 # Portiq
 
+## 0.3.1
+
+### Patch Changes
+
+- Improve the DAG workflow workspace, add JavaScript-aware DAG logic editors, and automate desktop release artifact generation.
+
 ## 0.3.0
 
 ### Minor Changes
