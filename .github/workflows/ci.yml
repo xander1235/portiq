@@ -27,7 +27,6 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
     - uses: actions/checkout@v4
@@ -41,5 +40,5 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Lint (non-blocking until baseline is cleaned up)
+    - name: Lint
       run: npm run lint
