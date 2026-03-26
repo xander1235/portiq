@@ -390,6 +390,11 @@ npm run preview
 npm run lint
 npm run rebuild
 npm run package
+npm run package:desktop
+npm run package:mac
+npm run package:win
+npm run package:linux
+npm run package:release
 ```
 
 ## Packaging and Release
@@ -400,26 +405,59 @@ Build the renderer:
 npm run build
 ```
 
-Create a packaged macOS build:
+Create desktop release artifacts:
 
 ```bash
 npm run package
 ```
 
-Electron Builder can also be used directly for platform-specific targets:
+Platform-specific packaging scripts:
 
 - macOS
   ```bash
-  npx electron-builder --mac --x64 --arm64
+  npm run package:mac
   ```
 - Windows
   ```bash
-  npx electron-builder --win
+  npm run package:win
   ```
 - Linux
   ```bash
-  npx electron-builder --linux
+  npm run package:linux
   ```
+
+Desktop artifacts currently configured:
+
+- macOS: `dmg`, `zip`
+- Windows: `nsis`, `portable`
+- Linux: `AppImage`, `deb`, `rpm`
+
+Build all desktop targets in one release command:
+
+```bash
+npm run package:desktop
+```
+
+Build release artifacts without publishing:
+
+```bash
+npm run package:release
+```
+
+GitHub release automation:
+
+- tags matching `v*` trigger `.github/workflows/release.yml`
+- the workflow builds platform artifacts on:
+  - `macos-latest`
+  - `windows-latest`
+  - `ubuntu-latest`
+- generated installers are uploaded to the GitHub release automatically
+
+Android note:
+
+- Portiq is currently an Electron desktop app, so it does not produce an `apk` from this codebase.
+- Releasing an Android build would require a separate mobile target, such as a React Native, Capacitor, or TWA-based app shell.
+- See `/Users/ss/Documents/Commu/docs/mobile-packaging-plan.md` for the recommended mobile path.
 
 Build output is written to `release/`.
 

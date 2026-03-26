@@ -60,12 +60,25 @@
 .panelTitle {
     font-weight: 600;
     margin-bottom: 6px;
+    padding: 0 4px;
 }
 
-.headerRow {
+.panelBody {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.headerRow, .panelRow {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.panelRow {
+    padding: 4px;
+    gap: 8px;
 }
 
 .treeNode {
@@ -75,30 +88,54 @@
 }
 
 .treeFolder {
-    font-weight: 600;
-    color: var(--text);
-    padding: 4px 6px;
-    background: #1a2030;
-    border-radius: 6px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+    user-select: none;
+    position: relative;
+    color: var(--text-muted);
+}
+
+.treeFolder:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
 }
 
 .treeRequest {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background: transparent;
-    border-radius: 4px;
-    padding: 4px 6px;
+    padding: 6px 10px;
     cursor: pointer;
-    transition: background 0.1s ease;
+    border-radius: 6px;
+    transition: all 0.1s ease;
+    user-select: none;
+    position: relative;
+    margin: 1px 0;
 }
 
-.treeRequest:hover,
+.treeRequest:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
 .treeRequest.active {
-    background: rgba(255, 255, 255, 0.05);
+    background: #1e2536;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.treeRequest.active .itemName {
+    color: #fff;
+    font-weight: 600;
+}
+
+.treeRequest.active .treeUrl {
+    color: rgba(255, 255, 255, 0.5);
+    opacity: 1;
 }
 
 .treeRequest.dragOver,
@@ -124,9 +161,122 @@
 
 .treeRequestHeader {
     display: flex;
-    gap: 8px;
     align-items: center;
+    gap: 8px;
     min-width: 0;
+}
+
+.itemName {
+    flex: 1;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 4px;
+}
+
+.editInput {
+    flex: 1;
+    background: #1e2536;
+    border: 1px solid var(--accent);
+    color: #fff;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+    font-family: inherit;
+    font-weight: 500;
+    margin: -2px 0;
+}
+
+.folderIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+    opacity: 0.5;
+}
+
+.folderIcon.open {
+    transform: rotate(90deg);
+    opacity: 0.8;
+}
+
+.folderLabelIcon {
+    opacity: 0.4;
+    color: var(--text-muted);
+}
+
+.itemActions {
+    display: flex;
+    gap: 4px;
+    opacity: 0.3;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+}
+
+.treeFolder:hover .itemActions,
+.treeRequest:hover .itemActions {
+    opacity: 1;
+}
+
+.itemActionBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.itemActionBtn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+}
+
+.itemMenu {
+    position: absolute;
+    top: 100%;
+    right: 8px;
+    z-index: 100;
+    background: var(--panel-3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    min-width: 150px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.itemMenu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.itemMenu button:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.itemMenu button.delete {
+    color: #ff5555;
+}
+
+.itemMenu button.delete:hover {
+    background: rgba(255, 85, 85, 0.1);
 }
 
 .menuWrap {
@@ -258,12 +408,13 @@
 }
 
 .treeUrl {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-left: 52px;
+    padding-left: 2px;
+    opacity: 0.6;
 }
 
 .panelList {
@@ -286,9 +437,9 @@
 }
 
 .treeChildren {
-    border-left: 1px dashed var(--border);
-    margin-left: 6px;
-    padding-left: 6px;
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    margin-left: 11px;
+    padding-left: 12px;
 }
 
 .tag {
@@ -298,4 +449,64 @@
     padding: 2px 8px;
     font-size: 0.75rem;
     color: var(--muted);
+}
+
+.historyGroup {
+    display: flex;
+    flex-direction: column;
+}
+
+.historyGroupHeader {
+    padding: 8px 12px;
+    background: var(--panel-1);
+    border-bottom: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.historyGroupTitle {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.historyGroupCount {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-left: auto;
+}
+
+.historyItem {
+    margin: 4px 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.15s ease;
+}
+
+.historyItem:hover {
+    background: var(--panel-3);
+    border-color: var(--accent-2);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.caret {
+    transition: transform 0.2s ease;
+}
+
+.caret.open {
+    transform: rotate(90deg);
 }

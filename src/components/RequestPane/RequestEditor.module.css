@@ -1,6 +1,6 @@
 .requestBar {
     display: grid;
-    grid-template-columns: 80px minmax(0, 1fr) 110px;
+    grid-template-columns: 90px minmax(0, 1fr) 96px;
     gap: 4px;
     margin-bottom: 4px;
 }
