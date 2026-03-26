@@ -1,5 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { isSecretPlaceholder, parseSecretPlaceholder } from "../services/githubSync";
 
 interface EnvInputProps {
     value: any;
@@ -131,6 +133,37 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
         if (!valStr) {
             return <span style={{ color: "var(--muted)" }}>{placeholder}</span>;
         }
+
+        if (isSecretPlaceholder(valStr)) {
+            const scope = parseSecretPlaceholder(valStr);
+            return (
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span style={{ 
+                                color: "#ff5555", 
+                                backgroundColor: "rgba(255, 85, 85, 0.1)", 
+                                padding: "2px 4px", 
+                                borderRadius: "4px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                cursor: "help",
+                                fontWeight: 600,
+                                fontSize: "0.80rem"
+                            }}>
+                                <span style={{ fontSize: "12px" }}>⚠️</span>
+                                [Missing Secret: {scope}]
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>This secret is stored locally. Please provide a value.</p>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            );
+        }
+
         const parts = valStr.split(/(\{\{.*?\}\})/g);
         return parts.map((part, i) => {
             if (part.startsWith("{{") && part.endsWith("}}")) {

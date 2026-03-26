@@ -11,7 +11,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "package": "vite build && electron-builder build --mac"
+    "package": "vite build && electron-builder build",
+    "package:desktop": "vite build && electron-builder build --mac --win --linux",
+    "package:mac": "vite build && electron-builder build --mac dmg zip",
+    "package:win": "vite build && electron-builder build --win nsis portable",
+    "package:linux": "vite build && electron-builder build --linux AppImage deb rpm",
+    "package:release": "vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
   "author": "Portiq Contributors",
@@ -26,13 +31,21 @@
       "electron/**/*",
       "package.json"
     ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": "src/assets/logo.png"
+      "icon": "src/assets/logo.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "win": {
       "icon": "src/assets/logo.png",
-      "target": "nsis"
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -40,7 +53,13 @@
       "deleteAppDataOnUninstall": true
     },
     "linux": {
-      "icon": "src/assets/logo.png"
+      "icon": "src/assets/logo.png",
+      "category": "Development",
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ]
     }
   },
   "dependencies": {

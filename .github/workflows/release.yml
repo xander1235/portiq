@@ -1,0 +1,73 @@
+name: Release Artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.os }} artifacts
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-latest
+            command: npm run package:mac
+            artifact_name: portiq-macos-artifacts
+            artifact_path: |
+              release/*.dmg
+              release/*.zip
+          - os: windows
+            runner: windows-latest
+            command: npm run package:win
+            artifact_name: portiq-windows-artifacts
+            artifact_path: |
+              release/*.exe
+          - os: linux
+            runner: ubuntu-latest
+            command: npm run package:linux
+            artifact_name: portiq-linux-artifacts
+            artifact_path: |
+              release/*.AppImage
+              release/*.deb
+              release/*.rpm
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: ${{ matrix.command }}
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+      - name: Attach artifacts to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_path }}
+          generate_release_notes: true

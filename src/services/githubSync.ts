@@ -4,7 +4,7 @@ import { getGitHubToken } from "./githubAuth";
 const SYNC_REPO_NAME = "portiq-sync";
 const WORKSPACE_ROOT = "workspace";
 const LEGACY_STATE_FILE = "state.json";
-const SECRET_PLACEHOLDER_PREFIX = "__PORTIQ_SECRET__:";
+export const SECRET_PLACEHOLDER_PREFIX = "__PORTIQ_SECRET__:";
 
 interface SyncRepo {
     owner: string;
@@ -71,8 +71,15 @@ function makeSecretPlaceholder(scope: string) {
     return `${SECRET_PLACEHOLDER_PREFIX}${scope}`;
 }
 
-function isSecretPlaceholder(value: any): boolean {
-    return typeof value === "string" && value.startsWith(SECRET_PLACEHOLDER_PREFIX);
+export function isSecretPlaceholder(value: any): boolean {
+    return typeof value === "string" && (value.startsWith("__PORTIQ_SECRET__:") || value.startsWith("__COMMU_SECRET__:"));
+}
+
+export function parseSecretPlaceholder(value: string) {
+    if (!isSecretPlaceholder(value)) return null;
+    if (value.startsWith("__PORTIQ_SECRET__:")) return value.slice("__PORTIQ_SECRET__:".length);
+    if (value.startsWith("__COMMU_SECRET__:")) return value.slice("__COMMU_SECRET__:".length);
+    return null;
 }
 
 function isSensitiveKey(key: any) {

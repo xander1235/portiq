@@ -3198,7 +3198,7 @@ function App() {
 
         <div className={layoutStyles.resizer} onMouseDown={() => setDraggingLeft(true)} />
 
-        <main className={layoutStyles.main} style={{ gridTemplateRows: `${topHeight}px 10px 1fr` }}>
+        <main className={layoutStyles.main} style={{ gridTemplateRows: protocol === "dag" ? "1fr" : `${topHeight}px 10px 1fr` }}>
           {/* Protocol-specific request panes — rendered based on the current request's protocol */}
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -3329,43 +3329,47 @@ function App() {
             </div>
           </div>
 
-          <div className={`${layoutStyles.resizer} ${layoutStyles.vertical}`} onMouseDown={() => setDraggingMain(true)} />
+          {protocol !== "dag" && (
+            <>
+              <div className={`${layoutStyles.resizer} ${layoutStyles.vertical}`} onMouseDown={() => setDraggingMain(true)} />
 
-          <ResponseViewer
-            response={response}
-            responseTabs={responseTabs}
-            activeResponseTab={activeResponseTab}
-            setActiveResponseTab={setActiveResponseTab}
-            error={error}
-            pretty={pretty}
-            raw={raw}
-            xml={xml}
-            handleXmlToJson={handleXmlToJson}
-            search={search}
-            setSearch={setSearch}
-            searchKey={searchKey}
-            setSearchKey={setSearchKey}
-            computedRows={computedRows}
-            selectedTablePath={selectedTablePath}
-            setSelectedTablePath={setSelectedTablePath}
-            tableCandidates={tableCandidates}
-            sortKey={sortKey}
-            setSortKey={setSortKey}
-            sortDirection={sortDirection}
-            setSortDirection={setSortDirection}
-            downloadText={downloadText}
-            csv={csv}
-            tableRows={tableRows}
-            derivedName={derivedName}
-            setDerivedName={setDerivedName}
-            derivedExpr={derivedExpr}
-            setDerivedExpr={setDerivedExpr}
-            handleAddDerivedField={handleAddDerivedField}
-            handleSort={handleSort}
-            responseSummary={responseSummary}
-            isSending={isSending}
-            onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
-          />
+              <ResponseViewer
+                response={response}
+                responseTabs={responseTabs}
+                activeResponseTab={activeResponseTab}
+                setActiveResponseTab={setActiveResponseTab}
+                error={error}
+                pretty={pretty}
+                raw={raw}
+                xml={xml}
+                handleXmlToJson={handleXmlToJson}
+                search={search}
+                setSearch={setSearch}
+                searchKey={searchKey}
+                setSearchKey={setSearchKey}
+                computedRows={computedRows}
+                selectedTablePath={selectedTablePath}
+                setSelectedTablePath={setSelectedTablePath}
+                tableCandidates={tableCandidates}
+                sortKey={sortKey}
+                setSortKey={setSortKey}
+                sortDirection={sortDirection}
+                setSortDirection={setSortDirection}
+                downloadText={downloadText}
+                csv={csv}
+                tableRows={tableRows}
+                derivedName={derivedName}
+                setDerivedName={setDerivedName}
+                derivedExpr={derivedExpr}
+                setDerivedExpr={setDerivedExpr}
+                handleAddDerivedField={handleAddDerivedField}
+                handleSort={handleSort}
+                responseSummary={responseSummary}
+                isSending={isSending}
+                onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
+              />
+            </>
+          )}
         </main>
 
         <div className={layoutStyles.resizer} onMouseDown={() => setDraggingRight(true)} />

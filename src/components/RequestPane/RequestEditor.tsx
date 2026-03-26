@@ -17,8 +17,8 @@ const searchWithReplace = () => [
     customSearchKeymap
 ];
 
-import { TableEditor } from "../TableEditor";
-import { EnvInput } from "../TableEditor";
+import { TableEditor, EnvInput } from "../TableEditor";
+import { isSecretPlaceholder } from "../../services/githubSync";
 import { FullScreenModal } from "../Modals/FullScreenModal";
 import { prettifyXml } from "../../services/format";
 import styles from "./RequestEditor.module.css";
@@ -167,6 +167,7 @@ export function RequestEditor({
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
     const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
     const [showBearerToken, setShowBearerToken] = useState(false);
+    const [showBasicPassword, setShowBasicPassword] = useState(false);
     const [showApiKeyValue, setShowApiKeyValue] = useState(false);
 
     const updateBodyRowsState = (nextRows: MultipartRow[]) => {
@@ -489,7 +490,7 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Token</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            {showBearerToken ? (
+                                            {(showBearerToken || isSecretPlaceholder(authConfig.bearer?.token)) ? (
                                                 <EnvInput
                                                     className="input"
                                                     placeholder="Token"
@@ -522,7 +523,7 @@ export function RequestEditor({
                                                 className="ghost icon-button"
                                                 onClick={() => setShowBearerToken(prev => !prev)}
                                                 title={showBearerToken ? "Hide token" : "Show token"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
+                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showBearerToken ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
@@ -555,19 +556,49 @@ export function RequestEditor({
                                     </label>
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Password</span>
-                                        <EnvInput
-                                            className="input"
-                                            placeholder="Password"
-                                            value={authConfig.basic?.password || ""}
-                                            onChange={(val) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                            envVars={getEnvVars()}
-                                            onUpdateEnvVar={handleUpdateEnvVar}
-                                            style={{ flex: 1 }}
-                                        />
+                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                            {(showBasicPassword || isSecretPlaceholder(authConfig.basic?.password)) ? (
+                                                <EnvInput
+                                                    className="input"
+                                                    placeholder="Password"
+                                                    value={authConfig.basic?.password || ""}
+                                                    onChange={(val) => {
+                                                        const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    envVars={getEnvVars()}
+                                                    onUpdateEnvVar={handleUpdateEnvVar}
+                                                    style={{ flex: 1, paddingRight: '36px' }}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder="Password"
+                                                    value={authConfig.basic?.password || ""}
+                                                    onChange={(e) => {
+                                                        const next = { ...authConfig, basic: { ...authConfig.basic, password: e.target.value } };
+                                                        setAuthConfig(next);
+                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                    }}
+                                                    style={{ paddingRight: '36px' }}
+                                                />
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="ghost icon-button"
+                                                onClick={() => setShowBasicPassword(prev => !prev)}
+                                                title={showBasicPassword ? "Hide password" : "Show password"}
+                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
+                                            >
+                                                {showBasicPassword ? (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                ) : (
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                                )}
+                                            </button>
+                                        </div>
                                     </label>
                                 </div>
                             )}
@@ -593,7 +624,7 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Value</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            {showApiKeyValue ? (
+                                            {(showApiKeyValue || isSecretPlaceholder(authConfig.api_key?.value)) ? (
                                                 <EnvInput
                                                     className="input"
                                                     placeholder="Value"
@@ -626,7 +657,7 @@ export function RequestEditor({
                                                 className="ghost icon-button"
                                                 onClick={() => setShowApiKeyValue(prev => !prev)}
                                                 title={showApiKeyValue ? "Hide value" : "Show value"}
-                                                style={{ position: 'absolute', right: '4px', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
+                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
                                             >
                                                 {showApiKeyValue ? (
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
