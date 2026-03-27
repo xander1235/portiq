@@ -19,7 +19,10 @@
     "package:release": "vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
-  "author": "Portiq Contributors",
+  "author": {
+    "name": "Veerender Rathod",
+    "email": "techie25vr@gmail.com"
+  },
   "build": {
     "appId": "com.portiq.app",
     "productName": "Portiq",
@@ -55,6 +58,7 @@
     "linux": {
       "icon": "src/assets/logo.png",
       "category": "Development",
+      "maintainer": "Veerender Rathod <techie25vr@gmail.com>",
       "target": [
         "AppImage",
         "deb",
