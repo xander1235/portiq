@@ -1,5 +1,11 @@
 # Portiq
 
+## 0.3.2
+
+### Patch Changes
+
+- Add release maintainer metadata so Linux desktop packages can be generated successfully in CI.
+
 ## 0.3.1
 
 ### Patch Changes
