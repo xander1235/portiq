@@ -16,7 +16,7 @@ Portiq is an open-source desktop API client built with React, Vite, and Electron
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="860" alt="Portiq dashboard" />
+  <img src="src/assets/screenshots/portiq-workspace.png" width="860" alt="Portiq workspace" />
 </p>
 
 ## Quick Start
@@ -62,13 +62,27 @@ Start here if you want the product overview first. Each item links to the detail
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/request.png" width="45%" alt="Request editor" />
-  <img src="docs/screenshots/ai_assistant.png" width="45%" alt="AI assistant" />
+  <img src="src/assets/screenshots/portiq-workspace.png" width="45%" alt="Portiq HTTP workspace" />
+  <img src="src/assets/screenshots/portiq-request-types.png" width="45%" alt="Portiq request types palette" />
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/environments.png" width="45%" alt="Environment management" />
-  <img src="docs/screenshots/settings.png" width="45%" alt="Settings modal" />
+  <img src="src/assets/screenshots/portiq-graphql.png" width="45%" alt="Portiq GraphQL workspace" />
+  <img src="src/assets/screenshots/portiq-websocket.png" width="45%" alt="Portiq WebSocket workspace" />
+</p>
+
+<p align="center">
+  <img src="src/assets/screenshots/portiq-dag.png" width="45%" alt="Portiq DAG workflow" />
+  <img src="src/assets/screenshots/portiq-ai-panel.png" width="45%" alt="Portiq AI assistant panel" />
+</p>
+
+<p align="center">
+  <img src="src/assets/screenshots/portiq-environments.png" width="45%" alt="Portiq environment selector" />
+  <img src="src/assets/screenshots/portiq-settings.png" width="45%" alt="Portiq settings" />
+</p>
+
+<p align="center">
+  <img src="src/assets/screenshots/portiq-github-sync.png" width="45%" alt="Portiq GitHub sync" />
 </p>
 
 ## Protocol Support
