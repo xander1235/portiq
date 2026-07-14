@@ -408,8 +408,12 @@ export function useRequestState() {
             bodyType,
             bodyRows,
             graphqlConfig,
-            wsConfig,
-            name: requestName
+            wsConfig
+            // NOTE: `name` is intentionally NOT synced here. It is written to
+            // the collection directly by updateRequestName() from both the
+            // sidebar and the main pane. Including it here would clobber a
+            // sidebar rename on switch, because this runs with a stale local
+            // `requestName` captured before the rename's back-sync flushes.
         };
 
         const updateItems = (items: (FolderItem | RequestItem)[]): (FolderItem | RequestItem)[] =>
