@@ -54,6 +54,7 @@ import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
 import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
+import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 
@@ -343,24 +344,46 @@ function App() {
   // waits for it. It also does NOT set the migrated flag unless it actually
   // seeded (or unrecoverably failed to parse), so it safely retries on a
   // later render once an empty DAG request is open.
+  //
+  // Perf note: the localStorage read + JSON.parse + migrateV1 tree-walk are
+  // expensive and only ever need to happen once. `setDagGraph`,
+  // `updateRequestState`, and `addLog` come from `useRequestState()` and are
+  // NOT memoized, so if they were listed as deps this effect would re-run
+  // (and redo that work) on every App re-render until seeded. Instead, the
+  // migration computation is cached in a ref the first time this effect
+  // observes `hydrated === true`, and subsequent runs just consult the
+  // cached result to decide whether to seed.
+  const migrationResultRef = useRef<{ graph: DagGraph; notes: string[] } | null | undefined>(undefined);
   useEffect(() => {
     if (!hydrated) return;
     try {
-      if (typeof localStorage === "undefined") return;
-      if (localStorage.getItem("portiq_dag_flow_migrated_v2")) return;
-      const legacyRaw = localStorage.getItem("portiq_dag_flow_state_v1");
-      if (!legacyRaw) return;
-
-      let parsed: any;
-      try {
-        parsed = JSON.parse(legacyRaw);
-      } catch (err: any) {
-        console.warn("DAG Flow v1 migration failed to parse legacy data; nothing to salvage.", err);
-        try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
-        return;
+      if (migrationResultRef.current === undefined) {
+        if (typeof localStorage === "undefined") {
+          migrationResultRef.current = null;
+        } else if (localStorage.getItem("portiq_dag_flow_migrated_v2")) {
+          migrationResultRef.current = null;
+        } else {
+          const legacyRaw = localStorage.getItem("portiq_dag_flow_state_v1");
+          if (!legacyRaw) {
+            migrationResultRef.current = null;
+          } else {
+            let parsed: any;
+            try {
+              parsed = JSON.parse(legacyRaw);
+              migrationResultRef.current = migrateV1(parsed);
+            } catch (err: any) {
+              console.warn("DAG Flow v1 migration failed to parse legacy data; nothing to salvage.", err);
+              try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+              migrationResultRef.current = null;
+            }
+          }
+        }
       }
 
-      const { graph, notes } = migrateV1(parsed);
+      const migration = migrationResultRef.current;
+      if (!migration) return;
+
+      const { graph, notes } = migration;
 
       // Only seed the migrated graph if a DAG request is currently open and
       // its graph is still empty — never clobber an already-populated flow.
@@ -380,11 +403,13 @@ function App() {
         }
 
         try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+        migrationResultRef.current = null;
       }
     } catch (err: any) {
       console.warn("DAG Flow v1 migration failed; legacy data left untouched.", err);
     }
-  }, [hydrated, protocol, currentRequestId, dagGraph, setDagGraph, updateRequestState, addLog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, protocol, currentRequestId, dagGraph]);
 
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
