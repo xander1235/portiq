@@ -1,252 +1,318 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Portiq | Desktop API Client</title>
-    <meta
-      name="description"
-      content="Portiq is a modern desktop API client for HTTP, GraphQL, WebSocket, mocks, flows, and AI-assisted workflows."
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Sans:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="page-shell">
-      <header class="site-header">
-        <a class="brand" href="#top" aria-label="Portiq home">
-          <img src="./assets/portiq-logo.png" alt="Portiq logo" />
-          <span>Portiq</span>
-        </a>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portiq | Desktop API Client</title>
+  <meta name="description"
+    content="Portiq is a modern desktop API client for HTTP, GraphQL, WebSocket, mocks, flows, and AI-assisted workflows." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="icon" type="image/png" href="./assets/portiq-logo.png" />
+  <script>
+    (function () {
+      var stored = localStorage.getItem("portiq-theme");
+      var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Portiq home">
+        <img src="./assets/portiq-logo.png" alt="Portiq logo" />
+        <span>Portiq</span>
+      </a>
+
+      <div class="header-actions">
         <nav class="nav">
           <a href="#features">Features</a>
-          <a href="#screenshots">Screenshots</a>
-          <a href="#why">Why Portiq</a>
+          <a href="#explainer">Why It Works</a>
+          <a href="#screens">Screens</a>
           <a href="#download">Download</a>
         </nav>
-      </header>
+        <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle color theme">
+          <span class="theme-toggle__sun">Light</span>
+          <span class="theme-toggle__moon">Dark</span>
+        </button>
+      </div>
+    </header>
 
-      <main id="top">
-        <section class="hero">
-          <div class="hero-copy">
-            <p class="eyebrow">Desktop API Client</p>
-            <h1>Ship requests faster with one focused workspace for modern APIs.</h1>
-            <p class="lead">
-              Portiq helps teams test APIs, inspect responses, manage environments,
-              and explore workflows across HTTP, GraphQL, WebSocket, mock servers,
-              and AI-assisted tooling.
-            </p>
-            <div class="hero-actions">
-              <a class="button button-primary" href="#download">Download App</a>
-              <a class="button button-secondary" href="#features">See Features</a>
-            </div>
-            <p class="hero-note">
-              Free-hosting friendly static site. Update the download button with your
-              release URL whenever you're ready.
-            </p>
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Desktop API Client</p>
+          <h1>One clean desktop workspace for modern API development.</h1>
+          <p class="lead">
+            Portiq keeps request building, response inspection, environments,
+            GraphQL, WebSocket, mock workflows, and AI assistance in one focused app.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button button-primary" href="#download">Download Now</a>
+            <a class="button button-secondary" href="#features">Explore Features</a>
           </div>
 
-          <div class="hero-visual" aria-label="Portiq workspace preview">
-            <div class="hero-card hero-card-topline">
-              <div class="hero-card-top">
-                <span class="pill">HTTP</span>
-                <span class="pill">GraphQL</span>
-                <span class="pill">WebSocket</span>
-              </div>
-              <div class="metric-grid">
-                <article>
-                  <strong>7+</strong>
-                  <span>protocol surfaces</span>
-                </article>
-                <article>
-                  <strong>AI</strong>
-                  <span>request generation</span>
-                </article>
-                <article>
-                  <strong>Local</strong>
-                  <span>desktop-first workflow</span>
-                </article>
-                <article>
-                  <strong>Sync</strong>
-                  <span>GitHub-backed sharing</span>
-                </article>
-              </div>
-            </div>
-            <div class="hero-shot-frame">
-              <img src="./screenshots/portiq-workspace.png" alt="Portiq workspace screenshot" />
-            </div>
+          <div class="hero-points">
+            <span>HTTP, GraphQL, WebSocket, SSE, DAG, MCP</span>
+            <span>Desktop-first and local-friendly</span>
+            <span>AI support where it helps</span>
           </div>
-        </section>
+        </div>
 
-        <section class="section screenshot-section" id="screenshots">
-          <div class="section-heading">
-            <p class="eyebrow">Screenshots</p>
-            <h2>See Portiq across real product workflows.</h2>
-          </div>
-
-          <div class="shot-grid shot-grid-featured">
-            <article class="shot-card shot-card-wide">
-              <img src="./screenshots/portiq-workspace.png" alt="Portiq HTTP workspace" />
-              <div class="shot-copy">
-                <h3>HTTP workspace</h3>
-                <p>Author requests, manage bodies, inspect responses, and keep the full workflow in one view.</p>
-              </div>
+        <div class="hero-panel">
+          <div class="hero-stat-grid">
+            <article class="stat-card">
+              <strong>7+</strong>
+              <span>protocol surfaces</span>
             </article>
-            <article class="shot-card">
-              <img src="./screenshots/portiq-request-types.png" alt="Portiq request type palette" />
-              <div class="shot-copy">
-                <h3>Request-type palette</h3>
-                <p>Start from HTTP, GraphQL, WebSocket, DAG, MCP, and more without switching tools.</p>
-              </div>
+            <article class="stat-card">
+              <strong>AI</strong>
+              <span>request guidance</span>
+            </article>
+            <article class="stat-card">
+              <strong>Local</strong>
+              <span>desktop workflow</span>
+            </article>
+            <article class="stat-card">
+              <strong>Sync</strong>
+              <span>GitHub-backed sharing</span>
             </article>
           </div>
 
-          <div class="shot-grid">
-            <article class="shot-card">
-              <img src="./screenshots/portiq-graphql.png" alt="Portiq GraphQL workspace" />
-              <div class="shot-copy">
-                <h3>GraphQL</h3>
-                <p>Write queries and mutations with dedicated editors and schema-aware workflow support.</p>
-              </div>
-            </article>
-            <article class="shot-card">
-              <img src="./screenshots/portiq-websocket.png" alt="Portiq WebSocket workspace" />
-              <div class="shot-copy">
-                <h3>WebSocket</h3>
-                <p>Work with live connections, message composition, and stream inspection in one place.</p>
-              </div>
-            </article>
-            <article class="shot-card">
-              <img src="./screenshots/portiq-dag.png" alt="Portiq DAG workflow" />
-              <div class="shot-copy">
-                <h3>DAG Flow</h3>
-                <p>Build request workflows visually with a full-space graph canvas and protocol-aware steps.</p>
-              </div>
-            </article>
-            <article class="shot-card">
-              <img src="./screenshots/portiq-ai-panel.png" alt="Portiq AI assistant panel" />
-              <div class="shot-copy">
-                <h3>AI assistant</h3>
-                <p>Keep request guidance, generation, and debugging help close to the active request.</p>
-              </div>
-            </article>
+          <div class="hero-shot-frame">
+            <img src="./screenshots/portiq-workspace.png" alt="Portiq workspace screenshot" />
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="logo-strip" aria-label="Core strengths">
-          <span>Fast request building</span>
-          <span>Multi-protocol workflows</span>
-          <span>AI-assisted exploration</span>
-          <span>Team-ready collections</span>
-        </section>
+      <section class="signal-strip" aria-label="Key benefits">
+        <span>Fast request building</span>
+        <span>Multi-protocol workflows</span>
+        <span>Visual response tools</span>
+        <span>Direct release downloads</span>
+      </section>
 
         <section class="section" id="features">
           <div class="section-heading">
             <p class="eyebrow">Features</p>
             <h2>Everything your API workflow needs in one desktop app.</h2>
+            <p class="section-copy">
+              Portiq is built to keep request authoring, testing, debugging, and
+              exploration together instead of scattering them across disconnected tools.
+            </p>
           </div>
+
           <div class="feature-grid">
             <article class="feature-card">
-              <h3>Build requests with less friction</h3>
-              <p>
-                Create and organize requests, variables, headers, auth, and body
-                payloads in a clean desktop-first workspace.
-              </p>
+              <h3>Request authoring</h3>
+              <p>Build requests quickly with structured auth, headers, params, bodies, environments, and saved collections.</p>
             </article>
             <article class="feature-card">
-              <h3>Work across modern protocols</h3>
-              <p>
-                Move between REST, GraphQL, WebSocket, SSE, mock server flows, MCP,
-                and more without juggling separate tools.
-              </p>
+              <h3>Protocol coverage</h3>
+              <p>Switch between REST, GraphQL, WebSocket, SSE, mock servers, DAG flows, and MCP from one app.</p>
             </article>
             <article class="feature-card">
-              <h3>Inspect responses visually</h3>
-              <p>
-                Switch between pretty, raw, table, XML, headers, and fullscreen views
-                to debug faster and stay in flow.
-              </p>
+              <h3>Response visibility</h3>
+              <p>Inspect JSON, raw text, XML, tables, headers, and fullscreen views without changing tools.</p>
             </article>
             <article class="feature-card">
-              <h3>Use AI where it actually helps</h3>
-              <p>
-                Generate requests, tests, and structured exploration steps without
-                losing control of the underlying workflow.
-              </p>
+              <h3>Environment control</h3>
+              <p>Keep local, staging, and production variables organized with interpolation across request fields, then update values inline from the request when you need a quick change.</p>
             </article>
             <article class="feature-card">
-              <h3>Keep data local</h3>
-              <p>
-                Portiq is built as a desktop app, which makes it ideal for local
-                environments, internal APIs, and secure development loops.
-              </p>
+              <h3>AI assistance</h3>
+              <p>Generate requests, tests, and guided debugging help while staying in the same workspace.</p>
             </article>
             <article class="feature-card">
-              <h3>Share through GitHub sync</h3>
-              <p>
-                Keep collections portable and collaborative with GitHub-backed sync
-                when your team is ready to share work.
-              </p>
+              <h3>GitHub sync</h3>
+              <p>Share collections and work more collaboratively when you are ready to move beyond solo usage.</p>
             </article>
           </div>
         </section>
 
-        <section class="section split-section" id="why">
-          <div>
-            <p class="eyebrow">Why Portiq</p>
-            <h2>Built for developers who want speed without tool sprawl.</h2>
-          </div>
-          <div class="check-list">
-            <div>
-              <strong>Focused</strong>
-              <p>One app for request authoring, debugging, testing, and exploration.</p>
-            </div>
-            <div>
-              <strong>Flexible</strong>
-              <p>Handles solo experimentation and more structured team workflows.</p>
-            </div>
-            <div>
-              <strong>Ready to grow</strong>
-              <p>Perfect for an early-stage app landing page that can expand later.</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="section download-section" id="download">
-          <div class="download-card">
-            <p class="eyebrow">Download</p>
-            <h2>Start with a simple release link now, expand later.</h2>
-            <p>
-              Replace the placeholder URL below with your hosted installer, GitHub
-              Releases page, or product download page.
+        <section class="section" id="explainer">
+          <div class="section-heading">
+            <p class="eyebrow">Why It Works</p>
+            <h2>A complete workflow, not just a request sender.</h2>
+            <p class="section-copy">
+              Portiq is meant for developers who need more than a basic API client.
+              You can build and organize requests, switch protocols, inspect responses
+              visually, manage environments, and use AI assistance without breaking flow.
             </p>
-            <div class="download-actions">
-              <a
-                class="button button-primary"
-                href="https://example.com/download"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Download Portiq
-              </a>
-              <a
-                class="button button-secondary"
-                href="https://github.com/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                View Source
-              </a>
-            </div>
-            <code class="inline-callout">Edit this link in /website/index.html</code>
+          </div>
+
+          <div class="explain-grid">
+            <article class="explain-card">
+              <h3>Build across multiple API styles</h3>
+              <p>
+                Create HTTP, GraphQL, WebSocket, SSE, mock-server, DAG-flow, and MCP
+                workflows from one interface instead of maintaining different tools for each protocol.
+              </p>
+            </article>
+            <article class="explain-card">
+              <h3>Debug with better visibility</h3>
+              <p>
+                Move between pretty, raw, XML, table, headers, and fullscreen response
+                views so it is easier to inspect the exact shape of returned data.
+              </p>
+            </article>
+            <article class="explain-card">
+              <h3>Work faster with environments and collections</h3>
+              <p>
+                Keep requests reusable, group them in collections, and switch between
+                local, staging, and production setups with variable interpolation. You can
+                also double-click an environment variable inside the request flow and edit its
+                value directly instead of being pushed into the full environment management screen.
+              </p>
+            </article>
+            <article class="explain-card">
+              <h3>Use AI without leaving the workflow</h3>
+              <p>
+                Ask for request help, generation ideas, test suggestions, and debugging
+                assistance while staying inside the same desktop workspace.
+              </p>
+            </article>
           </div>
         </section>
-      </main>
-    </div>
-  </body>
+
+        <section class="section" id="screens">
+          <div class="section-heading">
+            <p class="eyebrow">Screens</p>
+            <h2>See Portiq across real workflows.</h2>
+            <p class="section-copy">
+                A quick tour of Portiq across the workflows you'll actually use — from request building to GraphQL, WebSocket, and AI assistance.
+            </p>
+          </div>
+
+          <div class="screen-grid">
+            <article class="screen-card screen-card-featured">
+              <img src="./screenshots/portiq-workspace.png" alt="Portiq main workspace" />
+            <div class="screen-copy">
+              <h3>Main workspace</h3>
+              <p>Keep request editing, collections, and response inspection within one wide desktop view.</p>
+            </div>
+          </article>
+          <article class="screen-card">
+            <img src="./screenshots/portiq-graphql.png" alt="Portiq GraphQL workspace" />
+            <div class="screen-copy">
+              <h3>GraphQL</h3>
+              <p>Dedicated query workflow with schema-aware support.</p>
+            </div>
+          </article>
+            <article class="screen-card">
+              <img src="./screenshots/portiq-websocket.png" alt="Portiq WebSocket workspace" />
+              <div class="screen-copy">
+                <h3>WebSocket</h3>
+                <p>Live message workflows without leaving the app.</p>
+              </div>
+            </article>
+            <article class="screen-card">
+              <img src="./screenshots/portiq-dag.png" alt="Portiq DAG flow workspace" />
+              <div class="screen-copy">
+                <h3>DAG flow</h3>
+                <p>Visual multi-step request workflows for more advanced API sequences.</p>
+              </div>
+            </article>
+            <article class="screen-card">
+              <img src="./screenshots/portiq-ai-panel.png" alt="Portiq AI assistant panel" />
+              <div class="screen-copy">
+                <h3>AI assistant</h3>
+                <p>Keep suggestions, generated help, and debugging guidance close to the active request.</p>
+              </div>
+            </article>
+            <article class="screen-card">
+              <img src="./screenshots/portiq-environments.png" alt="Portiq environments panel" />
+              <div class="screen-copy">
+                <h3>Environments</h3>
+                <p>Switch variables cleanly between local, staging, and production setups, with direct inline edits from the request workflow.</p>
+              </div>
+            </article>
+            <article class="screen-card">
+              <img src="./screenshots/portiq-github-sync.png" alt="Portiq GitHub sync screen" />
+              <div class="screen-copy">
+                <h3>GitHub sync</h3>
+                <p>Share collections and coordinate work more easily with repository-backed sync.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      <section class="section" id="download">
+        <div class="download-shell">
+          <div class="section-heading section-heading-tight">
+            <p class="eyebrow">Download</p>
+            <h2>Download the packaged release directly.</h2>
+            <p class="section-copy">
+              Grab the build for your platform. Each download links straight to the latest signed GitHub release — clicking starts it immediately.
+            </p>
+          </div>
+
+          <div class="download-grid">
+            <article class="download-card">
+              <div class="download-copy">
+                <h3>macOS Apple Silicon</h3>
+                <p>Direct DMG download for <code>arm64</code> builds.</p>
+              </div>
+              <a class="button button-primary"
+                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-mac-arm64.dmg"
+                download>
+                Download for Mac
+              </a>
+            </article>
+
+            <article class="download-card">
+              <div class="download-copy">
+                <h3>Windows x64</h3>
+                <p>Direct installer download for the Windows packaged build.</p>
+              </div>
+              <a class="button button-primary"
+                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-win-x64.exe" download>
+                Download for Windows
+              </a>
+            </article>
+
+            <article class="download-card">
+              <div class="download-copy">
+                <h3>Linux x64</h3>
+                <p>Direct AppImage download for Linux users who want a portable build.</p>
+              </div>
+              <a class="button button-primary"
+                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-linux-x64.AppImage"
+                download>
+                Download for Linux
+              </a>
+            </article>
+          </div>
+
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const toggle = document.getElementById("theme-toggle");
+    const storedTheme = localStorage.getItem("portiq-theme");
+    const preferredTheme =
+      storedTheme ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+    root.setAttribute("data-theme", preferredTheme);
+
+    toggle.addEventListener("click", () => {
+      const nextTheme = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", nextTheme);
+      localStorage.setItem("portiq-theme", nextTheme);
+    });
+  </script>
+</body>
+
 </html>

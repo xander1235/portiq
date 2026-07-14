@@ -86,6 +86,11 @@ export interface Collection {
 }
 
 export function useRequestState() {
+    const genId = (prefix: string) =>
+        `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`}`;
+
     const [method, setMethod] = useLocalStorage<string>("ui_method", "GET");
     const [url, setUrl] = useLocalStorage<string>("ui_url", "https://api.example.com/users");
     const [headersText, setHeadersText] = useLocalStorage<string>("ui_headersText", '{\n  "Content-Type": "application/json"\n}');
@@ -173,7 +178,7 @@ export function useRequestState() {
     }
 
     function addCollection() {
-        const id = `col-${Date.now()}`;
+        const id = genId("col");
         const next: Collection = { id, name: `Collection ${collections.length + 1}`, items: [] };
         setCollections((prev) => [...prev, next]);
         setActiveCollectionId(id);
@@ -186,8 +191,8 @@ export function useRequestState() {
         const deepCloneWithNewIds = (item: any): any => {
             const cloned = JSON.parse(JSON.stringify(item));
             const recreateIds = (node: any) => {
-                if (node.type === "folder") node.id = `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-                else if (node.type === "request") node.id = `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                if (node.type === "folder") node.id = genId("fld");
+                else if (node.type === "request") node.id = genId("req");
                 if (node.items) node.items.forEach(recreateIds);
             };
             if (cloned.items) cloned.items.forEach(recreateIds);
@@ -195,7 +200,7 @@ export function useRequestState() {
         };
 
         const cloned = deepCloneWithNewIds(colToCopy);
-        cloned.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        cloned.id = genId("col");
         cloned.name = `${cloned.name} Copy`;
 
         setCollections(prev => [...prev, cloned]);
@@ -211,7 +216,7 @@ export function useRequestState() {
     function addRequestToCollection(folderId: string | null = null, setupNewRequest = (req: RequestItem) => { }): RequestItem | null {
         const col = getActiveCollection();
         if (!col) return null;
-        const id = `req-${Date.now()}`;
+        const id = genId("req");
         const name = "New Request";
         const req: RequestItem = {
             type: "request",
@@ -403,8 +408,12 @@ export function useRequestState() {
             bodyType,
             bodyRows,
             graphqlConfig,
-            wsConfig,
-            name: requestName
+            wsConfig
+            // NOTE: `name` is intentionally NOT synced here. It is written to
+            // the collection directly by updateRequestName() from both the
+            // sidebar and the main pane. Including it here would clobber a
+            // sidebar rename on switch, because this runs with a stale local
+            // `requestName` captured before the rename's back-sync flushes.
         };
 
         const updateItems = (items: (FolderItem | RequestItem)[]): (FolderItem | RequestItem)[] =>
@@ -441,6 +450,34 @@ export function useRequestState() {
                 col.id === activeCollectionId ? { ...col, items: updateItems(col.items || []) } : col
             )
         );
+
+        // Back-sync: if the updated request is currently open in the main pane,
+        // mirror the change into the corresponding local UI state setter.
+        if (requestId === currentRequestId) {
+            const fieldSetters: Record<string, (v: any) => void> = {
+                name: setRequestName,
+                method: setMethod,
+                url: setUrl,
+                protocol: setProtocol,
+                headersText: setHeadersText,
+                bodyText: setBodyText,
+                testsPreText: setTestsPreText,
+                testsPostText: setTestsPostText,
+                testsInputText: setTestsInputText,
+                authType: setAuthType,
+                httpVersion: setHttpVersion,
+                requestTimeoutMs: setRequestTimeoutMs,
+                bodyType: setBodyType,
+                paramsRows: setParamsRows,
+                headersRows: setHeadersRows,
+                authRows: setAuthRows,
+                bodyRows: setBodyRows,
+                graphqlConfig: setGraphqlConfig,
+                wsConfig: setWsConfig,
+            };
+            const setter = fieldSetters[field];
+            if (setter) setter(value as any);
+        }
     }
 
     function updateRequestName(requestId: string, name: string) {
@@ -490,7 +527,7 @@ export function useRequestState() {
     function addFolderToCollection(parentFolderId: string | null = null, setupNewFolder = (id: string) => { }): string | null {
         const col = getActiveCollection();
         if (!col) return null;
-        const id = `fld-${Date.now()}`;
+        const id = genId("fld");
         const folder: FolderItem = { type: "folder", id, name: "New Folder", items: [] };
 
         if (!parentFolderId) {
@@ -628,8 +665,8 @@ export function useRequestState() {
 
     function duplicateItem(itemId: string) {
         const recreateIds = (node: any) => {
-            if (node.type === "folder") node.id = `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-            else if (node.type === "request") node.id = `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            if (node.type === "folder") node.id = genId("fld");
+            else if (node.type === "request") node.id = genId("req");
             if (node.items) node.items.forEach(recreateIds);
         };
 
@@ -690,7 +727,7 @@ export function useRequestState() {
         let collection: Collection | null = null;
 
         if (imported.meta && imported.meta.format === "httpie") {
-            const colId = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            const colId = genId("col");
             collection = {
                 id: colId,
                 name: imported.entry?.name || "HTTPie Import",
@@ -714,7 +751,7 @@ export function useRequestState() {
                     if (!found) {
                         found = {
                             type: "folder",
-                            id: `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                            id: genId("fld"),
                             name: part,
                             items: []
                         };
@@ -725,7 +762,7 @@ export function useRequestState() {
 
                 const parsedReq: RequestItem = {
                     type: "request",
-                    id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    id: genId("req"),
                     name: reqName!,
                     description: "",
                     tags: [],
@@ -787,7 +824,7 @@ export function useRequestState() {
                 currentItems.push(parsedReq);
             });
         } else if (imported.info && imported.info.schema && imported.info.schema.includes("postman.com/json/collection/v2.1.0")) {
-            const colId = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            const colId = genId("col");
             collection = {
                 id: colId,
                 name: imported.info.name || "Postman Import",
@@ -798,7 +835,7 @@ export function useRequestState() {
                 if (pmItem.item) {
                     return {
                         type: "folder",
-                        id: `fld-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                        id: genId("fld"),
                         name: pmItem.name || "Imported Folder",
                         items: pmItem.item.map(parsePostmanItem).filter(Boolean)
                     };
@@ -806,7 +843,7 @@ export function useRequestState() {
                     const pmReq = pmItem.request;
                     const parsedReq: RequestItem = {
                         type: "request",
-                        id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                        id: genId("req"),
                         name: pmItem.name || "Imported Request",
                         description: "",
                         tags: [],
@@ -887,7 +924,7 @@ export function useRequestState() {
             collection.items = (imported.item || []).map(parsePostmanItem).filter(Boolean);
 
         } else if (imported.id) {
-            imported.id = `col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            imported.id = genId("col");
             collection = imported;
         }
 

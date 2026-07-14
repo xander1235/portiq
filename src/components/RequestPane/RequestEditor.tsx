@@ -18,7 +18,6 @@ const searchWithReplace = () => [
 ];
 
 import { TableEditor, EnvInput } from "../TableEditor";
-import { isSecretPlaceholder } from "../../services/githubSync";
 import { FullScreenModal } from "../Modals/FullScreenModal";
 import { prettifyXml } from "../../services/format";
 import styles from "./RequestEditor.module.css";
@@ -490,34 +489,20 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Token</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            {(showBearerToken || isSecretPlaceholder(authConfig.bearer?.token)) ? (
-                                                <EnvInput
-                                                    className="input"
-                                                    placeholder="Token"
-                                                    value={authConfig.bearer?.token || ""}
-                                                    onChange={(val) => {
-                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: val } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    envVars={getEnvVars()}
-                                                    onUpdateEnvVar={handleUpdateEnvVar}
-                                                    style={{ flex: 1, paddingRight: '36px' }}
-                                                />
-                                            ) : (
-                                                <input
-                                                    type="password"
-                                                    className="input"
-                                                    placeholder="Token"
-                                                    value={authConfig.bearer?.token || ""}
-                                                    onChange={(e) => {
-                                                        const next = { ...authConfig, bearer: { ...authConfig.bearer, token: e.target.value } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    style={{ paddingRight: '36px' }}
-                                                />
-                                            )}
+                                            <EnvInput
+                                                className="input"
+                                                placeholder="Token"
+                                                value={authConfig.bearer?.token || ""}
+                                                onChange={(val) => {
+                                                    const next = { ...authConfig, bearer: { ...authConfig.bearer, token: val } };
+                                                    setAuthConfig(next);
+                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                }}
+                                                envVars={getEnvVars()}
+                                                onUpdateEnvVar={handleUpdateEnvVar}
+                                                maskLiterals={!showBearerToken}
+                                                style={{ flex: 1, paddingRight: '36px' }}
+                                            />
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
@@ -557,34 +542,20 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Password</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            {(showBasicPassword || isSecretPlaceholder(authConfig.basic?.password)) ? (
-                                                <EnvInput
-                                                    className="input"
-                                                    placeholder="Password"
-                                                    value={authConfig.basic?.password || ""}
-                                                    onChange={(val) => {
-                                                        const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    envVars={getEnvVars()}
-                                                    onUpdateEnvVar={handleUpdateEnvVar}
-                                                    style={{ flex: 1, paddingRight: '36px' }}
-                                                />
-                                            ) : (
-                                                <input
-                                                    type="password"
-                                                    className="input"
-                                                    placeholder="Password"
-                                                    value={authConfig.basic?.password || ""}
-                                                    onChange={(e) => {
-                                                        const next = { ...authConfig, basic: { ...authConfig.basic, password: e.target.value } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    style={{ paddingRight: '36px' }}
-                                                />
-                                            )}
+                                            <EnvInput
+                                                className="input"
+                                                placeholder="Password"
+                                                value={authConfig.basic?.password || ""}
+                                                onChange={(val) => {
+                                                    const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
+                                                    setAuthConfig(next);
+                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                }}
+                                                envVars={getEnvVars()}
+                                                onUpdateEnvVar={handleUpdateEnvVar}
+                                                maskLiterals={!showBasicPassword}
+                                                style={{ flex: 1, paddingRight: '36px' }}
+                                            />
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"
@@ -624,34 +595,20 @@ export function RequestEditor({
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                                         <span style={{ fontWeight: 500 }}>Value</span>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            {(showApiKeyValue || isSecretPlaceholder(authConfig.api_key?.value)) ? (
-                                                <EnvInput
-                                                    className="input"
-                                                    placeholder="Value"
-                                                    value={authConfig.api_key?.value || ""}
-                                                    onChange={(val) => {
-                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: val } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    envVars={getEnvVars()}
-                                                    onUpdateEnvVar={handleUpdateEnvVar}
-                                                    style={{ flex: 1, paddingRight: '36px' }}
-                                                />
-                                            ) : (
-                                                <input
-                                                    type="password"
-                                                    className="input"
-                                                    placeholder="Value"
-                                                    value={authConfig.api_key?.value || ""}
-                                                    onChange={(e) => {
-                                                        const next = { ...authConfig, api_key: { ...authConfig.api_key, value: e.target.value } };
-                                                        setAuthConfig(next);
-                                                        if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                    }}
-                                                    style={{ paddingRight: '36px' }}
-                                                />
-                                            )}
+                                            <EnvInput
+                                                className="input"
+                                                placeholder="Value"
+                                                value={authConfig.api_key?.value || ""}
+                                                onChange={(val) => {
+                                                    const next = { ...authConfig, api_key: { ...authConfig.api_key, value: val } };
+                                                    setAuthConfig(next);
+                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
+                                                }}
+                                                envVars={getEnvVars()}
+                                                onUpdateEnvVar={handleUpdateEnvVar}
+                                                maskLiterals={!showApiKeyValue}
+                                                style={{ flex: 1, paddingRight: '36px' }}
+                                            />
                                             <button
                                                 type="button"
                                                 className="ghost icon-button"

@@ -11,9 +11,10 @@ interface EnvInputProps {
     style?: React.CSSProperties;
     envVars?: Record<string, string>;
     onUpdateEnvVar?: (key: string, val: string) => void;
+    maskLiterals?: boolean;
 }
 
-export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar }: EnvInputProps) {
+export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar, maskLiterals }: EnvInputProps) {
     const containerStyle: React.CSSProperties = { position: "relative", display: "flex", alignItems: "center", flex: 1, ...style };
     const inputRef = React.useRef<HTMLInputElement>(null);
     const textRef = React.useRef<HTMLDivElement>(null);
@@ -128,6 +129,15 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
         }, 0);
     }
 
+    function commitEnvEdit() {
+        if (editingKey === null) return;
+        // While masked the popup opens blank; an empty draft means "no change" — never wipe the stored secret.
+        if (!(maskLiterals && draftValue === "")) {
+            onUpdateEnvVar?.(editingKey, draftValue);
+        }
+        setEditingKey(null);
+    }
+
     const renderHighlighted = () => {
         const valStr = String(value || "");
         if (!valStr) {
@@ -196,7 +206,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             e.preventDefault();
                             e.stopPropagation();
                             setEditingKey(key);
-                            setDraftValue(exists ? (envVars as Record<string, string>)[key] : "");
+                            setDraftValue((exists && !maskLiterals) ? (envVars as Record<string, string>)[key] : "");
                             setHoveredData(null);
                         }}
                         style={{
@@ -212,7 +222,8 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     </span>
                 );
             }
-            return <span key={i} style={{ pointerEvents: "none" }}>{part}</span>;
+            const literalText = maskLiterals ? "•".repeat(part.length) : part;
+            return <span key={i} style={{ pointerEvents: "none" }}>{literalText}</span>;
         });
     };
 
@@ -239,7 +250,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     alignItems: "center"
                 }}>
                     <div style={{ fontWeight: 600, color: (envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? 'var(--text)' : '#ff5555' }}>
-                        {(envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? envVars[hoveredData.key] : "Unresolved Variable"}
+                        {(envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? (maskLiterals ? "Hidden while masked" : envVars[hoveredData.key]) : "Unresolved Variable"}
                     </div>
                     {onUpdateEnvVar && (
                         <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "3px", fontWeight: 500 }}>
@@ -283,12 +294,11 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                         onChange={(e) => setDraftValue(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                                onUpdateEnvVar?.(editingKey, draftValue);
-                                setEditingKey(null);
+                                commitEnvEdit();
                             }
                             if (e.key === "Escape") setEditingKey(null);
                         }}
-                        placeholder="Value..."
+                        placeholder={maskLiterals ? "Enter new value (current hidden)" : "Value..."}
                     />
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                         <button className="ghost compact" onPointerDown={() => setEditingKey(null)}>Cancel</button>
@@ -296,8 +306,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             className="primary compact"
                             onPointerDown={(e) => {
                                 e.preventDefault();
-                                onUpdateEnvVar?.(editingKey, draftValue);
-                                setEditingKey(null);
+                                commitEnvEdit();
                             }}
                         >
                             Save
@@ -330,6 +339,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                 </div>
                 <input
                     ref={inputRef}
+                    type={maskLiterals ? "password" : "text"}
                     value={String(value || "")}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
@@ -394,7 +404,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"{{"}</span>
                             <span style={{ fontWeight: 500 }}>{key}</span>
                             <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"}}"}</span>
-                            {envVars && (envVars as Record<string, string>)[key] && (
+                            {!maskLiterals && envVars && (envVars as Record<string, string>)[key] && (
                                 <span style={{
                                     marginLeft: "auto",
                                     fontSize: "0.72rem",
@@ -498,40 +508,16 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
                                 onUpdateEnvVar={onUpdateEnvVar}
                                 style={{ width: "100%" }}
                             />
-                            {isMaskable ? (
-                                isMasked ? (
-                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                        <input
-                                            type="password"
-                                            className="input table-input"
-                                            value={row.value}
-                                            placeholder={valuePlaceholder || "Value"}
-                                            onChange={(e) => updateRow(index, "value", e.target.value)}
-                                            style={{ width: '100%' }}
-                                        />
-                                    </div>
-                                ) : (
-                                    <EnvInput
-                                        className="input table-input"
-                                        value={row.value}
-                                        placeholder={valuePlaceholder || "Value"}
-                                        onChange={(val) => updateRow(index, "value", val)}
-                                        envVars={envVars}
-                                        onUpdateEnvVar={onUpdateEnvVar}
-                                        style={{ width: "100%" }}
-                                    />
-                                )
-                            ) : (
-                                <EnvInput
-                                    className="input table-input"
-                                    value={row.value}
-                                    placeholder={valuePlaceholder || "Value"}
-                                    onChange={(val) => updateRow(index, "value", val)}
-                                    envVars={envVars}
-                                    onUpdateEnvVar={onUpdateEnvVar}
-                                    style={{ width: "100%" }}
-                                />
-                            )}
+                            <EnvInput
+                                className="input table-input"
+                                value={row.value}
+                                placeholder={valuePlaceholder || "Value"}
+                                onChange={(val) => updateRow(index, "value", val)}
+                                envVars={envVars}
+                                onUpdateEnvVar={onUpdateEnvVar}
+                                maskLiterals={isMasked}
+                                style={{ width: "100%" }}
+                            />
                             {isEnv && (
                                 <button
                                     className="ghost icon-button"
