@@ -7,6 +7,11 @@ export function PayloadNode({ data }: NodeProps) {
       <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#2dd4bf" }}>{"{ } Payload"}</div>
       <div style={{ fontSize: "0.78rem", fontWeight: 600 }}>{d.label}</div>
       <div style={{ fontSize: "0.62rem", color: "var(--text-muted)" }}>{d.name}</div>
+      {d.status === "skipped" && d.reason && (
+        <div style={{ fontSize: "0.58rem", color: "#64748b" }}>
+          {d.reason === "upstream-error" ? "skipped: upstream failed" : d.reason === "losing-branch" ? "skipped: branch not taken" : "skipped"}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );

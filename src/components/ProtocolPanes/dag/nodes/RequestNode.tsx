@@ -16,6 +16,11 @@ export function RequestNode({ data }: NodeProps) {
       </div>
       <div style={{ fontSize: "0.62rem", color: "var(--text-muted)" }}>{d.name}</div>
       {d.io && <div style={{ fontSize: "0.6rem", color: "var(--text-muted)", marginTop: 4 }}>{d.io}</div>}
+      {d.status === "skipped" && d.reason && (
+        <div style={{ fontSize: "0.58rem", color: "#64748b" }}>
+          {d.reason === "upstream-error" ? "skipped: upstream failed" : d.reason === "losing-branch" ? "skipped: branch not taken" : "skipped"}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );

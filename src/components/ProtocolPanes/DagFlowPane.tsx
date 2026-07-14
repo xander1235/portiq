@@ -52,6 +52,10 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   // updates. A separate state (updated with the functional setState form) avoids
   // that entirely and keeps "pending"/"running" statuses purely UI-side.
   const [statusMap, setStatusMap] = useState<Record<string, NodeStatus>>({});
+  // Ephemeral, like statusMap: captures the engine's skip reason (meta.reason) for
+  // nodes that end up "skipped" during a run, so the node renderers can show a
+  // compact explanation. Never persisted onto the graph.
+  const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
 
   const savedRequestById = useMemo(() => {
@@ -76,9 +80,9 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     return {
       id: n.id, type: n.type,
       position: graph.positions[n.id] || { x: 0, y: 0 },
-      data: { label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink },
+      data: { label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink, reason: skipReasons[n.id] },
     };
-  }), [graph, lookupConfig, statusMap]);
+  }), [graph, lookupConfig, statusMap, skipReasons]);
 
   const rfEdges: Edge[] = useMemo(() => graph.edges.map(e => ({
     id: e.id, source: e.from, target: e.to,
@@ -106,8 +110,23 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const onConnect = useCallback((c: Connection) => {
     const branch = c.sourceHandle === "true" ? "true" : c.sourceHandle === "false" ? "false" : null;
     const edge: DagEdge = { id: genId("edge"), from: c.source!, to: c.target!, branch };
-    onChange({ ...graph, edges: [...graph.edges, edge] });
-  }, [graph, onChange]);
+
+    const sourceNode = graph.nodes.find(n => n.id === c.source);
+    const targetNode = graph.nodes.find(n => n.id === c.target);
+    let nodes = graph.nodes;
+    if (sourceNode?.type === "payload" && targetNode?.type === "request") {
+      const targetData = targetNode.data as RequestNodeData;
+      const { config } = resolveStepConfig(targetData, lookupConfig);
+      if (config.body === "" && targetData.overrides.body === undefined) {
+        const bodyRef = `{{steps.${sourceNode.name}.response.body}}`;
+        nodes = graph.nodes.map(n => n.id === targetNode.id
+          ? { ...n, data: { ...targetData, overrides: { ...targetData.overrides, body: bodyRef } } as RequestNodeData }
+          : n);
+      }
+    }
+
+    onChange({ ...graph, nodes, edges: [...graph.edges, edge] });
+  }, [graph, onChange, lookupConfig]);
 
   const relayout = useCallback(() => onChange({ ...graph, positions: autoLayout(graph) }), [graph, onChange]);
 
@@ -186,6 +205,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     try {
       setStepResults({});
       setRunSteps({});
+      setSkipReasons({});
       setStatusMap(Object.fromEntries(graph.nodes.map(n => [n.id, "pending" as NodeStatus])));
       // Clone the graph (and its nodes) before handing it to runFlow: the engine mutates
       // node.status in place, and graph.nodes are the same objects held in the parent's
@@ -200,6 +220,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         onStatus: (id, status, meta) => {
           setStatusMap(prev => ({ ...prev, [id]: status }));
           if (meta?.result) setStepResults(prev => ({ ...prev, [id]: meta.result! }));
+          if (status === "skipped") setSkipReasons(prev => ({ ...prev, [id]: meta?.reason || "skipped" }));
         },
       });
       setRunSteps(result);
