@@ -1,18 +1,19 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-export function PayloadNode({ data }: NodeProps) {
+import { nodeCard, handleStyle, refTag, skipReasonText, tint } from "./nodeStyles";
+
+const TEAL = "var(--method-get)";
+
+export function PayloadNode({ data, selected }: NodeProps) {
   const d = data as any;
   return (
-    <div style={{ width: 170, borderRadius: 10, background: "rgba(45,212,191,0.12)", border: "1.5px solid #2dd4bf", padding: "8px 10px", color: "var(--text)" }}>
-      <Handle type="target" position={Position.Top} />
-      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#2dd4bf" }}>{"{ } Payload"}</div>
-      <div style={{ fontSize: "0.78rem", fontWeight: 600 }}>{d.label}</div>
-      <div style={{ fontSize: "0.62rem", color: "var(--text-muted)" }}>{d.name}</div>
-      {d.status === "skipped" && d.reason && (
-        <div style={{ fontSize: "0.58rem", color: "#64748b" }}>
-          {d.reason === "upstream-error" ? "skipped: upstream failed" : d.reason === "losing-branch" ? "skipped: branch not taken" : "skipped"}
-        </div>
-      )}
-      <Handle type="source" position={Position.Bottom} />
+    <div style={{ ...nodeCard, width: 190, padding: "11px 12px", background: tint(TEAL, 7),
+      border: `1px solid ${TEAL}`, outline: selected ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <div style={{ font: '800 10px/1 var(--font-mono, monospace)', letterSpacing: ".04em", color: TEAL }}>{"{ } PAYLOAD"}</div>
+      <div style={{ font: "650 13px/1.15 system-ui", marginTop: 5 }}>{d.label}</div>
+      <div style={{ ...refTag, marginTop: 4 }}>@{d.name}</div>
+      {d.status === "skipped" && <div style={{ font: "500 10px/1 system-ui", color: "var(--muted)", marginTop: 4 }}>{skipReasonText(d.reason)}</div>}
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
     </div>
   );
 }

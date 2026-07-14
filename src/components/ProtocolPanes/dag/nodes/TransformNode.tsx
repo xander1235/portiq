@@ -1,17 +1,19 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-export function TransformNode({ data }: NodeProps) {
+import { nodeCard, handleStyle, refTag, skipReasonText, tint } from "./nodeStyles";
+
+const TEAL = "var(--method-get)";
+
+export function TransformNode({ data, selected }: NodeProps) {
   const d = data as any;
   return (
-    <div style={{ width: 140, borderRadius: 6, background: "rgba(45,212,191,0.1)", border: "1.5px dashed #2dd4bf", padding: "6px 8px", color: "var(--text)" }}>
-      <Handle type="target" position={Position.Top} />
-      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#2dd4bf" }}>ƒ Transform</div>
-      <div style={{ fontSize: "0.72rem" }}>{d.label}</div>
-      {d.status === "skipped" && d.reason && (
-        <div style={{ fontSize: "0.58rem", color: "#64748b" }}>
-          {d.reason === "upstream-error" ? "skipped: upstream failed" : d.reason === "losing-branch" ? "skipped: branch not taken" : "skipped"}
-        </div>
-      )}
-      <Handle type="source" position={Position.Bottom} />
+    <div style={{ ...nodeCard, width: 160, padding: "10px 12px", background: tint(TEAL, 8),
+      border: `1px dashed ${TEAL}`, outline: selected ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <div style={{ font: '800 10px/1 var(--font-mono, monospace)', color: TEAL }}>ƒ TRANSFORM</div>
+      <div style={{ font: "650 12.5px/1.15 system-ui", marginTop: 4 }}>{d.label}</div>
+      <div style={{ ...refTag, marginTop: 3 }}>@{d.name}</div>
+      {d.status === "skipped" && <div style={{ font: "500 10px/1 system-ui", color: "var(--muted)", marginTop: 4 }}>{skipReasonText(d.reason)}</div>}
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
     </div>
   );
 }
