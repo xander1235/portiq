@@ -96,7 +96,7 @@ Portiq is multi-protocol, but not every protocol has the same maturity yet.
 | WebSocket | Stable | Persistent connections, headers, subprotocols, timeout, reconnect, message viewer |
 | SSE / Socket | Available | Stream viewer support |
 | Mock Server | Available | Local mock server configuration and route generation |
-| DAG Flow | Available | Visual multi-step flow editor |
+| DAG Flow | Available | Visual multi-step flow editor with reference-based data passing and payload injection |
 | MCP | Available | MCP server connection and prompt/resource browsing |
 | gRPC | Experimental | UI exists, native transport is not fully enabled yet |
 
