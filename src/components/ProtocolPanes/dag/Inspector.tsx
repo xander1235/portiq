@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
-  DagNode, RequestConfig, RequestNodeData, PayloadNodeData,
+  DagGraph, DagNode, RequestConfig, RequestNodeData, PayloadNodeData,
   ConditionNodeData, TransformNodeData, StepResult, StepsContext,
 } from "./types";
 import { resolveTemplate, type ResolveContext } from "./resolver";
 import { resolveStepConfig, savedRequestToConfig } from "./linkResolve";
+import { suggestRefs } from "./refSuggest";
 
 export interface InspectorProps {
   node: DagNode;
@@ -12,6 +13,7 @@ export interface InspectorProps {
   savedRequests: any[];
   env: Record<string, string>;
   steps: StepsContext;
+  graph: DagGraph;
   onUpdate: (id: string, patch: Partial<DagNode>) => void;
   onDetach: (id: string) => void;
   onClose: () => void;
@@ -30,7 +32,7 @@ interface ResolvedPreview {
   pathVars: string;
 }
 
-export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdate, onDetach, onClose }: InspectorProps) {
+export function Inspector({ node, stepResult, savedRequests, env, steps, graph, onUpdate, onDetach, onClose }: InspectorProps) {
   const [tab, setTab] = useState<ResultTab>("resolved");
   const [nameDraft, setNameDraft] = useState(node.name);
 
@@ -77,7 +79,8 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdat
 
       {node.type === "request" && (
         <RequestInspector node={node} savedRequests={savedRequests} patchData={patchData}
-          patchOverride={patchOverride} onDetach={() => onDetach(node.id)} />
+          patchOverride={patchOverride} onDetach={() => onDetach(node.id)}
+          graph={graph} steps={steps} env={env} />
       )}
       {node.type === "payload" && (
         <PayloadInspector data={node.data as PayloadNodeData} patchData={patchData} />
@@ -118,12 +121,15 @@ function PayloadInspector({ data, patchData }: { data: PayloadNodeData; patchDat
   );
 }
 
-function RequestInspector({ node, savedRequests, patchData, patchOverride, onDetach }: {
+function RequestInspector({ node, savedRequests, patchData, patchOverride, onDetach, graph, steps, env }: {
   node: DagNode;
   savedRequests: any[];
   patchData: (patch: Record<string, unknown>) => void;
   patchOverride: (k: string, v: string) => void;
   onDetach: () => void;
+  graph: DagGraph;
+  steps: StepsContext;
+  env: Record<string, string>;
 }) {
   const data = node.data as RequestNodeData;
   const linked = !!data.linkedRequestId;
@@ -133,6 +139,9 @@ function RequestInspector({ node, savedRequests, patchData, patchOverride, onDet
     ["url", "URL"], ["headers", "Headers (JSON)"], ["body", "Body"],
     ["params", "Params (k=v)"], ["pathVars", "Path vars (k=v)"],
   ];
+  const refSuggestions = useMemo(() => suggestRefs(graph, node.id, steps), [graph, node.id, steps]);
+  const hasRunData = Object.keys(steps).length > 0;
+  const resolveCtx: ResolveContext = { steps, env };
   return (
     <div>
       <label style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Linked request</label>
@@ -147,14 +156,25 @@ function RequestInspector({ node, savedRequests, patchData, patchOverride, onDet
           {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(m => <option key={m}>{m}</option>)}
         </select>
       </div>
-      {FIELDS.map(([k, lbl]) => (
-        <div key={k} style={{ marginBottom: 6 }}>
-          <label style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{lbl} {linked ? "(override)" : ""}</label>
-          <textarea value={val(k)} onChange={e => patchOverride(k, e.target.value)} rows={k === "body" || k === "headers" ? 4 : 2}
-            style={{ width: "100%", fontFamily: "monospace", fontSize: "0.72rem" }}
-            placeholder={k === "headers" ? '{"Authorization":"Bearer {{steps.login.response.body.token}}"}' : ""} />
-        </div>
-      ))}
+      <datalist id={`ref-suggestions-${node.id}`}>
+        {refSuggestions.map(s => <option key={s} value={s} />)}
+      </datalist>
+      {FIELDS.map(([k, lbl]) => {
+        const fieldValue = val(k);
+        return (
+          <div key={k} style={{ marginBottom: 6 }}>
+            <label style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{lbl} {linked ? "(override)" : ""}</label>
+            <textarea value={fieldValue} onChange={e => patchOverride(k, e.target.value)} rows={k === "body" || k === "headers" ? 4 : 2}
+              // @ts-expect-error `list` isn't in React's textarea typings, but browsers honor it for datalist wiring
+              list={`ref-suggestions-${node.id}`}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.72rem" }}
+              placeholder={k === "headers" ? '{"Authorization":"Bearer {{steps.login.response.body.token}}"}' : ""} />
+            {hasRunData && fieldValue.includes("{{") && (
+              <div style={{ fontSize: "0.62rem", color: "#2dd4bf" }}>→ {resolveTemplate(fieldValue, resolveCtx)}</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

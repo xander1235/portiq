@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeCh
 import "@xyflow/react/dist/style.css";
 import type {
   DagGraph, DagEdge, DagNode, DagNodeType, DagPosition, RequestNodeData,
-  PayloadNodeData, ConditionNodeData, TransformNodeData, StepResult, NodeStatus,
+  PayloadNodeData, ConditionNodeData, TransformNodeData, StepResult, StepsContext, NodeStatus,
 } from "./dag/types";
 import { EMPTY_REQUEST_CONFIG } from "./dag/types";
 import { RequestNode } from "./dag/nodes/RequestNode";
@@ -41,6 +41,10 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [stepResults, setStepResults] = useState<Record<string, StepResult>>({});
+  // The engine's `steps` context, keyed by node.name (not id) — this is what
+  // {{steps.<name>...}} templates resolve against, and what the Inspector's
+  // suggestion/preview features read from once a run has populated it.
+  const [runSteps, setRunSteps] = useState<StepsContext>({});
   // Run status is rendered from this ephemeral map rather than persisted onto
   // graph.nodes[].status: handleRun's closure captures a single `graph` snapshot
   // for the whole async run, so repeated `onChange({ ...graph, ... })` calls would
@@ -181,11 +185,12 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     setIsRunning(true);
     try {
       setStepResults({});
+      setRunSteps({});
       setStatusMap(Object.fromEntries(graph.nodes.map(n => [n.id, "pending" as NodeStatus])));
       // Clone the graph (and its nodes) before handing it to runFlow: the engine mutates
       // node.status in place, and graph.nodes are the same objects held in the parent's
       // React state. Without this clone, a run would silently corrupt persisted state.
-      await runFlow({ ...graph, nodes: graph.nodes.map(n => ({ ...n })) }, {
+      const result = await runFlow({ ...graph, nodes: graph.nodes.map(n => ({ ...n })) }, {
         sendRequest: async (payload) => {
           const res = await sendRequest(payload);
           return { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, time: res.time, error: res.error };
@@ -197,13 +202,13 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
           if (meta?.result) setStepResults(prev => ({ ...prev, [id]: meta.result! }));
         },
       });
+      setRunSteps(result);
     } finally {
       setIsRunning(false);
     }
   }, [graph, lookupConfig, env, sendRequest, isRunning]);
 
   const selectedNode = selectedId ? graph.nodes.find(n => n.id === selectedId) : undefined;
-  const emptySteps = useMemo<Record<string, StepResult>>(() => ({}), []);
 
   return (
     <div style={{ width: "100%", height: "100%", display: "flex" }}>
@@ -236,7 +241,8 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
           stepResult={stepResults[selectedNode.id]}
           savedRequests={savedRequests}
           env={env}
-          steps={emptySteps}
+          steps={runSteps}
+          graph={graph}
           onUpdate={onUpdate}
           onDetach={onDetach}
           onClose={() => setSelectedId(null)}
