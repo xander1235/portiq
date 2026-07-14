@@ -197,7 +197,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             e.preventDefault();
                             e.stopPropagation();
                             setEditingKey(key);
-                            setDraftValue(exists ? (envVars as Record<string, string>)[key] : "");
+                            setDraftValue((exists && !maskLiterals) ? (envVars as Record<string, string>)[key] : "");
                             setHoveredData(null);
                         }}
                         style={{
@@ -241,7 +241,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     alignItems: "center"
                 }}>
                     <div style={{ fontWeight: 600, color: (envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? 'var(--text)' : '#ff5555' }}>
-                        {(envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? envVars[hoveredData.key] : "Unresolved Variable"}
+                        {(envVars && Object.prototype.hasOwnProperty.call(envVars, hoveredData.key)) ? (maskLiterals ? "Hidden while masked" : envVars[hoveredData.key]) : "Unresolved Variable"}
                     </div>
                     {onUpdateEnvVar && (
                         <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "3px", fontWeight: 500 }}>
@@ -332,6 +332,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                 </div>
                 <input
                     ref={inputRef}
+                    type={maskLiterals ? "password" : "text"}
                     value={String(value || "")}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
@@ -396,7 +397,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"{{"}</span>
                             <span style={{ fontWeight: 500 }}>{key}</span>
                             <span style={{ opacity: 0.5, fontSize: "0.75rem" }}>{"}}"}</span>
-                            {envVars && (envVars as Record<string, string>)[key] && (
+                            {!maskLiterals && envVars && (envVars as Record<string, string>)[key] && (
                                 <span style={{
                                     marginLeft: "auto",
                                     fontSize: "0.72rem",
