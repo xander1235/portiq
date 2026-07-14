@@ -4,9 +4,10 @@ This is a standalone static website for Portiq. It is intentionally separate fro
 
 ## Files
 
-- `index.html` - the landing page
-- `styles.css` - all styling for the page
+- `index.html` - landing page markup; includes an inline `<script>` in `<head>` that applies the saved theme before first paint (prevents flash of wrong theme), plus the click-handler toggle script at end of `<body>`
+- `styles.css` - layout, spacing, responsive behavior, and light/dark theme styles
 - `assets/portiq-logo.png` - local logo used by the site
+- `screenshots/` - product screenshots used in the gallery
 
 ## Free Hosting Options
 
@@ -25,9 +26,12 @@ Example:
 npx serve website
 ```
 
-## Before Publishing
+## Direct Download Links
 
-Update these placeholder links in `index.html`:
+The download buttons in `index.html` should point to the exact GitHub release asset URLs, for example:
 
-- `https://example.com/download`
-- `https://github.com/`
+- `https://github.com/<owner>/<repo>/releases/download/v0.3.2/Portiq-0.3.2-mac-arm64.dmg`
+- `https://github.com/<owner>/<repo>/releases/download/v0.3.2/Portiq-0.3.2-win-x64.exe`
+- `https://github.com/<owner>/<repo>/releases/download/v0.3.2/Portiq-0.3.2-linux-x64.AppImage`
+
+Replace those placeholders with the real repository path and exact packaged artifact names from your release output.
