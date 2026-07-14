@@ -34,11 +34,12 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdat
   const [tab, setTab] = useState<ResultTab>("resolved");
   const [nameDraft, setNameDraft] = useState(node.name);
 
-  // Reset the in-progress draft whenever the selected node changes, so switching
-  // selection doesn't leak a stale draft from the previously selected node.
+  // Reset the in-progress draft whenever the selected node changes, or when the
+  // persisted name changes (e.g. after slug normalization on commit), so the
+  // input doesn't show stale/raw text or leak a draft from another node.
   useEffect(() => {
     setNameDraft(node.name);
-  }, [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [node.id, node.name]);
 
   const commitName = () => {
     if (nameDraft !== node.name) onUpdate(node.id, { name: nameDraft });
@@ -71,7 +72,7 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdat
       <label style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Reference name</label>
       <input value={nameDraft} onChange={e => setNameDraft(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
         onBlur={commitName}
-        onKeyDown={e => { if (e.key === "Enter") { commitName(); (e.target as HTMLInputElement).blur(); } }}
+        onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
         style={{ width: "100%", marginBottom: 8 }} />
 
       {node.type === "request" && (
