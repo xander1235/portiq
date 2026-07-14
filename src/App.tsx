@@ -53,7 +53,6 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
-import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
@@ -321,45 +320,71 @@ function App() {
     });
   }, [setAppLogs]);
 
+  // Becomes true once the async persisted-state restore (loadState("appState")
+  // -> applyPersistedState) has resolved, whether or not persisted state
+  // existed. Effects that must not race that restore (e.g. the DAG Flow
+  // legacy migration below) should wait on this before writing into
+  // `collections`, since the restore unconditionally overwrites `collections`
+  // from the on-disk snapshot.
+  const [hydrated, setHydrated] = useState(false);
+
   // One-time migration of the legacy global DAG Flow graph (Task 10, keyed by
   // "portiq_dag_flow_state_v1") into the new per-request `dagGraph` field.
   // Guarded so it can only ever run once per install (portiq_dag_flow_migrated_v2)
   // and is written defensively so a corrupt legacy blob never throws.
-  const dagMigrationRanRef = useRef(false);
+  //
+  // This must be deferred until AFTER the persisted-state restore
+  // (`applyPersistedState`, triggered from the `loadState("appState")` IPC
+  // call) has resolved. That restore unconditionally overwrites `collections`
+  // from the on-disk snapshot, which predates the migration — running the
+  // migration before hydration would seed a graph that then gets silently
+  // discarded. The `hydrated` flag below only flips once the restore attempt
+  // has completed (whether or not persisted state existed), so this effect
+  // waits for it. It also does NOT set the migrated flag unless it actually
+  // seeded (or unrecoverably failed to parse), so it safely retries on a
+  // later render once an empty DAG request is open.
   useEffect(() => {
-    if (dagMigrationRanRef.current) return;
-    dagMigrationRanRef.current = true;
+    if (!hydrated) return;
     try {
       if (typeof localStorage === "undefined") return;
       if (localStorage.getItem("portiq_dag_flow_migrated_v2")) return;
       const legacyRaw = localStorage.getItem("portiq_dag_flow_state_v1");
       if (!legacyRaw) return;
 
-      const parsed = JSON.parse(legacyRaw);
+      let parsed: any;
+      try {
+        parsed = JSON.parse(legacyRaw);
+      } catch (err: any) {
+        console.warn("DAG Flow v1 migration failed to parse legacy data; nothing to salvage.", err);
+        try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+        return;
+      }
+
       const { graph, notes } = migrateV1(parsed);
 
       // Only seed the migrated graph if a DAG request is currently open and
       // its graph is still empty — never clobber an already-populated flow.
-      if (protocol === "dag" && currentRequestId && Array.isArray(dagGraph?.nodes) && dagGraph.nodes.length === 0) {
+      // If no empty DAG request is open right now, do nothing this pass
+      // (and do NOT set the migrated flag) so we retry on a future render
+      // once the user opens/creates an empty DAG request.
+      if (protocol === "dag" && currentRequestId && dagGraph.nodes.length === 0) {
         setDagGraph(graph);
         updateRequestState(currentRequestId, "dagGraph", graph);
-      }
 
-      if (notes && notes.length > 0) {
-        try {
-          notes.forEach((note) => addLog({ source: "System", type: "info", message: `DAG Flow migration: ${note}` }));
-        } catch {
-          notes.forEach((note) => console.warn(`DAG Flow migration: ${note}`));
+        if (notes && notes.length > 0) {
+          try {
+            notes.forEach((note) => addLog({ source: "System", type: "info", message: `DAG Flow migration: ${note}` }));
+          } catch {
+            notes.forEach((note) => console.warn(`DAG Flow migration: ${note}`));
+          }
         }
+
+        try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
       }
     } catch (err: any) {
       console.warn("DAG Flow v1 migration failed; legacy data left untouched.", err);
-    } finally {
-      try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
     }
-    // Intentionally run once at mount only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hydrated, protocol, currentRequestId, dagGraph, setDagGraph, updateRequestState, addLog]);
 
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
@@ -917,12 +942,20 @@ function App() {
   useEffect(() => {
     let isMounted = true;
     loadPersisted().then((value) => {
-      if (!isMounted || !value) return;
+      if (!isMounted) return;
       try {
-        const state = JSON.parse(value);
-        applyPersistedState(state);
+        if (value) {
+          const state = JSON.parse(value);
+          applyPersistedState(state);
+        }
       } catch (err: any) {
         // ignore corrupt state
+      } finally {
+        // Mark hydration complete whether or not persisted state existed or
+        // parsed successfully, so anything waiting on the restore (e.g. the
+        // deferred DAG Flow legacy migration) knows it's safe to proceed
+        // without racing this async restore.
+        if (isMounted) setHydrated(true);
       }
     });
     return () => {
