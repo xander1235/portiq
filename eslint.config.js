@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'release', 'test_snippet.*'] },
+  { ignores: ['dist', 'node_modules', 'release', 'test_snippet.*', 'vitest.config.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
