@@ -48,6 +48,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   // updates. A separate state (updated with the functional setState form) avoids
   // that entirely and keeps "pending"/"running" statuses purely UI-side.
   const [statusMap, setStatusMap] = useState<Record<string, NodeStatus>>({});
+  const [isRunning, setIsRunning] = useState(false);
 
   const savedRequestById = useMemo(() => {
     const map = new Map<string, any>();
@@ -176,25 +177,30 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const onAddTransform = useCallback(() => { makeNode("transform"); }, [makeNode]);
 
   const handleRun = useCallback(async () => {
-    setStepResults({});
-    setStatusMap(Object.fromEntries(graph.nodes.map(n => [n.id, "pending" as NodeStatus])));
-    const lookup = (id: string) => {
-      const r = savedRequests.find((x: any) => x.id === id);
-      return r ? savedRequestToConfig(r) : undefined;
-    };
-    await runFlow(graph, {
-      sendRequest: async (payload) => {
-        const res = await sendRequest(payload);
-        return { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, time: res.time, error: res.error };
-      },
-      lookupConfig: lookup,
-      env,
-      onStatus: (id, status, meta) => {
-        setStatusMap(prev => ({ ...prev, [id]: status }));
-        if (meta?.result) setStepResults(prev => ({ ...prev, [id]: meta.result! }));
-      },
-    });
-  }, [graph, savedRequests, env, sendRequest]);
+    if (isRunning) return;
+    setIsRunning(true);
+    try {
+      setStepResults({});
+      setStatusMap(Object.fromEntries(graph.nodes.map(n => [n.id, "pending" as NodeStatus])));
+      // Clone the graph (and its nodes) before handing it to runFlow: the engine mutates
+      // node.status in place, and graph.nodes are the same objects held in the parent's
+      // React state. Without this clone, a run would silently corrupt persisted state.
+      await runFlow({ ...graph, nodes: graph.nodes.map(n => ({ ...n })) }, {
+        sendRequest: async (payload) => {
+          const res = await sendRequest(payload);
+          return { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, time: res.time, error: res.error };
+        },
+        lookupConfig,
+        env,
+        onStatus: (id, status, meta) => {
+          setStatusMap(prev => ({ ...prev, [id]: status }));
+          if (meta?.result) setStepResults(prev => ({ ...prev, [id]: meta.result! }));
+        },
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  }, [graph, lookupConfig, env, sendRequest, isRunning]);
 
   const selectedNode = selectedId ? graph.nodes.find(n => n.id === selectedId) : undefined;
   const emptySteps = useMemo<Record<string, StepResult>>(() => ({}), []);
@@ -205,7 +211,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         <div style={{ position: "absolute", zIndex: 5, top: 10, left: 10, display: "flex", gap: 8 }}>
           <button className="ghost" onClick={relayout}>Auto-layout</button>
           <button className="ghost" onClick={() => setShowPicker(v => !v)}>+ Add step</button>
-          <button className="ghost" onClick={handleRun}>Run</button>
+          <button className="ghost" onClick={handleRun} disabled={isRunning}>{isRunning ? "Running…" : "Run"}</button>
         </div>
         {showPicker && (
           <AddStepPicker
