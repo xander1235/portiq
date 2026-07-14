@@ -293,6 +293,35 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
             onClose={() => setShowPicker(false)}
           />
         )}
+        {graph.nodes.length === 0 && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <div style={{ width: 460, textAlign: "center", pointerEvents: "auto" }}>
+              <div style={{ width: 52, height: 52, margin: "0 auto 14px", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 24, background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)" }}>🔗</div>
+              <h3 style={{ margin: "0 0 6px", fontSize: 18 }}>Build a request flow</h3>
+              <p style={{ margin: "0 auto 18px", maxWidth: 400, color: "var(--muted)", fontSize: 13, lineHeight: 1.55 }}>
+                Chain API calls, pass data between steps with <code style={{ fontFamily: "var(--font-mono, monospace)", background: "var(--panel-2)", padding: "1px 6px", borderRadius: 5, color: "#ffb59c" }}>{"{{references}}"}</code>, and branch or loop on responses.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, maxWidth: 400, margin: "0 auto 14px" }}>
+                {[
+                  { fg: "var(--method-post)", ic: "API", t: "Request", d: "Call an endpoint", on: () => onAddRequest("GET") },
+                  { fg: "var(--method-get)", ic: "{ }", t: "Payload", d: "Inject a JSON body", on: onAddPayload },
+                  { fg: "var(--method-patch)", ic: "◆", t: "Condition", d: "Branch on a response", on: onAddCondition },
+                  { fg: "var(--method-get)", ic: "ƒ", t: "Transform", d: "Reshape data (JS)", on: onAddTransform },
+                ].map(c => (
+                  <button key={c.t} onClick={c.on} style={{ display: "flex", gap: 10, alignItems: "center", textAlign: "left",
+                    border: "1px solid var(--border)", background: "var(--panel-2)", borderRadius: 10, padding: "10px 12px", color: "var(--text)", cursor: "pointer" }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, flex: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                      font: '800 9px/1 var(--font-mono, monospace)', background: `color-mix(in srgb, ${c.fg} 15%, transparent)`, color: c.fg }}>{c.ic}</span>
+                    <span><span style={{ display: "block", font: "650 12.5px/1.1 system-ui" }}>{c.t}</span><span style={{ font: "400 10.5px/1.3 system-ui", color: "var(--muted)" }}>{c.d}</span></span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowPicker(true)} style={{ font: "700 13px/1 system-ui", border: "none", borderRadius: 9,
+                padding: "11px 18px", background: "var(--accent)", color: "#1a0f0a", cursor: "pointer" }}>＋ Link a saved request</button>
+            </div>
+          </div>
+        )}
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
           onInit={(inst) => { rfRef.current = inst; }}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
