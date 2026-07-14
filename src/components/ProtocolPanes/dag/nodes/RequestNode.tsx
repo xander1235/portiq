@@ -14,7 +14,7 @@ export function RequestNode({ data, selected }: NodeProps) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ font: "650 13.5px/1.15 system-ui", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.label}</span>
-          {d.brokenLink && <span title="Linked request missing" style={{ color: "#ff5555" }}>⚠</span>}
+          {d.brokenLink && <span title="Linked request missing" style={{ color: STATUS.error.color }}>⚠</span>}
           <span style={statusPill(status)}>{(STATUS[status] || STATUS.idle).label}</span>
         </div>
         <div style={{ ...refTag, marginTop: 4 }}>@{d.name}</div>
