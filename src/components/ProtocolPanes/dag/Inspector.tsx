@@ -156,19 +156,25 @@ function RequestInspector({ node, savedRequests, patchData, patchOverride, onDet
           {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(m => <option key={m}>{m}</option>)}
         </select>
       </div>
-      <datalist id={`ref-suggestions-${node.id}`}>
-        {refSuggestions.map(s => <option key={s} value={s} />)}
-      </datalist>
       {FIELDS.map(([k, lbl]) => {
         const fieldValue = val(k);
         return (
           <div key={k} style={{ marginBottom: 6 }}>
             <label style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{lbl} {linked ? "(override)" : ""}</label>
             <textarea value={fieldValue} onChange={e => patchOverride(k, e.target.value)} rows={k === "body" || k === "headers" ? 4 : 2}
-              // @ts-expect-error `list` isn't in React's textarea typings, but browsers honor it for datalist wiring
-              list={`ref-suggestions-${node.id}`}
               style={{ width: "100%", fontFamily: "monospace", fontSize: "0.72rem" }}
               placeholder={k === "headers" ? '{"Authorization":"Bearer {{steps.login.response.body.token}}"}' : ""} />
+            {refSuggestions.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                {refSuggestions.map(s => (
+                  <button key={s} type="button" className="ghost" title={`Insert ${s}`}
+                    onClick={() => patchOverride(k, fieldValue + s)}
+                    style={{ fontSize: "0.6rem", color: "var(--text-muted)", padding: "1px 4px" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
             {hasRunData && fieldValue.includes("{{") && (
               <div style={{ fontSize: "0.62rem", color: "#2dd4bf" }}>→ {resolveTemplate(fieldValue, resolveCtx)}</div>
             )}
