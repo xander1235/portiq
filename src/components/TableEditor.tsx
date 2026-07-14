@@ -500,40 +500,16 @@ export function TableEditor({ rows, onChange, keyPlaceholder, valuePlaceholder, 
                                 onUpdateEnvVar={onUpdateEnvVar}
                                 style={{ width: "100%" }}
                             />
-                            {isMaskable ? (
-                                isMasked ? (
-                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                        <input
-                                            type="password"
-                                            className="input table-input"
-                                            value={row.value}
-                                            placeholder={valuePlaceholder || "Value"}
-                                            onChange={(e) => updateRow(index, "value", e.target.value)}
-                                            style={{ width: '100%' }}
-                                        />
-                                    </div>
-                                ) : (
-                                    <EnvInput
-                                        className="input table-input"
-                                        value={row.value}
-                                        placeholder={valuePlaceholder || "Value"}
-                                        onChange={(val) => updateRow(index, "value", val)}
-                                        envVars={envVars}
-                                        onUpdateEnvVar={onUpdateEnvVar}
-                                        style={{ width: "100%" }}
-                                    />
-                                )
-                            ) : (
-                                <EnvInput
-                                    className="input table-input"
-                                    value={row.value}
-                                    placeholder={valuePlaceholder || "Value"}
-                                    onChange={(val) => updateRow(index, "value", val)}
-                                    envVars={envVars}
-                                    onUpdateEnvVar={onUpdateEnvVar}
-                                    style={{ width: "100%" }}
-                                />
-                            )}
+                            <EnvInput
+                                className="input table-input"
+                                value={row.value}
+                                placeholder={valuePlaceholder || "Value"}
+                                onChange={(val) => updateRow(index, "value", val)}
+                                envVars={envVars}
+                                onUpdateEnvVar={onUpdateEnvVar}
+                                maskLiterals={isMasked}
+                                style={{ width: "100%" }}
+                            />
                             {isEnv && (
                                 <button
                                     className="ghost icon-button"
