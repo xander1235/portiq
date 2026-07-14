@@ -6,6 +6,7 @@ import type {
 import { resolveTemplate, type ResolveContext } from "./resolver";
 import { resolveStepConfig, savedRequestToConfig } from "./linkResolve";
 import { suggestRefs } from "./refSuggest";
+import { TokenField } from "./TokenField";
 
 export interface InspectorProps {
   node: DagNode;
@@ -65,41 +66,45 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, graph, 
   };
 
   return (
-    <div style={{ width: 320, borderLeft: "1px solid var(--border)", padding: 12, overflow: "auto", background: "var(--bg)" }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-        <input value={node.label} onChange={e => onUpdate(node.id, { label: e.target.value })}
-          style={{ fontWeight: 700, flex: 1 }} />
-        <button className="ghost" onClick={onClose}>✕</button>
+    <div style={{ width: 360, borderLeft: "2px solid var(--border)", background: "var(--panel)", overflow: "auto" }}>
+      <div style={{ padding: "14px 15px 0" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input value={node.label} onChange={e => onUpdate(node.id, { label: e.target.value })}
+            style={{ font: "650 15px/1 system-ui", flex: 1, background: "transparent", border: "none", color: "var(--text)", outline: "none" }} />
+          <button className="ghost" onClick={onClose}>✕</button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
+          <input value={nameDraft} onChange={e => setNameDraft(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+            onBlur={commitName} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            style={{ font: '600 11px/1 var(--font-mono, monospace)', color: "#ff9f88",
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+              padding: "4px 8px", borderRadius: 6, width: 120 }} />
+          <span style={{ font: "400 10.5px/1 system-ui", color: "var(--muted)" }}>used as {"{{"}{nameDraft}.…{"}}"}</span>
+        </div>
       </div>
-      <label style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Reference name</label>
-      <input value={nameDraft} onChange={e => setNameDraft(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
-        onBlur={commitName}
-        onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-        style={{ width: "100%", marginBottom: 8 }} />
+      <div style={{ padding: 15 }}>
+        {node.type === "request" && (
+          <RequestInspector node={node} savedRequests={savedRequests} patchData={patchData}
+            patchOverride={patchOverride} onDetach={() => onDetach(node.id)}
+            graph={graph} steps={steps} env={env} />
+        )}
+        {node.type === "payload" && (
+          <PayloadInspector data={node.data as PayloadNodeData} patchData={patchData} />
+        )}
+        {node.type === "condition" && (
+          <TokenField value={(node.data as ConditionNodeData).expression || ""} onChange={(v) => patchData({ expression: v })}
+            rows={4} placeholder="steps.login.response.status === 200" />
+        )}
+        {node.type === "transform" && (
+          <TokenField value={(node.data as TransformNodeData).script || ""} onChange={(v) => patchData({ script: v })}
+            rows={12} placeholder="emit({ id: steps.list.response.data.items[0].id })" />
+        )}
 
-      {node.type === "request" && (
-        <RequestInspector node={node} savedRequests={savedRequests} patchData={patchData}
-          patchOverride={patchOverride} onDetach={() => onDetach(node.id)}
-          graph={graph} steps={steps} env={env} />
-      )}
-      {node.type === "payload" && (
-        <PayloadInspector data={node.data as PayloadNodeData} patchData={patchData} />
-      )}
-      {node.type === "condition" && (
-        <textarea value={(node.data as ConditionNodeData).expression || ""} onChange={e => patchData({ expression: e.target.value })}
-          rows={4} style={{ width: "100%", fontFamily: "monospace" }}
-          placeholder="steps.login.response.status === 200" />
-      )}
-      {node.type === "transform" && (
-        <textarea value={(node.data as TransformNodeData).script || ""} onChange={e => patchData({ script: e.target.value })}
-          rows={12} style={{ width: "100%", fontFamily: "monospace" }}
-          placeholder="emit({ id: steps.list.response.data.items[0].id })" />
-      )}
-
-      {node.type === "request" && (
-        <ResultTabs tab={tab} setTab={setTab} stepResult={stepResult}
-          resolved={buildResolvedPreview(node.data as RequestNodeData, lookupConfig, steps, env)} />
-      )}
+        {node.type === "request" && (
+          <ResultTabs tab={tab} setTab={setTab} stepResult={stepResult}
+            resolved={buildResolvedPreview(node.data as RequestNodeData, lookupConfig, steps, env)} />
+        )}
+      </div>
     </div>
   );
 }
@@ -114,8 +119,7 @@ function PayloadInspector({ data, patchData }: { data: PayloadNodeData; patchDat
           <option value="text">Text</option>
         </select>
       </div>
-      <textarea value={data.content || ""} onChange={e => patchData({ content: e.target.value })}
-        rows={12} style={{ width: "100%", fontFamily: "monospace", fontSize: "0.72rem" }}
+      <TokenField value={data.content || ""} onChange={(v) => patchData({ content: v })} rows={12}
         placeholder='{"key": "{{steps.login.response.body.token}}"}' />
     </div>
   );
@@ -144,39 +148,43 @@ function RequestInspector({ node, savedRequests, patchData, patchOverride, onDet
   const resolveCtx: ResolveContext = { steps, env };
   return (
     <div>
-      <label style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Linked request</label>
-      <select value={data.linkedRequestId || ""} onChange={e => patchData({ linkedRequestId: e.target.value || undefined })}
-        style={{ width: "100%", marginBottom: 6 }}>
-        <option value="">(inline / none)</option>
-        {savedRequests.map((r: any) => <option key={r.id} value={r.id}>{r.name || r.url}</option>)}
-      </select>
-      {linked && <button className="ghost" onClick={onDetach} style={{ marginBottom: 8 }}>Detach to copy</button>}
-      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-        <select value={val("method") || "GET"} onChange={e => patchOverride("method", e.target.value)}>
+      <div style={{ marginBottom: 15 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, font: "600 10.5px/1 system-ui", color: "var(--muted)" }}>
+          <span>Linked request</span>
+          {linked && <span onClick={onDetach} style={{ color: "#ff9f88", cursor: "pointer", fontWeight: 600 }}>Detach to copy</span>}
+        </div>
+        <select value={data.linkedRequestId || ""} onChange={e => patchData({ linkedRequestId: e.target.value || undefined })}
+          style={{ width: "100%", background: "#0f1420", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px", color: "var(--text)" }}>
+          <option value="">(inline / none)</option>
+          {savedRequests.map((r: any) => <option key={r.id} value={r.id}>{r.name || r.url}</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom: 15 }}>
+        <label style={{ font: "600 10.5px/1 system-ui", color: "var(--muted)" }}>Method {linked ? "(override)" : ""}</label>
+        <select value={val("method") || "GET"} onChange={e => patchOverride("method", e.target.value)}
+          style={{ display: "block", marginTop: 6, background: "#0f1420", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", color: "var(--text)" }}>
           {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(m => <option key={m}>{m}</option>)}
         </select>
       </div>
       {FIELDS.map(([k, lbl]) => {
         const fieldValue = val(k);
         return (
-          <div key={k} style={{ marginBottom: 6 }}>
-            <label style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{lbl} {linked ? "(override)" : ""}</label>
-            <textarea value={fieldValue} onChange={e => patchOverride(k, e.target.value)} rows={k === "body" || k === "headers" ? 4 : 2}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.72rem" }}
+          <div key={k} style={{ marginBottom: 15 }}>
+            <label style={{ display: "block", font: "600 10.5px/1 system-ui", color: "var(--muted)", marginBottom: 6 }}>{lbl} {linked ? "(override)" : ""}</label>
+            <TokenField value={fieldValue} onChange={(v) => patchOverride(k, v)} rows={k === "body" || k === "headers" ? 4 : 2}
               placeholder={k === "headers" ? '{"Authorization":"Bearer {{steps.login.response.body.token}}"}' : ""} />
+            {hasRunData && fieldValue.includes("{{") && (
+              <div style={{ font: '400 10.5px/1.4 var(--font-mono, monospace)', color: "#4fdccf", marginTop: 6 }}>→ {resolveTemplate(fieldValue, resolveCtx)}</div>
+            )}
             {refSuggestions.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {refSuggestions.map(s => (
-                  <button key={s} type="button" className="ghost" title={`Insert ${s}`}
-                    onClick={() => patchOverride(k, fieldValue + s)}
-                    style={{ fontSize: "0.6rem", color: "var(--text-muted)", padding: "1px 4px" }}>
-                    {s}
-                  </button>
+                  <button key={s} type="button" title={`Insert ${s}`} onClick={() => patchOverride(k, fieldValue + s)}
+                    style={{ font: '500 10px/1 var(--font-mono, monospace)', color: "#8fd7cf", cursor: "pointer",
+                      background: "color-mix(in srgb, var(--method-get) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--method-get) 28%, transparent)",
+                      padding: "4px 7px", borderRadius: 6 }}>{s}</button>
                 ))}
               </div>
-            )}
-            {hasRunData && fieldValue.includes("{{") && (
-              <div style={{ fontSize: "0.62rem", color: "#2dd4bf" }}>→ {resolveTemplate(fieldValue, resolveCtx)}</div>
             )}
           </div>
         );
@@ -214,10 +222,11 @@ function ResultTabs({ tab, setTab, stepResult, resolved }: {
     : (stepResult?.response ?? "Run the flow to see the response.");
   return (
     <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", gap: 2, marginBottom: 8, borderBottom: "1px solid var(--border)" }}>
         {(["resolved", "request", "response"] as ResultTab[]).map(t => (
-          <button key={t} className="ghost" onClick={() => setTab(t)}
-            style={{ fontWeight: tab === t ? 700 : 400 }}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} style={{ font: "600 12px/1 system-ui", background: "none", border: "none",
+            color: tab === t ? "var(--text)" : "var(--muted)", padding: "9px 12px", cursor: "pointer",
+            borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent" }}>{t}</button>
         ))}
       </div>
       <pre style={{ fontSize: "0.68rem", whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto" }}>
