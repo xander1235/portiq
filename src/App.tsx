@@ -54,6 +54,7 @@ import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
 import type { DagGraph } from "./components/ProtocolPanes/dag/types";
+import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 
@@ -232,6 +233,7 @@ function App() {
     bodyRows, setBodyRows,
     graphqlConfig, setGraphqlConfig,
     wsConfig, setWsConfig,
+    dagGraph, setDagGraph,
     protocol, setProtocol,
     requestName, setRequestName,
     currentRequestId, setCurrentRequestId,
@@ -319,6 +321,46 @@ function App() {
     });
   }, [setAppLogs]);
 
+  // One-time migration of the legacy global DAG Flow graph (Task 10, keyed by
+  // "portiq_dag_flow_state_v1") into the new per-request `dagGraph` field.
+  // Guarded so it can only ever run once per install (portiq_dag_flow_migrated_v2)
+  // and is written defensively so a corrupt legacy blob never throws.
+  const dagMigrationRanRef = useRef(false);
+  useEffect(() => {
+    if (dagMigrationRanRef.current) return;
+    dagMigrationRanRef.current = true;
+    try {
+      if (typeof localStorage === "undefined") return;
+      if (localStorage.getItem("portiq_dag_flow_migrated_v2")) return;
+      const legacyRaw = localStorage.getItem("portiq_dag_flow_state_v1");
+      if (!legacyRaw) return;
+
+      const parsed = JSON.parse(legacyRaw);
+      const { graph, notes } = migrateV1(parsed);
+
+      // Only seed the migrated graph if a DAG request is currently open and
+      // its graph is still empty — never clobber an already-populated flow.
+      if (protocol === "dag" && currentRequestId && Array.isArray(dagGraph?.nodes) && dagGraph.nodes.length === 0) {
+        setDagGraph(graph);
+        updateRequestState(currentRequestId, "dagGraph", graph);
+      }
+
+      if (notes && notes.length > 0) {
+        try {
+          notes.forEach((note) => addLog({ source: "System", type: "info", message: `DAG Flow migration: ${note}` }));
+        } catch {
+          notes.forEach((note) => console.warn(`DAG Flow migration: ${note}`));
+        }
+      }
+    } catch (err: any) {
+      console.warn("DAG Flow v1 migration failed; legacy data left untouched.", err);
+    } finally {
+      try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+    }
+    // Intentionally run once at mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
   const [activeModel, setActiveModel] = useLocalStorage("ui_activeModel", "gpt-4o-mini");
@@ -393,8 +435,6 @@ function App() {
   const [graphqlResponse, setGraphqlResponse] = useState<any>(null);
   const [grpcConfig, setGrpcConfig] = useState<any>({});
   const [grpcResponse, setGrpcResponse] = useState<any>(null);
-  // TEMPORARY local graph state — replaced by per-request persistence in Task 13
-  const [dagGraph, setDagGraph] = useState<DagGraph>({ version: 2, nodes: [], edges: [], positions: {} });
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -796,6 +836,7 @@ function App() {
       if (state.bodyRows) setBodyRows(state.bodyRows);
       if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
       if (state.wsConfig) setWsConfig(state.wsConfig);
+      if (state.dagGraph) setDagGraph(state.dagGraph);
       if (state.protocol) setProtocol(state.protocol);
       if (state.requestName !== undefined) setRequestName(state.requestName);
       if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
@@ -842,6 +883,7 @@ function App() {
     setBodyRows,
     setGraphqlConfig,
     setWsConfig,
+    setDagGraph,
     setProtocol,
     setRequestName,
     setCurrentRequestId,
@@ -908,6 +950,7 @@ function App() {
       bodyRows,
       graphqlConfig,
       wsConfig,
+      dagGraph,
       protocol,
       requestName,
       currentRequestId,
@@ -950,6 +993,7 @@ function App() {
     bodyRows,
     graphqlConfig,
     wsConfig,
+    dagGraph,
     protocol,
     requestName,
     currentRequestId,
@@ -1025,6 +1069,7 @@ function App() {
         bodyRows,
         graphqlConfig,
         wsConfig,
+        dagGraph,
         protocol,
         requestName,
         currentRequestId,
@@ -1067,6 +1112,7 @@ function App() {
     bodyRows,
     graphqlConfig,
     wsConfig,
+    dagGraph,
     protocol,
     requestName,
     currentRequestId,

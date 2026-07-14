@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import type { DagGraph } from "../components/ProtocolPanes/dag/types";
 
 export interface RequestRow {
     key: string;
@@ -69,6 +70,7 @@ export interface RequestItem {
     bodyRows?: RequestRow[];
     graphqlConfig?: GraphqlConfig;
     wsConfig?: WsConfig;
+    dagGraph?: DagGraph;
 }
 
 export interface FolderItem {
@@ -129,6 +131,7 @@ export function useRequestState() {
         messageType: "text",
         messages: [] as WsMessage[]
     });
+    const [dagGraph, setDagGraph] = useLocalStorage<DagGraph>("ui_dagGraph", { version: 2, nodes: [], edges: [], positions: {} });
 
     const [requestName, setRequestName] = useLocalStorage<string>("ui_requestName", "/users");
     const [currentRequestId, setCurrentRequestId] = useLocalStorage<string>("ui_currentRequestId", "");
@@ -256,7 +259,8 @@ export function useRequestState() {
                 connectTimeout: 10000,
                 messageType: "text",
                 messages: []
-            }
+            },
+            dagGraph: { version: 2, nodes: [], edges: [], positions: {} }
         };
 
         // Allow the caller to customise the request (e.g. set protocol) before it is inserted
@@ -329,6 +333,7 @@ export function useRequestState() {
                 messageType: "text",
                 messages: []
             });
+            setDagGraph({ version: 2, nodes: [], edges: [], positions: {} });
             return;
         };
         setRequestName(req.name || "New Request");
@@ -362,6 +367,7 @@ export function useRequestState() {
             messageType: "text",
             messages: []
         });
+        setDagGraph(req.dagGraph || { version: 2, nodes: [], edges: [], positions: {} });
         setParamsRows(req.paramsRows || [{ key: "", value: "", comment: "", enabled: true }]);
         setHeadersRows(req.headersRows || [{ key: "", value: "", comment: "", enabled: true }]);
         setAuthRows(req.authRows || [{ key: "", value: "", comment: "", enabled: false }]);
@@ -408,7 +414,8 @@ export function useRequestState() {
             bodyType,
             bodyRows,
             graphqlConfig,
-            wsConfig
+            wsConfig,
+            dagGraph
             // NOTE: `name` is intentionally NOT synced here. It is written to
             // the collection directly by updateRequestName() from both the
             // sidebar and the main pane. Including it here would clobber a
@@ -474,6 +481,7 @@ export function useRequestState() {
                 bodyRows: setBodyRows,
                 graphqlConfig: setGraphqlConfig,
                 wsConfig: setWsConfig,
+                dagGraph: setDagGraph,
             };
             const setter = fieldSetters[field];
             if (setter) setter(value as any);
@@ -951,6 +959,7 @@ export function useRequestState() {
         bodyRows, setBodyRows,
         graphqlConfig, setGraphqlConfig,
         wsConfig, setWsConfig,
+        dagGraph, setDagGraph,
         protocol, setProtocol,
         requestName, setRequestName,
         currentRequestId, setCurrentRequestId,
