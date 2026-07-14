@@ -77,3 +77,37 @@ describe("runFlow", () => {
     expect(statusById.no).toBe("skipped");
   });
 });
+
+describe("runFlow transform + loop", () => {
+  it("runs a transform script and exposes emitted data downstream", async () => {
+    const send = vi.fn().mockResolvedValueOnce({ status: 200, headers: {}, data: { items: [{ id: 3 }] }, time: 1 })
+                        .mockResolvedValueOnce({ status: 200, headers: {}, data: {}, time: 1 });
+    const g = { version: 2 as const, positions: {}, nodes: [
+      { id: "a", type: "request" as const, name: "list", label: "L", data: { overrides: {}, inlineConfig: { method: "GET", url: "https://api/list", headers: "", body: "", params: "", pathVars: "" } }, status: "idle" as const },
+      { id: "t", type: "transform" as const, name: "pick", label: "T", data: { script: "emit({ firstId: steps.list.response.data.items[0].id })" }, status: "idle" as const },
+      { id: "b", type: "request" as const, name: "get", label: "G", data: { overrides: {}, inlineConfig: { method: "GET", url: "https://api/{id}", headers: "", body: "", params: "", pathVars: "id={{steps.pick.response.data.firstId}}" } }, status: "idle" as const },
+    ], edges: [{ id: "e1", from: "a", to: "t" }, { id: "e2", from: "t", to: "b" }] };
+    await runFlow(g, { sendRequest: send, lookupConfig: () => undefined, env: {}, onStatus: () => {} });
+    expect(send.mock.calls[1][0].url).toBe("https://api/3");
+  });
+
+  it("loops a request until terminateWhen is true", async () => {
+    let n = 0;
+    const send = vi.fn(async () => ({ status: 200, headers: {}, data: { page: ++n, done: n >= 3 }, time: 1 }));
+    const g = { version: 2 as const, positions: {}, nodes: [
+      { id: "a", type: "request" as const, name: "poll", label: "P", data: { overrides: {}, inlineConfig: { method: "GET", url: "https://api/poll", headers: "", body: "", params: "", pathVars: "" } }, status: "idle" as const },
+    ], edges: [{ id: "self", from: "a", to: "a", maxIterations: 10, terminateWhen: "steps.poll.response.data.done === true" }] };
+    await runFlow(g, { sendRequest: send, lookupConfig: () => undefined, env: {}, onStatus: () => {} });
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it("sets node status to error and resolves runFlow (does not reject) when a transform script throws", async () => {
+    const send = vi.fn(async () => ({ status: 200, headers: {}, data: {}, time: 1 }));
+    const g = { version: 2 as const, positions: {}, nodes: [
+      { id: "t", type: "transform" as const, name: "boom", label: "Boom", data: { script: "throw new Error('x')" }, status: "idle" as const },
+    ], edges: [] };
+    const statusById: Record<string, string> = {};
+    await expect(runFlow(g, { sendRequest: send, lookupConfig: () => undefined, env: {}, onStatus: (id, s) => { statusById[id] = s; } })).resolves.toBeDefined();
+    expect(statusById.t).toBe("error");
+  });
+});

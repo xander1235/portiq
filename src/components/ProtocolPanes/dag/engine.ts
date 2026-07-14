@@ -103,24 +103,53 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
       continue;
     }
 
+    if (node.type === "transform") {
+      node.status = "running"; deps.onStatus(id, "running");
+      const script = (node.data as { script: string }).script || "";
+      const emissions: unknown[] = [];
+      const emit = (d: unknown) => emissions.push(d);
+      try {
+        // eslint-disable-next-line no-new-func
+        const fn = new Function("steps", "env", "emit", `"use strict"; ${script}`);
+        fn(steps, deps.env, emit);
+        const data = emissions.length <= 1 ? emissions[0] : emissions;
+        steps[node.name] = { response: { status: 200, data } };
+        node.status = "success"; deps.onStatus(id, "success", { result: steps[node.name] });
+      } catch (err) {
+        steps[node.name] = { response: { status: 0, error: (err as Error).message } };
+        node.status = "error"; deps.onStatus(id, "error", { result: steps[node.name] });
+      }
+      continue;
+    }
+
     // request node
     node.status = "running"; deps.onStatus(id, "running");
-    const { config } = resolveStepConfig(node.data as any, deps.lookupConfig);
-    const payload = buildSendPayload(config, ctx);
-    try {
-      const res = await deps.sendRequest({ ...payload, timeoutMs: 30000 });
-      const result: StepResult = {
-        request: { method: payload.method, url: payload.url, headers: payload.headers, body: payload.body },
-        response: { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, error: res.error, time: res.time },
-      };
-      steps[node.name] = result;
-      if (res.error || res.status === 0) { node.status = "error"; deps.onStatus(id, "error", { result }); }
-      else { node.status = "success"; deps.onStatus(id, "success", { result }); }
-    } catch (err) {
-      const result: StepResult = { request: { method: payload.method, url: payload.url }, response: { status: 0, error: (err as Error).message, time: 0 } };
-      steps[node.name] = result;
-      node.status = "error"; deps.onStatus(id, "error", { result });
+    const selfEdge = (outEdges[id] || []).find(e => e.from === e.to);
+    const maxIter = selfEdge ? (selfEdge.maxIterations || 10) : 1;
+    let lastResult: StepResult | undefined;
+    for (let iter = 1; iter <= maxIter; iter++) {
+      const { config } = resolveStepConfig(node.data as any, deps.lookupConfig);
+      const payload = buildSendPayload(config, { steps, env: deps.env });
+      try {
+        const res = await deps.sendRequest({ ...payload, timeoutMs: 30000 });
+        lastResult = {
+          request: { method: payload.method, url: payload.url, headers: payload.headers, body: payload.body },
+          response: { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, error: res.error, time: res.time },
+          loopIteration: selfEdge ? iter : undefined,
+        };
+        steps[node.name] = lastResult;
+        if (res.error || res.status === 0) break;
+      } catch (err) {
+        lastResult = { request: { method: payload.method, url: payload.url }, response: { status: 0, error: (err as Error).message, time: 0 }, loopIteration: selfEdge ? iter : undefined };
+        steps[node.name] = lastResult;
+        break;
+      }
+      if (selfEdge && selfEdge.terminateWhen && evalCondition(selfEdge.terminateWhen, { steps, env: deps.env })) break;
+      if (!selfEdge) break;
     }
+    if (lastResult?.response?.error || lastResult?.response?.status === 0) { node.status = "error"; deps.onStatus(id, "error", { result: lastResult }); }
+    else { node.status = "success"; deps.onStatus(id, "success", { result: lastResult }); }
+    continue;
   }
   return steps;
 }
