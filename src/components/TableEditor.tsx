@@ -11,9 +11,10 @@ interface EnvInputProps {
     style?: React.CSSProperties;
     envVars?: Record<string, string>;
     onUpdateEnvVar?: (key: string, val: string) => void;
+    maskLiterals?: boolean;
 }
 
-export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar }: EnvInputProps) {
+export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar, maskLiterals }: EnvInputProps) {
     const containerStyle: React.CSSProperties = { position: "relative", display: "flex", alignItems: "center", flex: 1, ...style };
     const inputRef = React.useRef<HTMLInputElement>(null);
     const textRef = React.useRef<HTMLDivElement>(null);
@@ -212,7 +213,8 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     </span>
                 );
             }
-            return <span key={i} style={{ pointerEvents: "none" }}>{part}</span>;
+            const literalText = maskLiterals ? "•".repeat(part.length) : part;
+            return <span key={i} style={{ pointerEvents: "none" }}>{literalText}</span>;
         });
     };
 
