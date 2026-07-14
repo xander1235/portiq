@@ -53,6 +53,7 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
+import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 
@@ -392,6 +393,8 @@ function App() {
   const [graphqlResponse, setGraphqlResponse] = useState<any>(null);
   const [grpcConfig, setGrpcConfig] = useState<any>({});
   const [grpcResponse, setGrpcResponse] = useState<any>(null);
+  // TEMPORARY local graph state — replaced by per-request persistence in Task 13
+  const [dagGraph, setDagGraph] = useState<DagGraph>({ version: 2, nodes: [], edges: [], positions: {} });
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -3323,7 +3326,18 @@ function App() {
               )}
               {protocol === "dag" && (
                 <DagFlowPane
-                  collections={collections}
+                  graph={dagGraph}
+                  onChange={setDagGraph}
+                  savedRequests={flattenCollections(collections)}
+                  env={getEnvVars() as Record<string, string>}
+                  sendRequest={async (p: any) => {
+                    const r = await window.api.sendRequest(p);
+                    return {
+                      status: r.status, statusText: r.statusText, headers: r.headers,
+                      data: r.json ?? r.body, time: r.time ?? r.duration,
+                      error: r.error ?? undefined,
+                    };
+                  }}
                 />
               )}
             </div>
