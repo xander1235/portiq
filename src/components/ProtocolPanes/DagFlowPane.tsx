@@ -9,7 +9,7 @@ import { ConditionNode } from "./dag/nodes/ConditionNode";
 import { TransformNode } from "./dag/nodes/TransformNode";
 import { autoLayout } from "./dag/layout";
 import { resolveStepConfig, savedRequestToConfig } from "./dag/linkResolve";
-import { uniqueName } from "./dag/migrate";
+import { slugify, uniqueName } from "./dag/migrate";
 import { Inspector } from "./dag/Inspector";
 import type { SendResult } from "./dag/engine";
 
@@ -102,7 +102,8 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
       const merged: DagNode = { ...n, ...patch } as DagNode;
       if (patch.name !== undefined && patch.name !== n.name) {
         const used = new Set(graph.nodes.filter(o => o.id !== id).map(o => o.name));
-        merged.name = uniqueName(patch.name || "step", used);
+        const base = slugify(patch.name);
+        merged.name = uniqueName(base, used);
       }
       return merged;
     });

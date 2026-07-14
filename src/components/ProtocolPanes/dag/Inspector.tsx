@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   DagNode, RequestConfig, RequestNodeData, PayloadNodeData,
   ConditionNodeData, TransformNodeData, StepResult, StepsContext,
@@ -32,6 +32,17 @@ interface ResolvedPreview {
 
 export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdate, onDetach, onClose }: InspectorProps) {
   const [tab, setTab] = useState<ResultTab>("resolved");
+  const [nameDraft, setNameDraft] = useState(node.name);
+
+  // Reset the in-progress draft whenever the selected node changes, so switching
+  // selection doesn't leak a stale draft from the previously selected node.
+  useEffect(() => {
+    setNameDraft(node.name);
+  }, [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commitName = () => {
+    if (nameDraft !== node.name) onUpdate(node.id, { name: nameDraft });
+  };
 
   const patchData = (patch: Record<string, unknown>) =>
     onUpdate(node.id, { data: { ...(node.data as unknown as Record<string, unknown>), ...patch } as unknown as DagNode["data"] });
@@ -58,7 +69,9 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, onUpdat
         <button className="ghost" onClick={onClose}>✕</button>
       </div>
       <label style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Reference name</label>
-      <input value={node.name} onChange={e => onUpdate(node.id, { name: e.target.value.replace(/[^a-zA-Z0-9_-]/g, "") })}
+      <input value={nameDraft} onChange={e => setNameDraft(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+        onBlur={commitName}
+        onKeyDown={e => { if (e.key === "Enter") { commitName(); (e.target as HTMLInputElement).blur(); } }}
         style={{ width: "100%", marginBottom: 8 }} />
 
       {node.type === "request" && (
