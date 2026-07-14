@@ -62,7 +62,6 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
   for (const id of order) {
     const node = nodeMap[id];
     if (!node) continue;
-    if (skip.has(id)) { deps.onStatus(id, "skipped", { reason: "upstream-skipped" }); continue; }
 
     const incoming = graph.edges.filter(e => e.to === id && e.from !== e.to);
     if (incoming.length > 0) {
@@ -98,7 +97,7 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
       const raw = resolveTemplate((node.data as { content: string }).content || "", ctx);
       let data: unknown = raw;
       try { data = JSON.parse(raw); } catch { /* keep as text */ }
-      steps[node.name] = { response: { status: 200, data } };
+      steps[node.name] = { response: { status: 200, data, body: data } };
       node.status = "success"; deps.onStatus(id, "success", { result: steps[node.name] });
       continue;
     }
@@ -113,7 +112,7 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
         const fn = new Function("steps", "env", "emit", `"use strict"; ${script}`);
         fn(steps, deps.env, emit);
         const data = emissions.length <= 1 ? emissions[0] : emissions;
-        steps[node.name] = { response: { status: 200, data } };
+        steps[node.name] = { response: { status: 200, data, body: data } };
         node.status = "success"; deps.onStatus(id, "success", { result: steps[node.name] });
       } catch (err) {
         steps[node.name] = { response: { status: 0, error: (err as Error).message } };
@@ -125,7 +124,7 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
     // request node
     node.status = "running"; deps.onStatus(id, "running");
     const selfEdge = (outEdges[id] || []).find(e => e.from === e.to);
-    const maxIter = selfEdge ? (selfEdge.maxIterations || 10) : 1;
+    const maxIter = selfEdge ? (selfEdge.maxIterations ?? 10) : 1;
     let lastResult: StepResult | undefined;
     for (let iter = 1; iter <= maxIter; iter++) {
       const { config } = resolveStepConfig(node.data as any, deps.lookupConfig);
@@ -134,7 +133,7 @@ export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsCont
         const res = await deps.sendRequest({ ...payload, timeoutMs: 30000 });
         lastResult = {
           request: { method: payload.method, url: payload.url, headers: payload.headers, body: payload.body },
-          response: { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, error: res.error, time: res.time },
+          response: { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, body: res.data, error: res.error, time: res.time },
           loopIteration: selfEdge ? iter : undefined,
         };
         steps[node.name] = lastResult;

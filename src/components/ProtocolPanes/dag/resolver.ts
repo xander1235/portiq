@@ -42,7 +42,7 @@ function resolveToken(token: string, ctx: ResolveContext): unknown {
   if (trimmed.startsWith("env.")) return ctx.env[trimmed.slice(4)];
   if (trimmed === "env") return ctx.env;
   if (trimmed.startsWith("steps.")) return getByPath(ctx.steps, trimmed.slice(6));
-  if (trimmed.startsWith("steps")) return ctx.steps;
+  if (trimmed === "steps") return ctx.steps;
   // bare key → treat as env var (back-compat with existing {{VAR}})
   return ctx.env[trimmed];
 }

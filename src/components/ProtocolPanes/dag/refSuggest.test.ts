@@ -20,8 +20,8 @@ describe("suggestRefs", () => {
   it("suggests concrete response field paths from a prior run", () => {
     const steps: StepsContext = { login: { response: { status: 200, data: { token: "T", user: { id: 1 } } } } };
     const s = suggestRefs(g, "b", steps);
-    expect(s).toContain("{{steps.login.response.data.token}}");
-    expect(s).toContain("{{steps.login.response.data.user.id}}");
+    expect(s).toContain("{{steps.login.response.body.token}}");
+    expect(s).toContain("{{steps.login.response.body.user.id}}");
   });
   it("excludes downstream and sibling nodes, not just self", () => {
     const g2: DagGraph = {

@@ -90,22 +90,49 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     label: e.branch ? (e.branch === "true" ? "Y" : "N") : e.runOnFailure ? "on-fail" : undefined,
   })), [graph]);
 
+  // Node/edge *removal* is handled exclusively by onDelete (React Flow v12's unified
+  // deletion callback) below, which applies node deletions, edge deletions, and edges
+  // implied by deleted nodes in a single onChange update. If onNodesChange and
+  // onEdgesChange each also applied "remove" changes via their own onChange calls,
+  // React Flow firing both in the same tick (e.g. deleting a node with connected
+  // edges) would clobber one update with the other, since both close over the same
+  // `graph` snapshot. So here we only ever apply non-remove changes (position,
+  // dimension, select, etc.).
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const next = applyNodeChanges(changes, rfNodes);
+    const filtered = changes.filter(c => c.type !== "remove");
+    if (!filtered.length) return;
+    const next = applyNodeChanges(filtered, rfNodes);
     const keep = new Set(next.map(n => n.id));
     // Build positions fresh from the surviving nodes only, so deleted nodes' entries
     // don't linger forever in graph.positions.
     const positions: Record<string, DagPosition> = {};
     next.forEach(n => { positions[n.id] = n.position; });
-    if (selectedId && !keep.has(selectedId)) setSelectedId(null);
     onChange({ ...graph, nodes: graph.nodes.filter(n => keep.has(n.id)), edges: graph.edges.filter(e => keep.has(e.from) && keep.has(e.to)), positions });
-  }, [graph, onChange, rfNodes, selectedId]);
+  }, [graph, onChange, rfNodes]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const next = applyEdgeChanges(changes, rfEdges);
+    const filtered = changes.filter(c => c.type !== "remove");
+    if (!filtered.length) return;
+    const next = applyEdgeChanges(filtered, rfEdges);
     const keep = new Set(next.map(e => e.id));
     onChange({ ...graph, edges: graph.edges.filter(e => keep.has(e.id)) });
   }, [graph, onChange, rfEdges]);
+
+  // Single source of truth for all node/edge deletions (delete key, multi-select
+  // delete, deleting a node that has connected edges). React Flow computes the full
+  // set of nodes AND edges to remove (including edges implied by deleted nodes) and
+  // reports them together here, so we can apply everything in one onChange call
+  // instead of racing separate onNodesChange/onEdgesChange updates.
+  const onDelete = useCallback(({ nodes: delNodes, edges: delEdges }: { nodes: Node[]; edges: Edge[] }) => {
+    const nodeIds = new Set(delNodes.map(n => n.id));
+    const edgeIds = new Set(delEdges.map(e => e.id));
+    const nodes = graph.nodes.filter(n => !nodeIds.has(n.id));
+    const edges = graph.edges.filter(e => !edgeIds.has(e.id) && !nodeIds.has(e.from) && !nodeIds.has(e.to));
+    const positions: Record<string, DagPosition> = {};
+    nodes.forEach(n => { positions[n.id] = graph.positions[n.id] || { x: 0, y: 0 }; });
+    if (selectedId && nodeIds.has(selectedId)) setSelectedId(null);
+    onChange({ ...graph, nodes, edges, positions });
+  }, [graph, onChange, selectedId]);
 
   const onConnect = useCallback((c: Connection) => {
     const branch = c.sourceHandle === "true" ? "true" : c.sourceHandle === "false" ? "false" : null;
@@ -252,6 +279,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         )}
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+          onDelete={onDelete}
           onNodeClick={(_, n) => setSelectedId(n.id)} fitView>
           <Background /><Controls /><MiniMap />
         </ReactFlow>

@@ -64,7 +64,7 @@ export interface StepResult {
   };
   response?: {
     status: number; statusText?: string; headers?: Record<string, string>;
-    data?: unknown; error?: string; time?: number;
+    data?: unknown; body?: unknown; error?: string; time?: number;
   };
   loopIteration?: number;
 }

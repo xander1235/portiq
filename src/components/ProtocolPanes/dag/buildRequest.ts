@@ -25,7 +25,7 @@ export function buildSendPayload(config: RequestConfig, ctx: ResolveContext): Se
   if (headersText) {
     try {
       const parsed = JSON.parse(headersText);
-      if (parsed && typeof parsed === "object") {
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         for (const [k, v] of Object.entries(parsed)) headers[k] = String(v);
       }
     } catch { /* leave headers empty on invalid JSON */ }
@@ -34,7 +34,8 @@ export function buildSendPayload(config: RequestConfig, ctx: ResolveContext): Se
   let url = resolveTemplate(config.url || "", ctx);
   const pathVars = parseKvLines(config.pathVars || "", ctx);
   for (const [k, v] of Object.entries(pathVars)) {
-    url = url.replace(`:${k}`, encodeURIComponent(v)).replace(`{${k}}`, encodeURIComponent(v));
+    const enc = encodeURIComponent(v);
+    url = url.split(`:${k}`).join(enc).split(`{${k}}`).join(enc);
   }
 
   const params = parseKvLines(config.params || "", ctx);

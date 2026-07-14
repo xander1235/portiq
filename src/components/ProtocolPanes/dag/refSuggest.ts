@@ -29,10 +29,10 @@ export function suggestRefs(graph: DagGraph, currentNodeId: string, steps: Steps
     const name = byId[id];
     if (!name) return;
     out.push(`{{steps.${name}.response.body}}`);
-    const data = steps[name]?.response?.data;
+    const data = steps[name]?.response?.data ?? steps[name]?.response?.body;
     if (data && typeof data === "object") {
       const paths: string[] = [];
-      leafPaths(data, `steps.${name}.response.data`, paths);
+      leafPaths(data, `steps.${name}.response.body`, paths);
       paths.forEach(p => out.push(`{{${p}}}`));
     }
   });
