@@ -1,10 +1,10 @@
 import { EMPTY_REQUEST_CONFIG, type DagGraph, type DagNode, type DagEdge, type RequestConfig } from "./types";
 
-function slugify(label: string): string {
+export function slugify(label: string): string {
   return (label || "step").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "step";
 }
 
-function uniqueName(base: string, used: Set<string>): string {
+export function uniqueName(base: string, used: Set<string>): string {
   let name = base, i = 2;
   while (used.has(name)) name = `${base}-${i++}`;
   used.add(name);
