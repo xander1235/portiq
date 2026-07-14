@@ -129,6 +129,15 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
         }, 0);
     }
 
+    function commitEnvEdit() {
+        if (editingKey === null) return;
+        // While masked the popup opens blank; an empty draft means "no change" — never wipe the stored secret.
+        if (!(maskLiterals && draftValue === "")) {
+            onUpdateEnvVar?.(editingKey, draftValue);
+        }
+        setEditingKey(null);
+    }
+
     const renderHighlighted = () => {
         const valStr = String(value || "");
         if (!valStr) {
@@ -285,12 +294,11 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                         onChange={(e) => setDraftValue(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                                onUpdateEnvVar?.(editingKey, draftValue);
-                                setEditingKey(null);
+                                commitEnvEdit();
                             }
                             if (e.key === "Escape") setEditingKey(null);
                         }}
-                        placeholder="Value..."
+                        placeholder={maskLiterals ? "Enter new value (current hidden)" : "Value..."}
                     />
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                         <button className="ghost compact" onPointerDown={() => setEditingKey(null)}>Cancel</button>
@@ -298,8 +306,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             className="primary compact"
                             onPointerDown={(e) => {
                                 e.preventDefault();
-                                onUpdateEnvVar?.(editingKey, draftValue);
-                                setEditingKey(null);
+                                commitEnvEdit();
                             }}
                         >
                             Save
