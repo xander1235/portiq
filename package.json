@@ -13,14 +13,18 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "vite build && electron-builder build",
-    "package:desktop": "vite build && electron-builder build --mac --win --linux",
-    "package:mac": "vite build && electron-builder build --mac dmg zip",
-    "package:win": "vite build && electron-builder build --win nsis portable",
-    "package:linux": "vite build && electron-builder build --linux AppImage deb rpm",
+    "package": "vite build && electron-builder build --publish never",
+    "package:desktop": "vite build && electron-builder build --mac --win --linux --publish never",
+    "package:mac": "vite build && electron-builder build --mac dmg zip --publish never",
+    "package:win": "vite build && electron-builder build --win nsis portable --publish never",
+    "package:linux": "vite build && electron-builder build --linux AppImage deb rpm --publish never",
     "package:release": "vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xander1235/portiq.git"
+  },
   "author": {
     "name": "Veerender Rathod",
     "email": "techie25vr@gmail.com"
