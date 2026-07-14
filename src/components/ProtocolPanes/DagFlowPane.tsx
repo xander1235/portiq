@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeChanges,
-  type Node, type Edge, type Connection, type NodeChange, type EdgeChange } from "@xyflow/react";
+  type Node, type Edge, type Connection, type NodeChange, type EdgeChange, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type {
   DagGraph, DagEdge, DagNode, DagNodeType, DagPosition, RequestNodeData,
@@ -57,6 +57,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   // compact explanation. Never persisted onto the graph.
   const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
+  const rfRef = useRef<ReactFlowInstance | null>(null);
 
   const savedRequestById = useMemo(() => {
     const map = new Map<string, any>();
@@ -261,10 +262,25 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   return (
     <div style={{ width: "100%", height: "100%", display: "flex" }}>
       <div style={{ flex: 1, position: "relative" }}>
-        <div style={{ position: "absolute", zIndex: 5, top: 10, left: 10, display: "flex", gap: 8 }}>
-          <button className="ghost" onClick={relayout}>Auto-layout</button>
+        <div style={{ position: "absolute", zIndex: 5, top: 10, left: 10, right: 10, display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 10px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <span style={{ font: "650 12.5px/1 system-ui" }}>DAG Flow</span>
+          <span style={{ font: '500 10.5px/1 var(--font-mono, monospace)', color: "var(--muted)", background: "var(--panel-2)",
+            border: "1px solid var(--border)", padding: "4px 8px", borderRadius: 6 }}>{graph.nodes.length} steps</span>
+          <span style={{ flex: 1 }} />
           <button className="ghost" onClick={() => setShowPicker(v => !v)}>+ Add step</button>
-          <button className="ghost" onClick={handleRun} disabled={isRunning}>{isRunning ? "Running…" : "Run"}</button>
+          <button className="ghost" onClick={relayout}>Auto-layout</button>
+          <button className="ghost" onClick={() => rfRef.current?.fitView({ padding: 0.2 })}>Fit</button>
+          <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+            <button className="ghost" style={{ border: "none", borderRadius: 0 }} onClick={() => rfRef.current?.zoomOut()}>−</button>
+            <button className="ghost" style={{ border: "none", borderRadius: 0 }} onClick={() => rfRef.current?.zoomIn()}>+</button>
+          </div>
+          <button onClick={handleRun} disabled={isRunning}
+            style={{ font: "700 12px/1 system-ui", border: "none", borderRadius: 8, padding: "8px 14px",
+              background: isRunning ? "var(--panel-2)" : "var(--accent)", color: isRunning ? "var(--muted)" : "#1a0f0a",
+              cursor: isRunning ? "default" : "pointer" }}>
+            {isRunning ? "Running…" : "▶ Run flow"}
+          </button>
         </div>
         {showPicker && (
           <AddStepPicker
@@ -278,10 +294,18 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
           />
         )}
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
+          onInit={(inst) => { rfRef.current = inst; }}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-          onDelete={onDelete}
-          onNodeClick={(_, n) => setSelectedId(n.id)} fitView>
-          <Background /><Controls /><MiniMap />
+          onDelete={onDelete} onNodeClick={(_, n) => setSelectedId(n.id)} fitView
+          proOptions={{ hideAttribution: true }}>
+          <Background color="#222838" gap={19} />
+          <Controls showInteractive={false} />
+          <MiniMap pannable zoomable maskColor="rgba(0,0,0,0.6)"
+            style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
+            nodeColor={(n) => {
+              const s = (n.data as any)?.status;
+              return s === "success" ? "#2ecc71" : s === "error" ? "#ff5555" : s === "running" ? "#f1c40f" : "#2a3042";
+            }} />
         </ReactFlow>
       </div>
       {selectedNode && (
