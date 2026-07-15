@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeChanges,
-  type Node, type Edge, type Connection, type NodeChange, type EdgeChange, type ReactFlowInstance } from "@xyflow/react";
+import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, MarkerType,
+  type Node, type Edge, type Connection, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type {
   DagGraph, DagEdge, DagNode, DagNodeType, DagPosition, RequestNodeData,
@@ -272,6 +272,7 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
       position: graph.positions[n.id] || { x: 0, y: 0 },
       data: {
         label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink, reason: skipReasons[n.id],
+        selected: selectedId === n.id,
         onEdit: () => setSelectedId(n.id),
         onRunOnly: () => runWithMode("only", n.id),
         onRunFrom: () => runWithMode("from", n.id),
@@ -279,41 +280,38 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         onDelete: () => onDelete({ nodes: [{ id: n.id } as any], edges: [] }),
       },
     };
-  }), [graph, lookupConfig, statusMap, skipReasons, runWithMode, onDelete]);
+  }), [graph, lookupConfig, statusMap, skipReasons, runWithMode, onDelete, selectedId]);
 
   const rfEdges: Edge[] = useMemo(() => graph.edges.map(e => ({
     id: e.id, source: e.from, target: e.to,
     sourceHandle: e.branch === "true" ? "true" : e.branch === "false" ? "false" : undefined,
     label: e.branch ? (e.branch === "true" ? "Y" : "N") : e.runOnFailure ? "on-fail" : undefined,
+    // Directional arrowhead so the flow's entry→exit direction is visible on every edge.
+    markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: "#8a94a6" },
   })), [graph]);
 
   // Node/edge *removal* is handled exclusively by onDelete (React Flow v12's unified
   // deletion callback) above, which applies node deletions, edge deletions, and edges
-  // implied by deleted nodes in a single onChange update. If onNodesChange and
-  // onEdgesChange each also applied "remove" changes via their own onChange calls,
-  // React Flow firing both in the same tick (e.g. deleting a node with connected
-  // edges) would clobber one update with the other, since both close over the same
-  // `graph` snapshot. So here we only ever apply non-remove changes (position,
-  // dimension, select, etc.).
+  // implied by deleted nodes in a single onChange update. Edge creation is handled by
+  // onConnect. There is intentionally no onEdgesChange: edges are managed entirely by
+  // onConnect/onDelete, and edge selection isn't part of our persisted model.
+  //
+  // Only *position* changes are persisted to our graph model. React Flow also emits
+  // `dimensions` changes (node measurement) and `select` changes on every render;
+  // persisting those would replace `graph` on each measurement, which — because
+  // rfNodes is re-derived from `graph` without React Flow's measured width/height —
+  // makes React Flow re-measure and re-fire `dimensions` forever (an infinite update
+  // loop that also prevents edges from ever rendering). Dimensions/selection are
+  // React Flow's internal concern; we leave them to its internal store and never
+  // round-trip them through onChange. Deletions are handled by onDelete.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const filtered = changes.filter(c => c.type !== "remove");
-    if (!filtered.length) return;
-    const next = applyNodeChanges(filtered, rfNodes);
-    const keep = new Set(next.map(n => n.id));
-    // Build positions fresh from the surviving nodes only, so deleted nodes' entries
-    // don't linger forever in graph.positions.
-    const positions: Record<string, DagPosition> = {};
+    const posChanges = changes.filter((c): c is NodeChange & { id: string; position?: DagPosition } => c.type === "position");
+    if (!posChanges.length) return;
+    const next = applyNodeChanges(posChanges, rfNodes);
+    const positions: Record<string, DagPosition> = { ...graph.positions };
     next.forEach(n => { positions[n.id] = n.position; });
-    onChange({ ...graph, nodes: graph.nodes.filter(n => keep.has(n.id)), edges: graph.edges.filter(e => keep.has(e.from) && keep.has(e.to)), positions });
+    onChange({ ...graph, positions });
   }, [graph, onChange, rfNodes]);
-
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const filtered = changes.filter(c => c.type !== "remove");
-    if (!filtered.length) return;
-    const next = applyEdgeChanges(filtered, rfEdges);
-    const keep = new Set(next.map(e => e.id));
-    onChange({ ...graph, edges: graph.edges.filter(e => keep.has(e.id)) });
-  }, [graph, onChange, rfEdges]);
 
   const selectedNode = selectedId ? graph.nodes.find(n => n.id === selectedId) : undefined;
 
@@ -387,9 +385,9 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         )}
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
           onInit={(inst) => { rfRef.current = inst; }}
-          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+          onNodesChange={onNodesChange} onConnect={onConnect}
           onDelete={onDelete} onNodeClick={(_, n) => setSelectedId(n.id)}
-          onSelectionChange={({ nodes }) => setSelectedId(nodes[0]?.id ?? selectedId)}
+          onPaneClick={() => setSelectedId(null)}
           nodeClickDistance={5} selectNodesOnDrag={false} connectionRadius={40} fitView
           proOptions={{ hideAttribution: true }}>
           <Background color="#222838" gap={19} />

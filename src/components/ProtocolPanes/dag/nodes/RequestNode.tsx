@@ -2,22 +2,25 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { METHOD_COLOR, STATUS, nodeCard, handleStyle, tile, statusPill, refTag, urlText, skipReasonText } from "./nodeStyles";
 import { NodeActions } from "./NodeActions";
 
-export function RequestNode({ data, selected }: NodeProps) {
+export function RequestNode({ data }: NodeProps) {
   const d = data as any;
   const method = (d.method || "GET").toUpperCase();
   const color = METHOD_COLOR[method] || "var(--muted)";
   const status = d.status || "idle";
+  const sel = !!d.selected;
   return (
     <div style={{ ...nodeCard, position: "relative", width: 226, padding: 12, display: "flex", gap: 11,
-      outline: selected ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
-      <NodeActions
-        onEdit={(data as any).onEdit}
-        onRunFrom={(data as any).onRunFrom}
-        onRunOnly={(data as any).onRunOnly}
-        onRunUpTo={(data as any).onRunUpTo}
-        onDelete={(data as any).onDelete}
-        status={(data as any).status}
-      />
+      outline: sel ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
+      {sel && (
+        <NodeActions
+          onEdit={d.onEdit}
+          onRunFrom={d.onRunFrom}
+          onRunOnly={d.onRunOnly}
+          onRunUpTo={d.onRunUpTo}
+          onDelete={d.onDelete}
+          status={d.status}
+        />
+      )}
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div style={tile(color)}>{method}</div>
       <div style={{ flex: 1, minWidth: 0 }}>

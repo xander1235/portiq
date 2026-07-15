@@ -4,21 +4,24 @@ import { NodeActions } from "./NodeActions";
 
 const VIOLET = "var(--method-patch)";
 
-export function ConditionNode({ data, selected }: NodeProps) {
+export function ConditionNode({ data }: NodeProps) {
   const d = data as any;
+  const sel = !!d.selected;
   return (
     <div style={{ position: "relative", width: 74, height: 74 }}>
-      <NodeActions
-        onEdit={(data as any).onEdit}
-        onRunFrom={(data as any).onRunFrom}
-        onRunOnly={(data as any).onRunOnly}
-        onRunUpTo={(data as any).onRunUpTo}
-        onDelete={(data as any).onDelete}
-        status={(data as any).status}
-      />
+      {sel && (
+        <NodeActions
+          onEdit={d.onEdit}
+          onRunFrom={d.onRunFrom}
+          onRunOnly={d.onRunOnly}
+          onRunUpTo={d.onRunUpTo}
+          onDelete={d.onDelete}
+          status={d.status}
+        />
+      )}
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div style={{ position: "absolute", inset: 6, transform: "rotate(45deg)", background: tint(VIOLET),
-        border: `1.5px solid ${VIOLET}`, borderRadius: 9, outline: selected ? "2px solid var(--accent)" : "none" }} />
+        border: `1.5px solid ${VIOLET}`, borderRadius: 9, outline: sel ? "2px solid var(--accent)" : "none" }} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
         font: '700 8.5px/1.2 var(--font-mono, monospace)', color: VIOLET, textAlign: "center", padding: 6, wordBreak: "break-word" }}>{d.label}</div>
       {d.status === "skipped" && (
