@@ -23,7 +23,7 @@ function stop(fn?: () => void) {
 export function NodeActions(h: NodeActionHandlers) {
   const failed = h.status === "error";
   return (
-    <div className="dag-node-actions" style={{ position: "absolute", top: -12, right: 6, display: "flex", gap: 4, zIndex: 3 }}>
+    <div className="dag-node-actions nodrag" onMouseDown={(e) => e.stopPropagation()} style={{ position: "absolute", top: -12, right: 6, display: "flex", gap: 4, zIndex: 3 }}>
       {h.onEdit && <button type="button" title="Edit" style={btn} onClick={stop(h.onEdit)}><Pencil size={12} /></button>}
       {h.onRunFrom && (
         <button type="button" title={failed ? "Retry from here" : "Run from here"} onClick={stop(h.onRunFrom)}
