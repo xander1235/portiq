@@ -71,6 +71,14 @@ export interface StepResult {
 
 export type StepsContext = Record<string, StepResult>;
 
+export type RunMode = "all" | "only" | "from" | "upTo";
+
+export interface RunOptions {
+  mode?: RunMode;        // default "all"
+  targetId?: string;     // node the mode is relative to (required for only/from/upTo)
+  priorSteps?: StepsContext; // last run's results, reused by only/from
+}
+
 export interface SkipInfo { nodeId: string; reason: "upstream-error" | "losing-branch" | "upstream-skipped"; }
 
 export const EMPTY_REQUEST_CONFIG: RequestConfig = {
