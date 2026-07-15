@@ -1817,3 +1817,7 @@ tfoot td:last-child {
   flex-direction: column;
   gap: 8px;
 }
+
+.dag-node-actions { opacity: 0; transition: opacity 120ms ease; }
+.react-flow__node:hover .dag-node-actions,
+.react-flow__node.selected .dag-node-actions { opacity: 1; }
