@@ -1817,3 +1817,9 @@ tfoot td:last-child {
   flex-direction: column;
   gap: 8px;
 }
+
+/* The node action bar is rendered only while a node is selected (see the node
+   components' `sel && <NodeActions/>`), so it is always fully visible when present.
+   Hover no longer reveals it — selecting a node (click) does, and it stays until the
+   node is deselected (click elsewhere / on the canvas). */
+.dag-node-actions { opacity: 1; }

@@ -271,7 +271,10 @@ export function RequestEditor({
                 <EnvInput
                     className={`input ${styles.url} h-[30px]`}
                     value={url}
-                    onChange={(val) => setUrl(val)}
+                    onChange={(val) => {
+                        setUrl(val);
+                        if (currentRequestId) updateRequestState(currentRequestId, "url", val);
+                    }}
                     envVars={getEnvVars()}
                     onUpdateEnvVar={handleUpdateEnvVar}
                     placeholder="https://api.example.com/v1/users/{{id}}"

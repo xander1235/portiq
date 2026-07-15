@@ -32,10 +32,14 @@ export const nodeCard: CSSProperties = {
   boxShadow: "0 8px 22px rgba(0,0,0,.4)", color: "var(--text)",
 };
 
-export const handleStyle: CSSProperties = {
-  width: 9, height: 9, borderRadius: "50%", background: "var(--bg)",
-  border: "2px solid var(--accent)",
-};
+/** Handle rendered as a small visible dot centered inside a large transparent hit-target,
+ *  so dragging to connect is easy without grabbing the card or panning the canvas. */
+export const handleDot = (color = "var(--accent)"): CSSProperties => ({
+  width: 18, height: 18, borderRadius: "50%", border: "none",
+  background: `radial-gradient(circle, ${color} 0 4.5px, transparent 5.5px)`,
+});
+
+export const handleStyle: CSSProperties = handleDot();
 
 export const tile = (color: string): CSSProperties => ({
   width: 34, height: 34, borderRadius: 9, flex: "none",

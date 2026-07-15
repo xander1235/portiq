@@ -282,7 +282,7 @@ export function Sidebar({
                                 </div>
 
                                 {openFolderMenuId === item.id && (
-                                    <div className={styles.itemMenu} onClick={e => e.stopPropagation()}>
+                                    <div className={styles.itemMenu} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
                                         <button onClick={() => { 
                                             setFolderNameDraft(item.name);
                                             setEditingFolderId(item.id);
@@ -386,7 +386,7 @@ export function Sidebar({
                                 </div>
 
                                 {openFolderMenuId === item.id && (
-                                    <div className={styles.itemMenu} onClick={e => e.stopPropagation()}>
+                                    <div className={styles.itemMenu} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
                                         <button onClick={() => { 
                                             setRequestNameDraft(item.name);
                                             setEditingRequestId(item.id);

@@ -1,7 +1,8 @@
-import type { DagGraph, DagNode, DagEdge, StepsContext, StepResult, NodeStatus, RequestConfig } from "./types";
+import type { DagGraph, DagNode, DagEdge, StepsContext, StepResult, NodeStatus, RequestConfig, RunMode, RunOptions } from "./types";
 import { resolveStepConfig } from "./linkResolve";
 import { buildSendPayload } from "./buildRequest";
 import { resolveTemplate, type ResolveContext } from "./resolver";
+import { descendants, ancestors } from "./traverse";
 
 export interface SendResult {
   status: number; statusText?: string; headers?: Record<string, string>;
@@ -48,25 +49,41 @@ function evalCondition(expr: string, ctx: ResolveContext): boolean {
   } catch { return false; }
 }
 
-export async function runFlow(graph: DagGraph, deps: RunDeps): Promise<StepsContext> {
+function activeNodeSet(graph: DagGraph, mode: RunMode, targetId?: string): Set<string> {
+  if (mode === "only") return new Set(targetId ? [targetId] : []);
+  if (mode === "from") return targetId ? descendants(graph, targetId) : new Set();
+  if (mode === "upTo") return targetId ? ancestors(graph, targetId) : new Set();
+  return new Set(graph.nodes.map(n => n.id)); // "all"
+}
+
+export async function runFlow(graph: DagGraph, deps: RunDeps, options: RunOptions = {}): Promise<StepsContext> {
+  const mode = options.mode ?? "all";
+  const active = activeNodeSet(graph, mode, options.targetId);
+
   const nodeMap: Record<string, DagNode> = Object.fromEntries(graph.nodes.map(n => [n.id, n]));
   const outEdges: Record<string, DagEdge[]> = {};
   graph.nodes.forEach(n => { outEdges[n.id] = []; });
   graph.edges.forEach(e => { outEdges[e.from]?.push(e); });
 
-  const steps: StepsContext = {};
+  // Seed prior results so run-only / run-from can reference upstream steps without re-calling them.
+  const seed = (mode === "only" || mode === "from") ? (options.priorSteps ?? {}) : {};
+  const steps: StepsContext = { ...seed };
   const skip = new Set<string>();
   const blockedEdges = new Set<string>();
-  const order = topoSort(graph);
+  const order = topoSort(graph).filter(id => active.has(id));
 
   for (const id of order) {
     const node = nodeMap[id];
     if (!node) continue;
 
+    // Edges from outside the active set (reused upstream) count as already-succeeded votes:
+    // they stay in `incoming` and are treated as satisfied inside the predicate, so a merge
+    // node kept alive by an out-of-active parent still runs (matches "all" mode behavior).
     const incoming = graph.edges.filter(e => e.to === id && e.from !== e.to);
     if (incoming.length > 0) {
       let reason: string | undefined;
       const allowed = incoming.some(e => {
+        if (!active.has(e.from)) return true; // reused upstream = satisfied vote
         if (blockedEdges.has(e.id)) { reason = "losing-branch"; return false; }
         const src = nodeMap[e.from];
         if (src?.status === "error" && !e.runOnFailure) { reason = "upstream-error"; return false; }
