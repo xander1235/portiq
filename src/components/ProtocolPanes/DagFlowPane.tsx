@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeCh
 import "@xyflow/react/dist/style.css";
 import type {
   DagGraph, DagEdge, DagNode, DagNodeType, DagPosition, RequestNodeData,
-  PayloadNodeData, ConditionNodeData, TransformNodeData, StepResult, StepsContext, NodeStatus,
+  PayloadNodeData, ConditionNodeData, TransformNodeData, StepResult, StepsContext, NodeStatus, RunMode,
 } from "./dag/types";
 import { EMPTY_REQUEST_CONFIG } from "./dag/types";
 import { RequestNode } from "./dag/nodes/RequestNode";
@@ -17,6 +17,7 @@ import { slugify, uniqueName } from "./dag/migrate";
 import { Inspector } from "./dag/Inspector";
 import { AddStepPicker } from "./dag/AddStepPicker";
 import { runFlow, type SendResult } from "./dag/engine";
+import { descendants, ancestors } from "./dag/traverse";
 
 const NODE_TYPES = { request: RequestNode, payload: PayloadNode, condition: ConditionNode, transform: TransformNode };
 
@@ -69,55 +70,6 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     const saved = savedRequestById.get(id);
     return saved ? savedRequestToConfig(saved) : undefined;
   }, [savedRequestById]);
-
-  const rfNodes: Node[] = useMemo(() => graph.nodes.map(n => {
-    let method: string | undefined;
-    let brokenLink: boolean | undefined;
-    if (n.type === "request") {
-      const resolved = resolveStepConfig(n.data as RequestNodeData, lookupConfig);
-      method = resolved.config.method;
-      brokenLink = resolved.brokenLink;
-    }
-    return {
-      id: n.id, type: n.type,
-      position: graph.positions[n.id] || { x: 0, y: 0 },
-      data: { label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink, reason: skipReasons[n.id] },
-    };
-  }), [graph, lookupConfig, statusMap, skipReasons]);
-
-  const rfEdges: Edge[] = useMemo(() => graph.edges.map(e => ({
-    id: e.id, source: e.from, target: e.to,
-    sourceHandle: e.branch === "true" ? "true" : e.branch === "false" ? "false" : undefined,
-    label: e.branch ? (e.branch === "true" ? "Y" : "N") : e.runOnFailure ? "on-fail" : undefined,
-  })), [graph]);
-
-  // Node/edge *removal* is handled exclusively by onDelete (React Flow v12's unified
-  // deletion callback) below, which applies node deletions, edge deletions, and edges
-  // implied by deleted nodes in a single onChange update. If onNodesChange and
-  // onEdgesChange each also applied "remove" changes via their own onChange calls,
-  // React Flow firing both in the same tick (e.g. deleting a node with connected
-  // edges) would clobber one update with the other, since both close over the same
-  // `graph` snapshot. So here we only ever apply non-remove changes (position,
-  // dimension, select, etc.).
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const filtered = changes.filter(c => c.type !== "remove");
-    if (!filtered.length) return;
-    const next = applyNodeChanges(filtered, rfNodes);
-    const keep = new Set(next.map(n => n.id));
-    // Build positions fresh from the surviving nodes only, so deleted nodes' entries
-    // don't linger forever in graph.positions.
-    const positions: Record<string, DagPosition> = {};
-    next.forEach(n => { positions[n.id] = n.position; });
-    onChange({ ...graph, nodes: graph.nodes.filter(n => keep.has(n.id)), edges: graph.edges.filter(e => keep.has(e.from) && keep.has(e.to)), positions });
-  }, [graph, onChange, rfNodes]);
-
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const filtered = changes.filter(c => c.type !== "remove");
-    if (!filtered.length) return;
-    const next = applyEdgeChanges(filtered, rfEdges);
-    const keep = new Set(next.map(e => e.id));
-    onChange({ ...graph, edges: graph.edges.filter(e => keep.has(e.id)) });
-  }, [graph, onChange, rfEdges]);
 
   // Single source of truth for all node/edge deletions (delete key, multi-select
   // delete, deleting a node that has connected edges). React Flow computes the full
@@ -227,35 +179,113 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const onAddCondition = useCallback(() => { makeNode("condition"); }, [makeNode]);
   const onAddTransform = useCallback(() => { makeNode("transform"); }, [makeNode]);
 
-  const handleRun = useCallback(async () => {
+  const runWithMode = useCallback(async (mode: RunMode, targetId?: string) => {
     if (isRunning) return;
     setIsRunning(true);
     try {
-      setStepResults({});
-      setRunSteps({});
-      setSkipReasons({});
-      setStatusMap(Object.fromEntries(graph.nodes.map(n => [n.id, "pending" as NodeStatus])));
-      // Clone the graph (and its nodes) before handing it to runFlow: the engine mutates
-      // node.status in place, and graph.nodes are the same objects held in the parent's
-      // React state. Without this clone, a run would silently corrupt persisted state.
+      const active = mode === "all"
+        ? new Set(graph.nodes.map(n => n.id))
+        : mode === "only" ? new Set(targetId ? [targetId] : [])
+        : mode === "from" ? descendants(graph, targetId!)
+        : ancestors(graph, targetId!);
+
+      // Reset status/results for the nodes about to run; leave others as-is.
+      setStatusMap(prev => {
+        const next = { ...prev };
+        active.forEach(id => { next[id] = "pending"; });
+        return next;
+      });
+      if (mode === "all") { setStepResults({}); setSkipReasons({}); }
+
+      const priorSteps = runSteps;
+      // Collect this run's final results/statuses/skips locally (race-free) so Task 5 can persist
+      // them without reading React state that may not have flushed yet.
+      const collected: Record<string, StepResult> = {};
+      const collectedStatus: Record<string, NodeStatus> = {};
+      const collectedSkips: Record<string, string> = {};
       const result = await runFlow({ ...graph, nodes: graph.nodes.map(n => ({ ...n })) }, {
         sendRequest: async (payload) => {
           const res = await sendRequest(payload);
           return { status: res.status, statusText: res.statusText, headers: res.headers, data: res.data, time: res.time, error: res.error };
         },
-        lookupConfig,
-        env,
+        lookupConfig, env,
         onStatus: (id, status, meta) => {
+          collectedStatus[id] = status;
           setStatusMap(prev => ({ ...prev, [id]: status }));
-          if (meta?.result) setStepResults(prev => ({ ...prev, [id]: meta.result! }));
-          if (status === "skipped") setSkipReasons(prev => ({ ...prev, [id]: meta?.reason || "skipped" }));
+          if (meta?.result) { collected[id] = meta.result; setStepResults(prev => ({ ...prev, [id]: meta.result! })); }
+          if (status === "skipped") { collectedSkips[id] = meta?.reason || "skipped"; setSkipReasons(prev => ({ ...prev, [id]: meta?.reason || "skipped" })); }
         },
-      });
-      setRunSteps(result);
+      }, { mode, targetId, priorSteps });
+      setRunSteps(prev => ({ ...prev, ...result }));
+      // (Task 5 inserts lastRun persistence here, using collectedStatus / collectedSkips / result / runSteps.)
     } finally {
       setIsRunning(false);
     }
-  }, [graph, lookupConfig, env, sendRequest, isRunning]);
+  }, [graph, lookupConfig, env, sendRequest, isRunning, runSteps]);
+
+  const handleRun = useCallback(() => runWithMode("all"), [runWithMode]);
+
+  // rfNodes/rfEdges must be declared after onDelete and runWithMode (above), since their
+  // per-node `data` wires onEdit/onRunOnly/onRunFrom/onRunUpTo/onDelete to those callbacks;
+  // referencing them earlier in the function body would throw "Cannot access before
+  // initialization" (TDZ) on first render. onNodesChange/onEdgesChange are declared
+  // immediately after rfNodes/rfEdges for the same reason (they read rfNodes/rfEdges to
+  // compute the next node/edge list via applyNodeChanges/applyEdgeChanges).
+  const rfNodes: Node[] = useMemo(() => graph.nodes.map(n => {
+    let method: string | undefined;
+    let brokenLink: boolean | undefined;
+    if (n.type === "request") {
+      const resolved = resolveStepConfig(n.data as RequestNodeData, lookupConfig);
+      method = resolved.config.method;
+      brokenLink = resolved.brokenLink;
+    }
+    return {
+      id: n.id, type: n.type,
+      position: graph.positions[n.id] || { x: 0, y: 0 },
+      data: {
+        label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink, reason: skipReasons[n.id],
+        onEdit: () => setSelectedId(n.id),
+        onRunOnly: () => runWithMode("only", n.id),
+        onRunFrom: () => runWithMode("from", n.id),
+        onRunUpTo: () => runWithMode("upTo", n.id),
+        onDelete: () => onDelete({ nodes: [{ id: n.id } as any], edges: [] }),
+      },
+    };
+  }), [graph, lookupConfig, statusMap, skipReasons, runWithMode, onDelete]);
+
+  const rfEdges: Edge[] = useMemo(() => graph.edges.map(e => ({
+    id: e.id, source: e.from, target: e.to,
+    sourceHandle: e.branch === "true" ? "true" : e.branch === "false" ? "false" : undefined,
+    label: e.branch ? (e.branch === "true" ? "Y" : "N") : e.runOnFailure ? "on-fail" : undefined,
+  })), [graph]);
+
+  // Node/edge *removal* is handled exclusively by onDelete (React Flow v12's unified
+  // deletion callback) above, which applies node deletions, edge deletions, and edges
+  // implied by deleted nodes in a single onChange update. If onNodesChange and
+  // onEdgesChange each also applied "remove" changes via their own onChange calls,
+  // React Flow firing both in the same tick (e.g. deleting a node with connected
+  // edges) would clobber one update with the other, since both close over the same
+  // `graph` snapshot. So here we only ever apply non-remove changes (position,
+  // dimension, select, etc.).
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    const filtered = changes.filter(c => c.type !== "remove");
+    if (!filtered.length) return;
+    const next = applyNodeChanges(filtered, rfNodes);
+    const keep = new Set(next.map(n => n.id));
+    // Build positions fresh from the surviving nodes only, so deleted nodes' entries
+    // don't linger forever in graph.positions.
+    const positions: Record<string, DagPosition> = {};
+    next.forEach(n => { positions[n.id] = n.position; });
+    onChange({ ...graph, nodes: graph.nodes.filter(n => keep.has(n.id)), edges: graph.edges.filter(e => keep.has(e.from) && keep.has(e.to)), positions });
+  }, [graph, onChange, rfNodes]);
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    const filtered = changes.filter(c => c.type !== "remove");
+    if (!filtered.length) return;
+    const next = applyEdgeChanges(filtered, rfEdges);
+    const keep = new Set(next.map(e => e.id));
+    onChange({ ...graph, edges: graph.edges.filter(e => keep.has(e.id)) });
+  }, [graph, onChange, rfEdges]);
 
   const selectedNode = selectedId ? graph.nodes.find(n => n.id === selectedId) : undefined;
 
@@ -325,7 +355,9 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
           onInit={(inst) => { rfRef.current = inst; }}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-          onDelete={onDelete} onNodeClick={(_, n) => setSelectedId(n.id)} fitView
+          onDelete={onDelete} onNodeClick={(_, n) => setSelectedId(n.id)}
+          onSelectionChange={({ nodes }) => setSelectedId(nodes[0]?.id ?? selectedId)}
+          nodeClickDistance={5} selectNodesOnDrag={false} connectionRadius={40} fitView
           proOptions={{ hideAttribution: true }}>
           <Background color="#222838" gap={19} />
           <Controls showInteractive={false} />
