@@ -137,3 +137,6 @@ packaged/
 # Vite specific
 dist/
 dist-ssr/
+
+# Superpowers scratch (brainstorm mockups, sdd progress)
+.superpowers/

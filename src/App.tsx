@@ -53,6 +53,8 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
+import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
+import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 
@@ -231,6 +233,7 @@ function App() {
     bodyRows, setBodyRows,
     graphqlConfig, setGraphqlConfig,
     wsConfig, setWsConfig,
+    dagGraph, setDagGraph,
     protocol, setProtocol,
     requestName, setRequestName,
     currentRequestId, setCurrentRequestId,
@@ -317,6 +320,96 @@ function App() {
       return newLogs;
     });
   }, [setAppLogs]);
+
+  // Becomes true once the async persisted-state restore (loadState("appState")
+  // -> applyPersistedState) has resolved, whether or not persisted state
+  // existed. Effects that must not race that restore (e.g. the DAG Flow
+  // legacy migration below) should wait on this before writing into
+  // `collections`, since the restore unconditionally overwrites `collections`
+  // from the on-disk snapshot.
+  const [hydrated, setHydrated] = useState(false);
+
+  // One-time migration of the legacy global DAG Flow graph (Task 10, keyed by
+  // "portiq_dag_flow_state_v1") into the new per-request `dagGraph` field.
+  // Guarded so it can only ever run once per install (portiq_dag_flow_migrated_v2)
+  // and is written defensively so a corrupt legacy blob never throws.
+  //
+  // This must be deferred until AFTER the persisted-state restore
+  // (`applyPersistedState`, triggered from the `loadState("appState")` IPC
+  // call) has resolved. That restore unconditionally overwrites `collections`
+  // from the on-disk snapshot, which predates the migration — running the
+  // migration before hydration would seed a graph that then gets silently
+  // discarded. The `hydrated` flag below only flips once the restore attempt
+  // has completed (whether or not persisted state existed), so this effect
+  // waits for it. It also does NOT set the migrated flag unless it actually
+  // seeded (or unrecoverably failed to parse), so it safely retries on a
+  // later render once an empty DAG request is open.
+  //
+  // Perf note: the localStorage read + JSON.parse + migrateV1 tree-walk are
+  // expensive and only ever need to happen once. `setDagGraph`,
+  // `updateRequestState`, and `addLog` come from `useRequestState()` and are
+  // NOT memoized, so if they were listed as deps this effect would re-run
+  // (and redo that work) on every App re-render until seeded. Instead, the
+  // migration computation is cached in a ref the first time this effect
+  // observes `hydrated === true`, and subsequent runs just consult the
+  // cached result to decide whether to seed.
+  const migrationResultRef = useRef<{ graph: DagGraph; notes: string[] } | null | undefined>(undefined);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      if (migrationResultRef.current === undefined) {
+        if (typeof localStorage === "undefined") {
+          migrationResultRef.current = null;
+        } else if (localStorage.getItem("portiq_dag_flow_migrated_v2")) {
+          migrationResultRef.current = null;
+        } else {
+          const legacyRaw = localStorage.getItem("portiq_dag_flow_state_v1");
+          if (!legacyRaw) {
+            migrationResultRef.current = null;
+          } else {
+            let parsed: any;
+            try {
+              parsed = JSON.parse(legacyRaw);
+              migrationResultRef.current = migrateV1(parsed);
+            } catch (err: any) {
+              console.warn("DAG Flow v1 migration failed to parse legacy data; nothing to salvage.", err);
+              try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+              migrationResultRef.current = null;
+            }
+          }
+        }
+      }
+
+      const migration = migrationResultRef.current;
+      if (!migration) return;
+
+      const { graph, notes } = migration;
+
+      // Only seed the migrated graph if a DAG request is currently open and
+      // its graph is still empty — never clobber an already-populated flow.
+      // If no empty DAG request is open right now, do nothing this pass
+      // (and do NOT set the migrated flag) so we retry on a future render
+      // once the user opens/creates an empty DAG request.
+      if (protocol === "dag" && currentRequestId && dagGraph.nodes.length === 0) {
+        setDagGraph(graph);
+        updateRequestState(currentRequestId, "dagGraph", graph);
+
+        if (notes && notes.length > 0) {
+          try {
+            notes.forEach((note) => addLog({ source: "System", type: "info", message: `DAG Flow migration: ${note}` }));
+          } catch {
+            notes.forEach((note) => console.warn(`DAG Flow migration: ${note}`));
+          }
+        }
+
+        try { localStorage.setItem("portiq_dag_flow_migrated_v2", "1"); } catch { /* ignore */ }
+        migrationResultRef.current = null;
+      }
+    } catch (err: any) {
+      console.warn("DAG Flow v1 migration failed; legacy data left untouched.", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, protocol, currentRequestId, dagGraph]);
 
 
   const [aiProvider, setAiProvider] = useLocalStorage("ui_aiProvider", "openai");
@@ -793,6 +886,7 @@ function App() {
       if (state.bodyRows) setBodyRows(state.bodyRows);
       if (state.graphqlConfig) setGraphqlConfig(state.graphqlConfig);
       if (state.wsConfig) setWsConfig(state.wsConfig);
+      if (state.dagGraph) setDagGraph(state.dagGraph);
       if (state.protocol) setProtocol(state.protocol);
       if (state.requestName !== undefined) setRequestName(state.requestName);
       if (state.currentRequestId !== undefined) setCurrentRequestId(state.currentRequestId);
@@ -839,6 +933,7 @@ function App() {
     setBodyRows,
     setGraphqlConfig,
     setWsConfig,
+    setDagGraph,
     setProtocol,
     setRequestName,
     setCurrentRequestId,
@@ -872,12 +967,20 @@ function App() {
   useEffect(() => {
     let isMounted = true;
     loadPersisted().then((value) => {
-      if (!isMounted || !value) return;
+      if (!isMounted) return;
       try {
-        const state = JSON.parse(value);
-        applyPersistedState(state);
+        if (value) {
+          const state = JSON.parse(value);
+          applyPersistedState(state);
+        }
       } catch (err: any) {
         // ignore corrupt state
+      } finally {
+        // Mark hydration complete whether or not persisted state existed or
+        // parsed successfully, so anything waiting on the restore (e.g. the
+        // deferred DAG Flow legacy migration) knows it's safe to proceed
+        // without racing this async restore.
+        if (isMounted) setHydrated(true);
       }
     });
     return () => {
@@ -905,6 +1008,7 @@ function App() {
       bodyRows,
       graphqlConfig,
       wsConfig,
+      dagGraph,
       protocol,
       requestName,
       currentRequestId,
@@ -947,6 +1051,7 @@ function App() {
     bodyRows,
     graphqlConfig,
     wsConfig,
+    dagGraph,
     protocol,
     requestName,
     currentRequestId,
@@ -1022,6 +1127,7 @@ function App() {
         bodyRows,
         graphqlConfig,
         wsConfig,
+        dagGraph,
         protocol,
         requestName,
         currentRequestId,
@@ -1064,6 +1170,7 @@ function App() {
     bodyRows,
     graphqlConfig,
     wsConfig,
+    dagGraph,
     protocol,
     requestName,
     currentRequestId,
@@ -3323,7 +3430,18 @@ function App() {
               )}
               {protocol === "dag" && (
                 <DagFlowPane
-                  collections={collections}
+                  graph={dagGraph}
+                  onChange={setDagGraph}
+                  savedRequests={flattenCollections(collections)}
+                  env={getEnvVars() as Record<string, string>}
+                  sendRequest={async (p: any) => {
+                    const r = await window.api.sendRequest(p);
+                    return {
+                      status: r.status, statusText: r.statusText, headers: r.headers,
+                      data: r.json ?? r.body, time: r.time ?? r.duration,
+                      error: r.error ?? undefined,
+                    };
+                  }}
                 />
               )}
             </div>
