@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeChanges,
   type Node, type Edge, type Connection, type NodeChange, type EdgeChange, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -59,6 +59,21 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
   const rfRef = useRef<ReactFlowInstance | null>(null);
+
+  // Seed the ephemeral run state (statuses/results) from the persisted `lastRun`
+  // once on mount, so a reload of the same flow restores what's on screen. Old
+  // graphs with no `lastRun` are unaffected and stay idle.
+  useEffect(() => {
+    const lr = graph.lastRun;
+    if (!lr) return;
+    setRunSteps(lr.steps || {});
+    setStatusMap(lr.statuses || {});
+    setSkipReasons(lr.skipReasons || {});
+    const byId: Record<string, StepResult> = {};
+    graph.nodes.forEach(n => { const r = lr.steps?.[n.name]; if (r) byId[n.id] = r; });
+    setStepResults(byId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // hydrate once on mount for the loaded flow
 
   const savedRequestById = useMemo(() => {
     const map = new Map<string, any>();
@@ -217,11 +232,14 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         },
       }, { mode, targetId, priorSteps });
       setRunSteps(prev => ({ ...prev, ...result }));
-      // (Task 5 inserts lastRun persistence here, using collectedStatus / collectedSkips / result / runSteps.)
+      const nextSteps = { ...runSteps, ...result };
+      const mergedStatuses = { ...(graph.lastRun?.statuses ?? {}), ...collectedStatus };
+      const mergedSkips = { ...(graph.lastRun?.skipReasons ?? {}), ...collectedSkips };
+      onChange({ ...graph, lastRun: { steps: nextSteps, statuses: mergedStatuses, skipReasons: mergedSkips, ranAt: new Date().toISOString() } });
     } finally {
       setIsRunning(false);
     }
-  }, [graph, lookupConfig, env, sendRequest, isRunning, runSteps]);
+  }, [graph, lookupConfig, env, sendRequest, isRunning, runSteps, onChange]);
 
   const handleRun = useCallback(() => runWithMode("all"), [runWithMode]);
 
@@ -297,6 +315,11 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
           <span style={{ font: "650 12.5px/1 system-ui" }}>DAG Flow</span>
           <span style={{ font: '500 10.5px/1 var(--font-mono, monospace)', color: "var(--muted)", background: "var(--panel-2)",
             border: "1px solid var(--border)", padding: "4px 8px", borderRadius: 6 }}>{graph.nodes.length} steps</span>
+          {graph.lastRun && !isRunning && (
+            <span style={{ font: "500 10px/1 system-ui", color: "var(--muted)" }}>
+              · results from last run
+            </span>
+          )}
           <span style={{ flex: 1 }} />
           <button className="ghost" onClick={() => setShowPicker(v => !v)}>+ Add step</button>
           <button className="ghost" onClick={relayout}>Auto-layout</button>

@@ -54,6 +54,15 @@ export interface DagGraph {
   nodes: DagNode[];
   edges: DagEdge[];
   positions: Record<string, DagPosition>;
+  lastRun?: DagLastRun;
+}
+
+/** Persisted snapshot of the most recent run, so statuses/results survive a reload. */
+export interface DagLastRun {
+  steps: StepsContext;                     // results keyed by node.name
+  statuses: Record<string, NodeStatus>;    // keyed by node.id
+  skipReasons: Record<string, string>;     // keyed by node.id
+  ranAt: string;                           // ISO timestamp
 }
 
 /** Per-node runtime result, keyed in the steps context by node.name. */
