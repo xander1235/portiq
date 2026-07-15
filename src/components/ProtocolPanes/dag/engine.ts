@@ -76,12 +76,14 @@ export async function runFlow(graph: DagGraph, deps: RunDeps, options: RunOption
     const node = nodeMap[id];
     if (!node) continue;
 
-    // Only edges whose source is ALSO in the active set participate in skip/branch propagation.
-    // Edges from outside the active set (reused upstream) are treated as already satisfied.
-    const incoming = graph.edges.filter(e => e.to === id && e.from !== e.to && active.has(e.from));
+    // Edges from outside the active set (reused upstream) count as already-succeeded votes:
+    // they stay in `incoming` and are treated as satisfied inside the predicate, so a merge
+    // node kept alive by an out-of-active parent still runs (matches "all" mode behavior).
+    const incoming = graph.edges.filter(e => e.to === id && e.from !== e.to);
     if (incoming.length > 0) {
       let reason: string | undefined;
       const allowed = incoming.some(e => {
+        if (!active.has(e.from)) return true; // reused upstream = satisfied vote
         if (blockedEdges.has(e.id)) { reason = "losing-branch"; return false; }
         const src = nodeMap[e.from];
         if (src?.status === "error" && !e.runOnFailure) { reason = "upstream-error"; return false; }

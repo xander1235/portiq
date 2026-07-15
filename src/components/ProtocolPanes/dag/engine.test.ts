@@ -112,8 +112,6 @@ describe("runFlow transform + loop", () => {
   });
 });
 
-import { descendants } from "./traverse"; // ensure traverse is importable in this suite
-
 describe("runFlow modes", () => {
   function reqNode(id: string, url: string) {
     return { id, type: "request" as const, name: id, label: id,
@@ -142,6 +140,30 @@ describe("runFlow modes", () => {
       { mode: "from", targetId: "b", priorSteps: { a: { response: { status: 200, body: { v: "X" }, data: { v: "X" } } } } });
     expect(ran).toEqual(["b", "c"]);               // a not re-run
     expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0][0].url).toBe("X");   // b resolved its url from reused priorSteps.a
+  });
+
+  it("mode 'from' keeps a merge node alive via an out-of-active upstream parent", async () => {
+    const send = vi.fn(async () => ({ status: 200, headers: {}, data: {}, time: 1 }));
+    const statuses: Record<string, string> = {};
+    const g = graph({
+      nodes: [
+        reqNode("outside", "outside"),
+        { id: "cond", type: "condition" as const, name: "cond", label: "cond", data: { expression: "false" }, status: "idle" as const },
+        reqNode("m", "m"),
+      ],
+      edges: [
+        { id: "e1", from: "outside", to: "m" },        // plain edge from an out-of-active node
+        { id: "e2", from: "cond", to: "m", branch: "true" }, // true-branch edge, blocked when cond is false
+      ],
+    });
+    // active set = descendants(cond) = {cond, m}; `outside` is NOT active.
+    // cond evaluates false -> its true-branch edge to m is blocked. m must still run,
+    // because the out-of-active `outside -> m` edge counts as an already-succeeded vote.
+    await runFlow(g, { sendRequest: send, lookupConfig: () => undefined, env: {}, onStatus: (id, s) => { statuses[id] = s; } },
+      { mode: "from", targetId: "cond" });
+    expect(statuses.m).toBe("success");   // not skipped
+    expect(send).toHaveBeenCalledTimes(1); // m's request ran
   });
 
   it("mode 'upTo' runs ancestors + target and stops", async () => {
