@@ -60,6 +60,14 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   const [isRunning, setIsRunning] = useState(false);
   const rfRef = useRef<ReactFlowInstance | null>(null);
 
+  // Always-current view of the `graph` prop. runWithMode's closure captures `graph`
+  // once at call time, but a run can be slow (network) and the user can edit the
+  // graph meanwhile (drag/connect/Inspector — none are disabled mid-run). The
+  // post-run lastRun persist must build off the LATEST graph, not the pre-run
+  // snapshot, or the onChange would revert any edits made during the run.
+  const graphRef = useRef(graph);
+  useEffect(() => { graphRef.current = graph; }, [graph]);
+
   // Seed the ephemeral run state (statuses/results) from the persisted `lastRun`
   // once on mount, so a reload of the same flow restores what's on screen. Old
   // graphs with no `lastRun` are unaffected and stay idle.
@@ -232,10 +240,12 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         },
       }, { mode, targetId, priorSteps });
       setRunSteps(prev => ({ ...prev, ...result }));
+      // Build the persisted lastRun off the LATEST graph (via graphRef), not the
+      // pre-run `graph` closure, so edits made during a slow run aren't reverted.
       const nextSteps = { ...runSteps, ...result };
-      const mergedStatuses = { ...(graph.lastRun?.statuses ?? {}), ...collectedStatus };
-      const mergedSkips = { ...(graph.lastRun?.skipReasons ?? {}), ...collectedSkips };
-      onChange({ ...graph, lastRun: { steps: nextSteps, statuses: mergedStatuses, skipReasons: mergedSkips, ranAt: new Date().toISOString() } });
+      const mergedStatuses = { ...(graphRef.current.lastRun?.statuses ?? {}), ...collectedStatus };
+      const mergedSkips = { ...(graphRef.current.lastRun?.skipReasons ?? {}), ...collectedSkips };
+      onChange({ ...graphRef.current, lastRun: { steps: nextSteps, statuses: mergedStatuses, skipReasons: mergedSkips, ranAt: new Date().toISOString() } });
     } finally {
       setIsRunning(false);
     }

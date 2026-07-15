@@ -3430,6 +3430,7 @@ function App() {
               )}
               {protocol === "dag" && (
                 <DagFlowPane
+                  key={currentRequestId || "dag"}
                   graph={dagGraph}
                   onChange={setDagGraph}
                   savedRequests={flattenCollections(collections)}
