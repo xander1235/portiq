@@ -1,11 +1,15 @@
-# Portiq
-
 <p align="center">
-  <img src="src/assets/logo_bg.png" width="180" alt="Portiq logo" />
+  <img src="src/assets/logo_bg.png" width="160" alt="Portiq logo" />
 </p>
 
+<h1 align="center">Portiq</h1>
 
-Portiq is an open-source desktop API client built with React, Vite, and Electron. It combines everyday API workflows with AI-assisted request generation, response exploration, local persistence, and GitHub-based sync.
+<p align="center"><b>The modern, AI-powered API client.</b></p>
+
+<p align="center">
+  Open-source, local-first desktop API client for HTTP, GraphQL, WebSocket, DAG flows, and more —<br/>
+  with built-in AI assistance and Git-based sync. No account. No backend. Your data stays on your machine.
+</p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0f172a?style=for-the-badge&labelColor=111827&color=22c55e"></a>
@@ -19,9 +23,15 @@ Portiq is an open-source desktop API client built with React, Vite, and Electron
   <img src="src/assets/screenshots/portiq-workspace.png" width="860" alt="Portiq workspace" />
 </p>
 
-## Quick Start
+## ✨ Highlights
 
-If you just want to run Portiq locally:
+|   |   |   |
+| --- | --- | --- |
+| 🌐 **Multi-protocol**<br/>HTTP, GraphQL, WebSocket, SSE, gRPC, MCP | 🔗 **DAG flows**<br/>Visual multi-step chaining with reference-based data passing | 🤖 **AI-assisted**<br/>Generate requests, tests & response summaries |
+| 🗂️ **Collections**<br/>Nested folders, history, workspaces | 🌱 **Environments**<br/>`{{variable}}` interpolation everywhere | 🔍 **Response tools**<br/>Pretty / table / visualize, CSV & JSON export |
+| 🔐 **Git-based sync**<br/>Sync to a private GitHub repo, no backend | 🧪 **Scripts & tests**<br/>Pre/post scripts, `pm.*` helpers | 💾 **Local-first**<br/>SQLite persistence, data stays on your machine |
+
+## 🚀 Quick Start
 
 ```bash
 npm install
@@ -41,51 +51,17 @@ If native modules need a rebuild:
 npm run rebuild
 ```
 
-## Functionality
-
-Start here if you want the product overview first. Each item links to the detailed section below.
-
-- [Protocol Support](#protocol-support)
-- [Request Building](#request-building)
-- [Collections, Workspaces, and History](#collections-workspaces-and-history)
-- [Environments and Variables](#environments-and-variables)
-- [Response Inspection and Data Tools](#response-inspection-and-data-tools)
-- [Scripts and Tests](#scripts-and-tests)
-- [AI Features](#ai-features)
-- [Import and Export](#import-and-export)
-- [GitHub Sync](#github-sync)
-- [Settings](#settings)
-- [Local Storage and Data Paths](#local-storage-and-data-paths)
-- [Development Setup](#development-setup)
-- [Packaging and Release](#packaging-and-release)
-
-## Screenshots
+## 📸 Screenshots
 
 <p align="center">
-  <img src="src/assets/screenshots/portiq-workspace.png" width="45%" alt="Portiq HTTP workspace" />
-  <img src="src/assets/screenshots/portiq-request-types.png" width="45%" alt="Portiq request types palette" />
-</p>
-
-<p align="center">
+  <img src="src/assets/screenshots/portiq-dag.png" width="45%" alt="Portiq DAG flow" />
   <img src="src/assets/screenshots/portiq-graphql.png" width="45%" alt="Portiq GraphQL workspace" />
-  <img src="src/assets/screenshots/portiq-websocket.png" width="45%" alt="Portiq WebSocket workspace" />
 </p>
-
 <p align="center">
-  <img src="src/assets/screenshots/portiq-dag.png" width="45%" alt="Portiq DAG workflow" />
   <img src="src/assets/screenshots/portiq-ai-panel.png" width="45%" alt="Portiq AI assistant panel" />
 </p>
 
-<p align="center">
-  <img src="src/assets/screenshots/portiq-environments.png" width="45%" alt="Portiq environment selector" />
-  <img src="src/assets/screenshots/portiq-settings.png" width="45%" alt="Portiq settings" />
-</p>
-
-<p align="center">
-  <img src="src/assets/screenshots/portiq-github-sync.png" width="45%" alt="Portiq GitHub sync" />
-</p>
-
-## Protocol Support
+## 🔌 Protocol Support
 
 Portiq is multi-protocol, but not every protocol has the same maturity yet.
 
@@ -100,16 +76,18 @@ Portiq is multi-protocol, but not every protocol has the same maturity yet.
 | MCP | Available | MCP server connection and prompt/resource browsing |
 | gRPC | Experimental | UI exists, native transport is not fully enabled yet |
 
-Important notes:
+> **Notes**
+> - GraphQL subscriptions are not yet handled as a first-class GraphQL-over-WebSocket flow inside the GraphQL pane.
+> - gRPC currently needs additional native transport work before it should be treated as production-ready.
 
-- GraphQL subscriptions are not yet handled as a first-class GraphQL-over-WebSocket flow inside the GraphQL pane.
-- gRPC currently needs additional native transport work before it should be treated as production-ready.
+## 🧩 Features
 
-## Request Building
+<details>
+<summary><b>Request Building</b></summary>
 
 Portiq supports day-to-day API request authoring with a desktop-first editor layout.
 
-### HTTP request capabilities
+**HTTP request capabilities**
 
 - Methods: `GET`, `POST`, `PATCH`, `PUT`, `DELETE`, `HEAD`, `OPTIONS`
 - HTTP versions: `Auto`, `HTTP/1.1`, `HTTP/2`
@@ -120,7 +98,7 @@ Portiq supports day-to-day API request authoring with a desktop-first editor lay
 - Auth editor with structured fields
 - Request templates in the request bar
 
-### Body modes
+**Body modes**
 
 - `none`
 - `json`
@@ -129,7 +107,7 @@ Portiq supports day-to-day API request authoring with a desktop-first editor lay
 - `x-www-form-urlencoded`
 - `form-data`
 
-### JSON editing quality-of-life
+**JSON editing quality-of-life**
 
 - comment-tolerant JSON editing
 - prettify support
@@ -137,7 +115,7 @@ Portiq supports day-to-day API request authoring with a desktop-first editor lay
 - environment interpolation support
 - CodeMirror-based editing with search
 
-### WebSocket request capabilities
+**WebSocket request capabilities**
 
 - connection URL and connect/disconnect flow
 - connection timeout
@@ -147,7 +125,7 @@ Portiq supports day-to-day API request authoring with a desktop-first editor lay
 - message composer for `Text`, `JSON`, and `Binary`
 - WebSocket message response panel with sent/received filtering
 
-### GraphQL request capabilities
+**GraphQL request capabilities**
 
 - query editor
 - variables editor
@@ -156,7 +134,10 @@ Portiq supports day-to-day API request authoring with a desktop-first editor lay
 - schema browsing
 - shared response viewer
 
-## Collections, Workspaces, and History
+</details>
+
+<details>
+<summary><b>Collections, Workspaces, and History</b></summary>
 
 Portiq is designed around reusable request organization, not one-off tabs only.
 
@@ -168,7 +149,10 @@ Portiq is designed around reusable request organization, not one-off tabs only.
 - history tracking with persisted entries
 - workspace-aware layout and app state persistence
 
-## Environments and Variables
+</details>
+
+<details>
+<summary><b>Environments and Variables</b></summary>
 
 Environments help you move between local, staging, and production configurations.
 
@@ -185,11 +169,14 @@ Environments help you move between local, staging, and production configurations
   - WebSocket message bodies
 - environment management modal for create, edit, and delete flows
 
-## Response Inspection and Data Tools
+</details>
+
+<details>
+<summary><b>Response Inspection and Data Tools</b></summary>
 
 Portiq includes several ways to inspect the same response without switching tools.
 
-### Response views
+**Response views**
 
 - Pretty JSON
 - Raw
@@ -199,7 +186,7 @@ Portiq includes several ways to inspect the same response without switching tool
 - Headers
 - Full Screen
 
-### Table tools
+**Table tools**
 
 - load table data from a detected or manually entered JSON path
 - wildcard path support such as `$.items[*].children`
@@ -209,13 +196,16 @@ Portiq includes several ways to inspect the same response without switching tool
 - derived fields
 - hover errors for failed derived fields
 
-### Data transforms
+**Data transforms**
 
 - JSON to XML
 - JSON to CSV
 - JSON object and array normalization for table view
 
-## Scripts and Tests
+</details>
+
+<details>
+<summary><b>Scripts and Tests</b></summary>
 
 Portiq supports request lifecycle scripting and lightweight assertion workflows.
 
@@ -232,7 +222,10 @@ Current scripting focus:
 - useful for request shaping, checks, and exploratory testing
 - not yet a complete Postman runtime replacement
 
-## AI Features
+</details>
+
+<details>
+<summary><b>AI Features</b></summary>
 
 Portiq includes built-in AI helpers for request authoring and analysis.
 
@@ -245,29 +238,35 @@ Portiq includes built-in AI helpers for request authoring and analysis.
   - Google Gemini
 - semantic search with local embeddings
 
-AI behavior is configurable in [Settings](#settings).
+AI behavior is configurable in the in-app Settings modal (see **Settings** below).
 
-## Import and Export
+</details>
+
+<details>
+<summary><b>Import and Export</b></summary>
 
 Portiq supports moving request data in and out of the app.
 
-### Import
+**Import**
 
 - from text
 - from API URL
 - from file
 - from cURL
 
-### Export
+**Export**
 
 - request/collection export flows
 - CSV and JSON export from response tables
 
-## GitHub Sync
+</details>
+
+<details>
+<summary><b>GitHub Sync</b></summary>
 
 Portiq does not require a custom backend for sync. Instead, it can sync to a private GitHub repository named `portiq-sync`.
 
-### What gets synced
+**What gets synced**
 
 - collections
 - folders
@@ -276,7 +275,7 @@ Portiq does not require a custom backend for sync. Instead, it can sync to a pri
 - app state
 - history snapshots
 
-### Sync layout
+**Sync layout**
 
 Instead of writing everything into a single `state.json`, Portiq stores sync data in isolated files:
 
@@ -305,7 +304,7 @@ Why this structure is used:
 - history is partitioned by date and request location
 - repo contents remain inspectable and easy to recover manually
 
-### GitHub sync behavior
+**GitHub sync behavior**
 
 - device-code GitHub auth
 - push local state to GitHub
@@ -313,15 +312,16 @@ Why this structure is used:
 - environment variable masking before push
 - private repo workflow
 
-Important limitation:
+> GitHub sync is file-based cloud sync, not a full custom backend with conflict resolution, user sessions, or multi-user collaboration rules.
 
-- GitHub sync is file-based cloud sync, not a full custom backend with conflict resolution, user sessions, or multi-user collaboration rules.
+</details>
 
-## Settings
+<details>
+<summary><b>Settings</b></summary>
 
 All primary settings live in the in-app Settings modal.
 
-### AI Configuration
+**AI Configuration**
 
 - AI provider selector
   - OpenAI
@@ -330,7 +330,7 @@ All primary settings live in the in-app Settings modal.
 - provider-specific API key input
 - `Test Connection` button to validate the key and fetch supported models
 
-### Preferences
+**Preferences**
 
 - `Enable AI Semantic Search`
   - uses local embeddings for semantic lookup
@@ -341,12 +341,15 @@ All primary settings live in the in-app Settings modal.
 - `Redact secrets before AI`
 - `History Retention (Days)`
 
-### Data Management
+**Data Management**
 
 - `Clear All App Data`
 - `Show Data Location`
 
-## Local Storage and Data Paths
+</details>
+
+<details>
+<summary><b>Local Storage and Data Paths</b></summary>
 
 Portiq stores data locally on your machine.
 
@@ -362,56 +365,48 @@ Typical app data locations:
 
 You can also check the exact path from the app through `Settings -> Data Management -> Show Data Location`.
 
-## Development Setup
+</details>
 
-### Prerequisites
+## 🛠️ Development
+
+**Prerequisites**
 
 - Node.js 20 or newer recommended
 - npm
 
-### Install
+**Install and run**
 
 ```bash
 npm install
-```
-
-If native module bindings mismatch on your machine:
-
-```bash
-npm run rebuild
-```
-
-### Run in development
-
-```bash
 npm run dev
 ```
 
-If you use Nix:
+If native module bindings mismatch on your machine, run `npm run rebuild`. If you use Nix, prefix commands with `nix-shell -p nodejs_20 --run "..."`.
+
+<details>
+<summary><b>Useful scripts</b></summary>
 
 ```bash
-nix-shell -p nodejs_20 --run "npm install"
-nix-shell -p nodejs_20 --run "npm run dev"
+npm run dev            # run renderer + Electron in development
+npm run dev:nix        # same, for Nix environments
+npm run build          # build the renderer
+npm run preview        # preview the built renderer
+npm run lint           # lint the codebase
+npm run rebuild        # rebuild native modules
+npm run package        # package a desktop build
+npm run package:desktop # package all desktop targets
+npm run package:mac    # package macOS artifacts
+npm run package:win    # package Windows artifacts
+npm run package:linux  # package Linux artifacts
+npm run package:release # package release artifacts without publishing
 ```
 
-### Useful scripts
+</details>
 
-```bash
-npm run dev
-npm run dev:nix
-npm run build
-npm run preview
-npm run lint
-npm run rebuild
-npm run package
-npm run package:desktop
-npm run package:mac
-npm run package:win
-npm run package:linux
-npm run package:release
-```
+## 📦 Packaging and Release
 
-## Packaging and Release
+<details>
+<summary><b>Build, package, and release details</b></summary>
 
 Build the renderer:
 
@@ -461,21 +456,20 @@ npm run package:release
 GitHub release automation:
 
 - tags matching `v*` trigger `.github/workflows/release.yml`
-- the workflow builds platform artifacts on:
-  - `macos-latest`
-  - `windows-latest`
-  - `ubuntu-latest`
+- the workflow builds platform artifacts on `macos-latest`, `windows-latest`, and `ubuntu-latest`
 - generated installers are uploaded to the GitHub release automatically
 
 Android note:
 
 - Portiq is currently an Electron desktop app, so it does not produce an `apk` from this codebase.
 - Releasing an Android build would require a separate mobile target, such as a React Native, Capacitor, or TWA-based app shell.
-- See `/Users/ss/Documents/Commu/docs/mobile-packaging-plan.md` for the recommended mobile path.
+- See [docs/mobile-packaging-plan.md](docs/mobile-packaging-plan.md) for the recommended mobile path.
 
 Build output is written to `release/`.
 
-## Repository Structure
+</details>
+
+## 🗂️ Repository Structure
 
 ```text
 src/
@@ -490,7 +484,7 @@ docs/
 
 Key areas:
 
-- `src/App.jsx` - main app orchestration
+- `src/App.tsx` - main app orchestration
 - `src/components/RequestPane/` - request editing UI
 - `src/components/ResponsePane/` - response rendering and table tools
 - `src/components/ProtocolPanes/` - protocol-specific editors
@@ -498,20 +492,17 @@ Key areas:
 - `src/protocols/` - protocol-specific request/response adapters
 - `electron/` - Electron main and preload processes
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-- Read [/Users/ss/Documents/Portiq/CONTRIBUTING.md](CONTRIBUTING.md)
-- Review [/Users/ss/Documents/Portiq/CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-
-If you are opening issues or pull requests, it helps a lot to include:
+When opening issues or pull requests, it helps a lot to include:
 
 - protocol type
 - exact reproduction steps
 - request sample or import payload
 - screenshot or screen recording for UI issues
 
-## License
+## 📄 License
 
 Portiq is released under the [MIT License](LICENSE).
