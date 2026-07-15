@@ -413,6 +413,8 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
           onUpdate={onUpdate}
           onDetach={onDetach}
           onClose={() => setSelectedId(null)}
+          status={statusMap[selectedNode.id] ?? selectedNode.status}
+          onRunFrom={(id) => runWithMode("from", id)}
         />
       )}
     </div>

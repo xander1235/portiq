@@ -7,6 +7,7 @@ import { resolveTemplate, type ResolveContext } from "./resolver";
 import { resolveStepConfig, savedRequestToConfig } from "./linkResolve";
 import { suggestRefs } from "./refSuggest";
 import { TokenField } from "./TokenField";
+import { STATUS, tint } from "./nodes/nodeStyles";
 
 export interface InspectorProps {
   node: DagNode;
@@ -18,6 +19,8 @@ export interface InspectorProps {
   onUpdate: (id: string, patch: Partial<DagNode>) => void;
   onDetach: (id: string) => void;
   onClose: () => void;
+  status?: string;
+  onRunFrom?: (id: string) => void;
 }
 
 type ResultTab = "resolved" | "request" | "response";
@@ -33,7 +36,7 @@ interface ResolvedPreview {
   pathVars: string;
 }
 
-export function Inspector({ node, stepResult, savedRequests, env, steps, graph, onUpdate, onDetach, onClose }: InspectorProps) {
+export function Inspector({ node, stepResult, savedRequests, env, steps, graph, onUpdate, onDetach, onClose, status, onRunFrom }: InspectorProps) {
   const [tab, setTab] = useState<ResultTab>("resolved");
   const [nameDraft, setNameDraft] = useState(node.name);
 
@@ -73,6 +76,13 @@ export function Inspector({ node, stepResult, savedRequests, env, steps, graph, 
             style={{ font: "650 15px/1 system-ui", flex: 1, background: "transparent", border: "none", color: "var(--text)", outline: "none" }} />
           <button className="ghost" onClick={onClose}>✕</button>
         </div>
+        {status === "error" && onRunFrom && (
+          <button type="button" onClick={() => onRunFrom(node.id)}
+            style={{ marginTop: 10, width: "100%", font: "700 12px/1 system-ui", border: `1px solid ${STATUS.error.color}`,
+              background: tint(STATUS.error.color, 14), color: STATUS.error.color, borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}>
+            ↻ Retry from here
+          </button>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
           <input value={nameDraft} onChange={e => setNameDraft(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
             onBlur={commitName} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
