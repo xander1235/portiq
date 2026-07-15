@@ -93,7 +93,7 @@ function validateHeaders(headers) {
   const sanitized = {};
   for (const key of keys) {
     validateString(key, MAX_KEY_LENGTH, "Header key");
-    validateString(headers[key], MAX_KEY_LENGTH, `Header value for "${key}"`);
+    validateString(headers[key], MAX_VALUE_LENGTH, `Header value for "${key}"`);
     sanitized[key] = String(headers[key]);
   }
   return sanitized;
