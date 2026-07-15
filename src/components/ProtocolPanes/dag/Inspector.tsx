@@ -151,7 +151,7 @@ function RequestInspector({ node, savedRequests, patchData, patchOverride, onDet
       <div style={{ marginBottom: 15 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, font: "600 10.5px/1 system-ui", color: "var(--muted)" }}>
           <span>Linked request</span>
-          {linked && <span onClick={onDetach} style={{ color: "#ff9f88", cursor: "pointer", fontWeight: 600 }}>Detach to copy</span>}
+          {linked && <button type="button" onClick={onDetach} style={{ color: "#ff9f88", cursor: "pointer", fontWeight: 600, background: "none", border: "none", padding: 0, font: "inherit" }}>Detach to copy</button>}
         </div>
         <select value={data.linkedRequestId || ""} onChange={e => patchData({ linkedRequestId: e.target.value || undefined })}
           style={{ width: "100%", background: "#0f1420", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px", color: "var(--text)" }}>
