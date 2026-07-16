@@ -38,7 +38,7 @@ export default defineConfig({
             if (id.includes('@uiw')) {
               return 'vendor-codemirror-ui';
             }
-            if (id.includes('@xenova/transformers') || id.includes('onnxruntime-web')) {
+            if (id.includes('@huggingface/transformers') || id.includes('onnxruntime-web')) {
               return 'vendor-transformers';
             }
             if (id.includes('react-markdown') || id.includes('rehype-highlight')) {
