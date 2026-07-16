@@ -1,4 +1,4 @@
-import { pipeline, env, PipelineType } from '@xenova/transformers';
+import { pipeline, env, PipelineType } from '@huggingface/transformers';
 import { get, set } from 'idb-keyval';
 
 // Configure transformers.js for the browser
@@ -25,7 +25,7 @@ class PipelineSingleton {
         if (this.instance === null) {
             this.instance = await pipeline(this.task, this.model, {
                 progress_callback,
-                quantized: true // Use INT8 for much smaller download (~22MB)
+                dtype: 'q8' // Use INT8 for much smaller download (~22MB); replaces v2's `quantized: true`
             });
         }
         return this.instance;
