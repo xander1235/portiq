@@ -511,6 +511,19 @@ function App() {
     redactSecrets
   } = useEnvironmentState();
 
+  // Stable identities for props handed down to panes (e.g. DagFlowPane): both
+  // flattenCollections(collections) and getEnvVars() previously allocated a brand-new
+  // array/object on every single App render (even ones unrelated to collections/env),
+  // which cascaded into any memoized child relying on prop identity. Memoize so they only
+  // change when their actual inputs do.
+  const flattenedCollections = useMemo(() => flattenCollections(collections), [collections]);
+  // getEnvVars itself isn't memoized (useEnvironmentState returns a fresh function identity
+  // every render), but its output is a pure function of `environments`/`activeEnvId`, so we
+  // depend on those instead of the function reference to get a stable result.
+  const envVars = useMemo(() => getEnvVars() as Record<string, string>,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [environments, activeEnvId]);
+
 
   const [testsOutput, setTestsOutput] = useState<any[]>([]);
   const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
@@ -3433,8 +3446,8 @@ function App() {
                   key={currentRequestId || "dag"}
                   graph={dagGraph}
                   onChange={setDagGraph}
-                  savedRequests={flattenCollections(collections)}
-                  env={getEnvVars() as Record<string, string>}
+                  savedRequests={flattenedCollections}
+                  env={envVars}
                   sendRequest={async (p: any) => {
                     const r = await window.api.sendRequest(p);
                     return {

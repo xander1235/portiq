@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, MarkerType,
+import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, MarkerType, useNodesState,
   type Node, type Edge, type Connection, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type {
@@ -20,6 +20,15 @@ import { runFlow, type SendResult } from "./dag/engine";
 import { descendants, ancestors } from "./dag/traverse";
 
 const NODE_TYPES = { request: RequestNode, payload: PayloadNode, condition: ConditionNode, transform: TransformNode };
+
+// Module-scope so these object/function identities never change across renders — passed
+// straight through to <MiniMap>/<ReactFlow> props so they never trigger prop-identity churn.
+const MINIMAP_STYLE: React.CSSProperties = { background: "var(--panel)", border: "1px solid var(--border)" };
+const PRO_OPTIONS = { hideAttribution: true };
+function miniMapNodeColor(n: Node): string {
+  const s = (n.data as any)?.status;
+  return s === "success" ? "#2ecc71" : s === "error" ? "#ff5555" : s === "running" ? "#f1c40f" : "#2a3042";
+}
 
 /** Monotonic id generator: Date.now() alone can collide when several edges/nodes are
  *  created within the same millisecond (e.g. programmatic batch edits), so append a
@@ -109,6 +118,12 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     if (selectedId && nodeIds.has(selectedId)) setSelectedId(null);
     onChange({ ...graph, nodes, edges, positions });
   }, [graph, onChange, selectedId]);
+
+  // Always-current ref to the latest onDelete, so the per-node action bundles built in
+  // getActionsFor (below) can stay referentially stable across renders (their identity
+  // never needs to change) while still calling the latest onDelete behavior.
+  const onDeleteRef = useRef(onDelete);
+  useEffect(() => { onDeleteRef.current = onDelete; }, [onDelete]);
 
   const onConnect = useCallback((c: Connection) => {
     const branch = c.sourceHandle === "true" ? "true" : c.sourceHandle === "false" ? "false" : null;
@@ -251,36 +266,134 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
     }
   }, [graph, lookupConfig, env, sendRequest, isRunning, runSteps, onChange]);
 
+  // Always-current ref, mirroring onDeleteRef above, so getActionsFor's bound closures
+  // stay stable identities while always invoking the latest runWithMode.
+  const runWithModeRef = useRef(runWithMode);
+  useEffect(() => { runWithModeRef.current = runWithMode; }, [runWithMode]);
+
   const handleRun = useCallback(() => runWithMode("all"), [runWithMode]);
 
-  // rfNodes/rfEdges must be declared after onDelete and runWithMode (above), since their
-  // per-node `data` wires onEdit/onRunOnly/onRunFrom/onRunUpTo/onDelete to those callbacks;
-  // referencing them earlier in the function body would throw "Cannot access before
-  // initialization" (TDZ) on first render. onNodesChange/onEdgesChange are declared
-  // immediately after rfNodes/rfEdges for the same reason (they read rfNodes/rfEdges to
-  // compute the next node/edge list via applyNodeChanges/applyEdgeChanges).
-  const rfNodes: Node[] = useMemo(() => graph.nodes.map(n => {
-    let method: string | undefined;
-    let brokenLink: boolean | undefined;
-    if (n.type === "request") {
-      const resolved = resolveStepConfig(n.data as RequestNodeData, lookupConfig);
-      method = resolved.config.method;
-      brokenLink = resolved.brokenLink;
+  // Per-node id -> stable action-handler bundle. Each bundle's function identities never
+  // change for the lifetime of a given node id (they close over the *ref*, not the
+  // callback itself), so a node's `data` object can embed them without ever needing to be
+  // rebuilt just because runWithMode/onDelete got new identities upstream. This is what
+  // lets derivedNodes (below) reuse the same `data` reference across renders whenever a
+  // node's actual visible inputs haven't changed — the crux of making React.memo on the
+  // node components effective (Fix #2).
+  const nodeActionsCacheRef = useRef(new Map<string, {
+    onEdit: () => void; onRunOnly: () => void; onRunFrom: () => void; onRunUpTo: () => void; onDelete: () => void;
+  }>());
+  const getActionsFor = useCallback((id: string) => {
+    const cache = nodeActionsCacheRef.current;
+    let actions = cache.get(id);
+    if (!actions) {
+      actions = {
+        onEdit: () => setSelectedId(id),
+        onRunOnly: () => runWithModeRef.current("only", id),
+        onRunFrom: () => runWithModeRef.current("from", id),
+        onRunUpTo: () => runWithModeRef.current("upTo", id),
+        onDelete: () => onDeleteRef.current({ nodes: [{ id } as any], edges: [] }),
+      };
+      cache.set(id, actions);
     }
-    return {
-      id: n.id, type: n.type,
-      position: graph.positions[n.id] || { x: 0, y: 0 },
-      data: {
-        label: n.label, name: n.name, status: statusMap[n.id] ?? n.status, method, brokenLink, reason: skipReasons[n.id],
-        selected: selectedId === n.id,
-        onEdit: () => setSelectedId(n.id),
-        onRunOnly: () => runWithMode("only", n.id),
-        onRunFrom: () => runWithMode("from", n.id),
-        onRunUpTo: () => runWithMode("upTo", n.id),
-        onDelete: () => onDelete({ nodes: [{ id: n.id } as any], edges: [] }),
-      },
-    };
-  }), [graph, lookupConfig, statusMap, skipReasons, runWithMode, onDelete, selectedId]);
+    return actions;
+  }, []);
+
+  // Per-node id -> last computed `data` object, keyed by a cheap signature of that node's
+  // *meaningful* inputs (label/name/method/brokenLink/status/skip-reason). When a node's
+  // signature hasn't changed since last time, we reuse the exact same `data` object
+  // reference instead of allocating a new one — so React.memo on the node components can
+  // bail out for every node except the one(s) whose inputs actually changed.
+  const nodeDataCacheRef = useRef(new Map<string, { sig: string; data: Record<string, unknown> }>());
+
+  // derivedNodes/rfEdges must be declared after onDelete and runWithMode (above), since
+  // getActionsFor's lazily-created bundles call through onDeleteRef/runWithModeRef which
+  // must already exist; referencing them earlier would throw "Cannot access before
+  // initialization" (TDZ) on first render.
+  //
+  // Note this intentionally does NOT depend on `selectedId`: selection is tracked directly
+  // on the local react-flow node's own `selected` flag (synced in a separate, targeted
+  // effect below) rather than folded into `data`, so selecting a node never invalidates
+  // every other node's `data` identity.
+  const derivedNodes: Node[] = useMemo(() => {
+    const cache = nodeDataCacheRef.current;
+    const seen = new Set<string>();
+    const nodes = graph.nodes.map(n => {
+      seen.add(n.id);
+      let method: string | undefined;
+      let brokenLink: boolean | undefined;
+      if (n.type === "request") {
+        const resolved = resolveStepConfig(n.data as RequestNodeData, lookupConfig);
+        method = resolved.config.method;
+        brokenLink = resolved.brokenLink;
+      }
+      const status = statusMap[n.id] ?? n.status;
+      const reason = skipReasons[n.id];
+      const sig = JSON.stringify([n.label, n.name, method, brokenLink, status, reason]);
+      const cached = cache.get(n.id);
+      let data: Record<string, unknown>;
+      if (cached && cached.sig === sig) {
+        data = cached.data;
+      } else {
+        data = { label: n.label, name: n.name, status, method, brokenLink, reason, ...getActionsFor(n.id) };
+        cache.set(n.id, { sig, data });
+      }
+      return {
+        id: n.id, type: n.type,
+        position: graph.positions[n.id] || { x: 0, y: 0 },
+        data,
+      };
+    });
+    // Prune caches for nodes that no longer exist so long sessions with lots of add/delete
+    // churn don't leak entries forever.
+    for (const id of Array.from(cache.keys())) if (!seen.has(id)) cache.delete(id);
+    for (const id of Array.from(nodeActionsCacheRef.current.keys())) if (!seen.has(id)) nodeActionsCacheRef.current.delete(id);
+    return nodes;
+  }, [graph, lookupConfig, statusMap, skipReasons, getActionsFor]);
+
+  // Local react-flow node state: react-flow owns live position/dimension updates here
+  // during a drag (via onNodesChangeInternal below), so dragging one node never writes to
+  // `graph`/localStorage on every frame (Fix #1). Seeded with derivedNodes's *initial*
+  // value so the very first mount already has real nodes (preserving `fitView`-on-load).
+  const [rfNodes, setRfNodes] = useNodesState<Node>(derivedNodes);
+
+  // Sync derivedNodes (graph/status/skip-reason driven) into the local node state,
+  // preserving each node's live `position` while it's actively being dragged (so a
+  // concurrent graph update — e.g. an Inspector edit mid-drag — can't yank the node out
+  // from under the user's cursor), and otherwise adopting the latest graph position (so
+  // auto-layout, undo, etc. still visibly move nodes). Nodes whose data/position/type are
+  // all unchanged keep their exact previous object reference.
+  const draggingIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    setRfNodes(prev => {
+      if (prev === derivedNodes) return prev;
+      const prevById = new Map(prev.map(n => [n.id, n]));
+      return derivedNodes.map(dn => {
+        const p = prevById.get(dn.id);
+        if (!p) return dn; // brand-new node: use its derived (graph) position as-is
+        const position = draggingIdsRef.current.has(dn.id) ? p.position : dn.position;
+        if (p.data === dn.data && p.position === position && p.type === dn.type) return p;
+        return { ...p, data: dn.data, type: dn.type, position };
+      });
+    });
+  }, [derivedNodes, setRfNodes]);
+
+  // Selection is applied directly to react-flow's own per-node `selected` flag rather than
+  // folded into `data` (see derivedNodes above). This effect only touches the (at most two)
+  // nodes whose selected state actually flips, so selecting a node doesn't recreate every
+  // other node's object identity either.
+  useEffect(() => {
+    setRfNodes(prev => {
+      let changed = false;
+      const next = prev.map(n => {
+        const shouldSelect = n.id === selectedId;
+        if (!!n.selected === shouldSelect) return n;
+        changed = true;
+        return { ...n, selected: shouldSelect };
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedId, setRfNodes]);
 
   const rfEdges: Edge[] = useMemo(() => graph.edges.map(e => ({
     id: e.id, source: e.from, target: e.to,
@@ -296,22 +409,32 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
   // onConnect. There is intentionally no onEdgesChange: edges are managed entirely by
   // onConnect/onDelete, and edge selection isn't part of our persisted model.
   //
-  // Only *position* changes are persisted to our graph model. React Flow also emits
-  // `dimensions` changes (node measurement) and `select` changes on every render;
-  // persisting those would replace `graph` on each measurement, which — because
-  // rfNodes is re-derived from `graph` without React Flow's measured width/height —
-  // makes React Flow re-measure and re-fire `dimensions` forever (an infinite update
-  // loop that also prevents edges from ever rendering). Dimensions/selection are
-  // React Flow's internal concern; we leave them to its internal store and never
-  // round-trip them through onChange. Deletions are handled by onDelete.
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const posChanges = changes.filter((c): c is NodeChange & { id: string; position?: DagPosition } => c.type === "position");
-    if (!posChanges.length) return;
-    const next = applyNodeChanges(posChanges, rfNodes);
-    const positions: Record<string, DagPosition> = { ...graph.positions };
-    next.forEach(n => { positions[n.id] = n.position; });
-    onChange({ ...graph, positions });
-  }, [graph, onChange, rfNodes]);
+  // Position/dimension changes (including every frame of a drag) are applied to the LOCAL
+  // `rfNodes` state ONLY, never persisted to `graph`/localStorage here — that's the whole
+  // point of Fix #1. Position is persisted exactly once, in onNodeDragStop below. `select`
+  // changes are dropped: selection is driven exclusively by our own onNodeClick/onPaneClick
+  // + selectedId (see the effect above), so multi-select gestures don't leak a second
+  // notion of "selected" into the UI (preserving the original single-select behavior).
+  const onNodesChangeInternal = useCallback((changes: NodeChange[]) => {
+    const filtered = changes.filter(c => c.type !== "select");
+    if (!filtered.length) return;
+    setRfNodes(nds => applyNodeChanges(filtered, nds));
+  }, [setRfNodes]);
+
+  const onNodeDragStart = useCallback((_event: MouseEvent | TouchEvent, _node: Node, draggedNodes: Node[]) => {
+    draggedNodes.forEach(n => draggingIdsRef.current.add(n.id));
+  }, []);
+
+  // Persist final positions exactly once per drag, off the LATEST graph (via graphRef) so
+  // mid-run edits made while a slow drag was in progress aren't reverted (same invariant
+  // runWithMode's post-run persist relies on).
+  const onNodeDragStop = useCallback((_event: MouseEvent | TouchEvent, _node: Node, draggedNodes: Node[]) => {
+    draggedNodes.forEach(n => draggingIdsRef.current.delete(n.id));
+    const g = graphRef.current;
+    const positions: Record<string, DagPosition> = { ...g.positions };
+    draggedNodes.forEach(n => { positions[n.id] = n.position; });
+    onChange({ ...g, positions });
+  }, [onChange]);
 
   const selectedNode = selectedId ? graph.nodes.find(n => n.id === selectedId) : undefined;
 
@@ -385,19 +508,15 @@ export function DagFlowPane({ graph, onChange, savedRequests, env, sendRequest }
         )}
         <ReactFlow nodeTypes={NODE_TYPES} nodes={rfNodes} edges={rfEdges}
           onInit={(inst) => { rfRef.current = inst; }}
-          onNodesChange={onNodesChange} onConnect={onConnect}
+          onNodesChange={onNodesChangeInternal} onConnect={onConnect}
+          onNodeDragStart={onNodeDragStart} onNodeDragStop={onNodeDragStop}
           onDelete={onDelete} onNodeClick={(_, n) => setSelectedId(n.id)}
           onPaneClick={() => setSelectedId(null)}
           nodeClickDistance={5} selectNodesOnDrag={false} connectionRadius={40} fitView
-          proOptions={{ hideAttribution: true }}>
+          proOptions={PRO_OPTIONS}>
           <Background color="#222838" gap={19} />
           <Controls showInteractive={false} />
-          <MiniMap pannable zoomable maskColor="rgba(0,0,0,0.6)"
-            style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
-            nodeColor={(n) => {
-              const s = (n.data as any)?.status;
-              return s === "success" ? "#2ecc71" : s === "error" ? "#ff5555" : s === "running" ? "#f1c40f" : "#2a3042";
-            }} />
+          <MiniMap pannable zoomable maskColor="rgba(0,0,0,0.6)" style={MINIMAP_STYLE} nodeColor={miniMapNodeColor} />
         </ReactFlow>
       </div>
       {selectedNode && (

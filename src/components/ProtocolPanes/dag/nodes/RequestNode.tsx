@@ -1,13 +1,14 @@
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { METHOD_COLOR, STATUS, nodeCard, handleStyle, tile, statusPill, refTag, urlText, skipReasonText } from "./nodeStyles";
 import { NodeActions } from "./NodeActions";
 
-export function RequestNode({ data }: NodeProps) {
+function RequestNodeImpl({ data, selected }: NodeProps) {
   const d = data as any;
   const method = (d.method || "GET").toUpperCase();
   const color = METHOD_COLOR[method] || "var(--muted)";
   const status = d.status || "idle";
-  const sel = !!d.selected;
+  const sel = !!selected;
   return (
     <div style={{ ...nodeCard, position: "relative", width: 226, padding: 12, display: "flex", gap: 11,
       outline: sel ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
@@ -39,3 +40,5 @@ export function RequestNode({ data }: NodeProps) {
     </div>
   );
 }
+
+export const RequestNode = memo(RequestNodeImpl);

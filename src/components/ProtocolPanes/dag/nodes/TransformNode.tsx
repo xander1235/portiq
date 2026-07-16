@@ -1,12 +1,13 @@
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { nodeCard, handleStyle, refTag, skipReasonText, tint } from "./nodeStyles";
 import { NodeActions } from "./NodeActions";
 
 const TEAL = "var(--method-get)";
 
-export function TransformNode({ data }: NodeProps) {
+function TransformNodeImpl({ data, selected }: NodeProps) {
   const d = data as any;
-  const sel = !!d.selected;
+  const sel = !!selected;
   return (
     <div style={{ ...nodeCard, position: "relative", width: 160, padding: "10px 12px", background: tint(TEAL, 8),
       border: `1px dashed ${TEAL}`, outline: sel ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
@@ -29,3 +30,5 @@ export function TransformNode({ data }: NodeProps) {
     </div>
   );
 }
+
+export const TransformNode = memo(TransformNodeImpl);
