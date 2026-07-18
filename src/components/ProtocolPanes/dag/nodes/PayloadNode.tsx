@@ -1,12 +1,13 @@
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { nodeCard, handleStyle, refTag, skipReasonText, tint } from "./nodeStyles";
 import { NodeActions } from "./NodeActions";
 
 const TEAL = "var(--method-get)";
 
-export function PayloadNode({ data }: NodeProps) {
+function PayloadNodeImpl({ data, selected }: NodeProps) {
   const d = data as any;
-  const sel = !!d.selected;
+  const sel = !!selected;
   return (
     <div style={{ ...nodeCard, position: "relative", width: 190, padding: "11px 12px", background: tint(TEAL, 7),
       border: `1px solid ${TEAL}`, outline: sel ? "2px solid var(--accent)" : "none", outlineOffset: 2 }}>
@@ -29,3 +30,5 @@ export function PayloadNode({ data }: NodeProps) {
     </div>
   );
 }
+
+export const PayloadNode = memo(PayloadNodeImpl);

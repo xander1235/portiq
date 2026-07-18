@@ -1,12 +1,13 @@
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { handleDot, handleStyle, skipReasonText, tint } from "./nodeStyles";
 import { NodeActions } from "./NodeActions";
 
 const VIOLET = "var(--method-patch)";
 
-export function ConditionNode({ data }: NodeProps) {
+function ConditionNodeImpl({ data, selected }: NodeProps) {
   const d = data as any;
-  const sel = !!d.selected;
+  const sel = !!selected;
   return (
     <div style={{ position: "relative", width: 74, height: 74 }}>
       {sel && (
@@ -33,3 +34,5 @@ export function ConditionNode({ data }: NodeProps) {
     </div>
   );
 }
+
+export const ConditionNode = memo(ConditionNodeImpl);

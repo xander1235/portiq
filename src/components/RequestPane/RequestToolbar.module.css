@@ -1,0 +1,10 @@
+.bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.pill { flex: 1; display: flex; align-items: stretch; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-width: 0; }
+.methodSeg { display: flex; align-items: center; background: var(--panel-3);
+  padding: 0 14px; border-right: 1px solid var(--border); }
+.urlSeg { flex: 1; min-width: 0; display: flex; align-items: center; padding: 0 12px; }
+/* URL field is an EnvInput whose `.input` class lands on its wrapper div; neutralize that
+   inner frame so it doesn't render a box inside the pill. */
+.urlSeg :global(.input) { border: none; background: transparent; box-shadow: none;
+  border-radius: 0; padding: 0; height: 34px; }
