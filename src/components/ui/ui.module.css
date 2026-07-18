@@ -15,3 +15,20 @@
 .btn_ghost { background: transparent; border-color: var(--border); color: var(--text); }
 .btn_ghost:hover:not(:disabled) { background: var(--panel-2); }
 .btn_danger { background: var(--danger); color: #fff; }
+
+.selectTrigger { display: inline-flex; align-items: center; gap: 6px; background: transparent;
+  border: none; color: var(--method-get); font-family: var(--font-sans); font-weight: 700;
+  font-size: var(--text-sm); cursor: pointer; padding: 0; }
+.selectCaret { opacity: .6; font-size: 10px; }
+.selectContent { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 50; }
+.selectItem { font-size: var(--text-sm); padding: 7px 12px; border-radius: var(--radius-sm);
+  color: var(--text); cursor: pointer; outline: none; }
+.selectItem[data-highlighted] { background: var(--panel-3); }
+
+.segmented { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 3px; gap: 2px; }
+.segment { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--muted);
+  background: transparent; border: none; border-radius: var(--radius-sm); padding: 7px 13px; cursor: pointer; }
+.segmentOn { background: var(--panel-3); color: var(--text); font-weight: 600; }
+.segmentedSm .segment { padding: 5px 10px; font-size: var(--text-xs); }
