@@ -1,5 +1,5 @@
 import { ButtonHTMLAttributes } from "react";
-import styles from "../ui.module.css";
+import styles from "./ui.module.css";
 
 type Variant = "primary" | "ghost" | "danger";
 export function Button({ variant = "primary", className, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
