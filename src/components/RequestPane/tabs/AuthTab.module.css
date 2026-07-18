@@ -48,29 +48,32 @@
 }
 
 .maskedInputRow {
-    position: relative;
     display: flex;
     align-items: center;
+    gap: var(--space-2);
 }
 
 .maskedInput {
     flex: 1;
-    padding-right: 36px;
 }
 
 .plainInput {
     flex: 1;
 }
 
-.toggleButton {
-    position: absolute;
-    right: var(--space-1);
-    top: 50%;
-    transform: translateY(-50%);
-    padding: var(--space-1);
+.maskedInputRow .toggleButton {
+    flex: none;
+    padding: var(--space-2);
     line-height: 1;
     display: flex;
     align-items: center;
-    z-index: 10;
+    border: none;
+    background: transparent;
+    color: var(--muted);
     border-radius: var(--radius-sm);
+}
+
+.maskedInputRow .toggleButton:hover {
+    background: var(--panel-2);
+    color: var(--text);
 }

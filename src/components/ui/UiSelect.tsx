@@ -12,7 +12,9 @@ export function Select({ value, options, onChange, placeholder }: {
         <RS.Value placeholder={placeholder}>
           <span style={active?.color ? { color: active.color, fontWeight: 700 } : undefined}>{active?.label ?? placeholder}</span>
         </RS.Value>
-        <RS.Icon className={styles.selectCaret}>▾</RS.Icon>
+        <RS.Icon className={styles.selectCaret}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </RS.Icon>
       </RS.Trigger>
       <RS.Portal>
         <RS.Content className={styles.selectContent} position="popper" sideOffset={4}>
