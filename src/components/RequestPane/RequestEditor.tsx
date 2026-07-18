@@ -14,7 +14,7 @@ const searchWithReplace = () => [
     customSearchKeymap
 ];
 
-import { TableEditor, EnvInput } from "../TableEditor";
+import { EnvInput } from "../TableEditor";
 import styles from "./RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import { RequestToolbar } from "./RequestToolbar";
 import { RequestTabs } from "./RequestTabs";
 import { BodyTab } from "./tabs/BodyTab";
 import { AuthTab } from "./tabs/AuthTab";
+import { ParamsTab } from "./tabs/ParamsTab";
+import { HeadersTab } from "./tabs/HeadersTab";
 import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
@@ -251,22 +253,6 @@ export function RequestEditor({
                             }}
                         />
                     </div>
-                    {activeRequestTab === "Headers" && (
-                        <div className={styles.tabs} style={{ marginBottom: 0 }}>
-                            <button
-                                className={headersMode === "table" ? `${styles.tab} ${styles.active}` : styles.tab}
-                                onClick={() => setHeadersMode("table")}
-                            >
-                                Table
-                            </button>
-                            <button
-                                className={headersMode === "json" ? `${styles.tab} ${styles.active}` : styles.tab}
-                                onClick={() => setHeadersMode("json")}
-                            >
-                                JSON
-                            </button>
-                        </div>
-                    )}
                     {activeRequestTab === "Tests" && (
                         <>
                             <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestOutput((prev) => !prev)}>
@@ -297,43 +283,26 @@ export function RequestEditor({
 
             <div className={styles.editor}>
                 {activeRequestTab === "Params" && (
-                    <TableEditor
-                        rows={paramsRows}
-                        onChange={(r) => {
-                            setParamsRows(r);
-                            if (currentRequestId) updateRequestState(currentRequestId, "paramsRows", r);
-                        }}
-                        keyPlaceholder="Query Param"
-                        valuePlaceholder="Value"
-                        envVars={getEnvVars()}
-                        onUpdateEnvVar={handleUpdateEnvVar}
+                    <ParamsTab
+                        paramsRows={paramsRows}
+                        setParamsRows={setParamsRows}
+                        currentRequestId={currentRequestId}
+                        updateRequestState={updateRequestState}
+                        getEnvVars={getEnvVars}
+                        handleUpdateEnvVar={handleUpdateEnvVar}
                     />
                 )}
                 {activeRequestTab === "Headers" && (
-                    <div className={styles.headersEditor}>
-                        {headersMode === "table" && (
-                            <TableEditor
-                                rows={headersRows}
-                                onChange={handleHeadersRowsChange}
-                                keyPlaceholder="Header"
-                                valuePlaceholder="Value"
-                                envVars={getEnvVars()}
-                            />
-                        )}
-                        {headersMode === "json" && (
-                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                <CodeMirror
-                                    value={headersText}
-                                    theme={vscodeDark}
-                                    extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
-                                    onChange={(value) => handleHeadersTextChange(value)}
-                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                                    placeholder="Paste JSON headers here"
-                                />
-                            </div>
-                        )}
-                    </div>
+                    <HeadersTab
+                        headersMode={headersMode}
+                        setHeadersMode={setHeadersMode}
+                        headersRows={headersRows}
+                        handleHeadersRowsChange={handleHeadersRowsChange}
+                        headersText={headersText}
+                        handleHeadersTextChange={handleHeadersTextChange}
+                        getEnvVars={getEnvVars}
+                        theme={theme}
+                    />
                 )}
                 {activeRequestTab === "Auth" && (
                     <AuthTab
