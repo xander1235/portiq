@@ -3,7 +3,6 @@ import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
-import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
 import { linter, lintGutter } from '@codemirror/lint';

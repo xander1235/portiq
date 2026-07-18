@@ -32,7 +32,3 @@
   background: transparent; border: none; border-radius: var(--radius-sm); padding: 7px 13px; cursor: pointer; }
 .segmentOn { background: var(--panel-3); color: var(--text); font-weight: 600; }
 .segmentedSm .segment { padding: 5px 10px; font-size: var(--text-xs); }
-
-.jsonView { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--panel); }
-.jsonBar { display: flex; align-items: center; gap: var(--space-3); padding: 8px 12px;
-  border-bottom: 1px solid var(--border); font-size: var(--text-xs); color: var(--muted); }
