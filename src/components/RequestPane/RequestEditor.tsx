@@ -1,18 +1,4 @@
 import React, { useState } from "react";
-import CodeMirror from '@uiw/react-codemirror';
-import { vscodeDark } from '@uiw/codemirror-theme-vscode';
-import { json } from '@codemirror/lang-json';
-import { javascript } from '@codemirror/lang-javascript';
-import { lintGutter } from '@codemirror/lint';
-
-import { customJsonLinter } from "../../utils/codemirror/jsonExtensions";
-import { search } from '@codemirror/search';
-import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel";
-
-const searchWithReplace = () => [
-    search({ top: true, createPanel: createCustomSearchPanel }),
-    customSearchKeymap
-];
 
 import { EnvInput } from "../TableEditor";
 import styles from "./RequestEditor.module.css";
@@ -25,6 +11,7 @@ import { BodyTab } from "./tabs/BodyTab";
 import { AuthTab } from "./tabs/AuthTab";
 import { ParamsTab } from "./tabs/ParamsTab";
 import { HeadersTab } from "./tabs/HeadersTab";
+import { TestsTab } from "./tabs/TestsTab";
 import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
@@ -253,31 +240,6 @@ export function RequestEditor({
                             }}
                         />
                     </div>
-                    {activeRequestTab === "Tests" && (
-                        <>
-                            <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestOutput((prev) => !prev)}>
-                                Output
-                            </button>
-                            <button className="ghost compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestInput((prev) => !prev)}>
-                                Test Input
-                            </button>
-                            <div className={styles.tabs} style={{ marginBottom: 0 }}>
-                                <button
-                                    className={testsMode === "pre" ? `${styles.tab} ${styles.active}` : styles.tab}
-                                    onClick={() => setTestsMode("pre")}
-                                >
-                                    Pre-request
-                                </button>
-                                <button
-                                    className={testsMode === "post" ? `${styles.tab} ${styles.active}` : styles.tab}
-                                    onClick={() => setTestsMode("post")}
-                                >
-                                    Post-response
-                                </button>
-                            </div>
-                            <button className="primary compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={runTests}>Run Tests</button>
-                        </>
-                    )}
                 </div>
             </div>
 
@@ -336,65 +298,23 @@ export function RequestEditor({
                     />
                 )}
                 {activeRequestTab === "Tests" && (
-                    <div className={styles.testsEditor}>
-                        {showTestInput && (
-                            <div className={styles.testsInputInline}>
-                                <div className="panel-title">Test Input (JSON)</div>
-                                <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: '100px' }}>
-                                    <CodeMirror
-                                        value={testsInputText}
-                                        theme={vscodeDark}
-                                        extensions={[json(), customJsonLinter, lintGutter(), ...searchWithReplace()]}
-                                        onChange={(value) => setTestsInputText(value)}
-                                        basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                                        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                        {testsMode === "pre" && (
-                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                <CodeMirror
-                                    value={testsPreText}
-                                    theme={vscodeDark}
-                                    extensions={[javascript(), ...searchWithReplace()]}
-                                    onChange={(value) => setTestsPreText(value)}
-                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                                    placeholder="// Pre-request script (JavaScript)"
-                                />
-                            </div>
-                        )}
-                        {testsMode === "post" && (
-                            <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                <CodeMirror
-                                    value={testsPostText}
-                                    theme={vscodeDark}
-                                    extensions={[javascript(), ...searchWithReplace()]}
-                                    onChange={(value) => setTestsPostText(value)}
-                                    basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                                    style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                                    placeholder="// Post-response script (JavaScript)"
-                                />
-                            </div>
-                        )}
-                        {showTestOutput && (
-                            <div className={styles.testsOutput}>
-                                {testsOutput.map((entry: any, index: number) => (
-                                    <div className={`log ${entry.type}`} key={index}>
-                                        <span className="log-label">{entry.label || "script"}&gt;</span>
-                                        {entry.type === "pass" && <span className="log-type">PASS</span>}
-                                        {entry.type === "fail" && <span className="log-type">FAIL</span>}
-                                        {entry.type === "error" && <span className="log-type">ERROR</span>}
-                                        {entry.type === "info" && <span className="log-type">INFO</span>}
-                                        {entry.type === "log" && <span className="log-type">LOG</span>}
-                                        <span className="log-text">{entry.text}</span>
-                                        {entry.errorType && <span className="log-error">({entry.errorType}{entry.errorMessage ? `: ${entry.errorMessage}` : ""})</span>}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <TestsTab
+                        showTestOutput={showTestOutput}
+                        setShowTestOutput={setShowTestOutput}
+                        showTestInput={showTestInput}
+                        setShowTestInput={setShowTestInput}
+                        testsMode={testsMode}
+                        setTestsMode={setTestsMode}
+                        runTests={runTests}
+                        testsInputText={testsInputText}
+                        setTestsInputText={setTestsInputText}
+                        testsPreText={testsPreText}
+                        setTestsPreText={setTestsPreText}
+                        testsPostText={testsPostText}
+                        setTestsPostText={setTestsPostText}
+                        testsOutput={testsOutput}
+                        theme={theme}
+                    />
                 )}
             </div>
         </section>
