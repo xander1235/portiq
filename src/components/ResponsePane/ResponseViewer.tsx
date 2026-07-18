@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import CodeMirror from '@uiw/react-codemirror';
-import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
 import { search as searchExtension } from '@codemirror/search';
 import { keymap } from '@codemirror/view';
 import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel";
 import { FullScreenModal } from "../Modals/FullScreenModal";
+import { StatusPill } from "../ui/StatusPill";
 import styles from "./ResponseViewer.module.css";
 import { isDerivedError } from "../../services/table";
 import type { Theme } from "../../theme/theme";
+import { cmTheme } from "../../theme/codemirrorTheme";
 
 interface RenderCellProps {
     val: any;
@@ -260,7 +261,7 @@ export function ResponseViewer({
                 <CodeMirror
                     value={value || ""}
                     readOnly={true}
-                    theme={vscodeDark}
+                    theme={cmTheme(theme)}
                     extensions={[searchExtension({ top: true, createPanel: createCustomSearchPanel }), customSearchKeymap, ...extensions]}
                     basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
@@ -696,7 +697,7 @@ export function ResponseViewer({
         <section className={styles.response}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <div className={styles.responseMeta} style={{ marginBottom: 0 }}>
-                    <div>Status: {response?.status ? `${response.status} ${response.statusText}` : "-"}</div>
+                    <div>Status: <StatusPill status={response?.status ?? null} /></div>
                     <div>Latency: {response?.duration ? `${response.duration} ms` : "-"}</div>
                     <div>HTTP: {response?.httpVersion || "-"}</div>
                     <div>Size: {response?.body ? `${response.body.length} bytes` : "-"}</div>
