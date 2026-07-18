@@ -9,6 +9,7 @@ import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemir
 import { FullScreenModal } from "../Modals/FullScreenModal";
 import styles from "./ResponseViewer.module.css";
 import { isDerivedError } from "../../services/table";
+import type { Theme } from "../../theme/theme";
 
 interface RenderCellProps {
     val: any;
@@ -105,6 +106,7 @@ interface ResponseViewerProps {
     responseSummary: any;
     isSending: boolean;
     onClearWebSocketMessages?: () => void;
+    theme: Theme;
 }
 
 export function ResponseViewer({
@@ -140,7 +142,8 @@ export function ResponseViewer({
     handleSort,
     responseSummary,
     isSending,
-    onClearWebSocketMessages
+    onClearWebSocketMessages,
+    theme
 }: ResponseViewerProps) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});

@@ -24,6 +24,7 @@ import styles from "./RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
     editingMainRequestName: boolean;
@@ -87,6 +88,7 @@ interface RequestEditorProps {
     setTestsPostText: (text: string) => void;
     testsOutput: any;
     handleCancelSend: () => void;
+    theme: Theme;
 }
 
 interface MultipartRow {
@@ -160,7 +162,8 @@ export function RequestEditor({
     testsPostText,
     setTestsPostText,
     testsOutput,
-    handleCancelSend
+    handleCancelSend,
+    theme
 }: RequestEditorProps) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
