@@ -1,5 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { tags as t } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
 import type { Theme } from "./theme";
@@ -25,7 +26,7 @@ function build(p: Palette, dark: boolean): Extension {
   const view = EditorView.theme(
     {
       "&": { color: p.text, backgroundColor: p.bg, fontSize: "13px" },
-      ".cm-content": { fontFamily: '"Fira Code", monospace', lineHeight: "1.7", caretColor: p.caret },
+      ".cm-content": { fontFamily: '"Fira Code", monospace', lineHeight: "1.5", caretColor: p.caret },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: p.caret },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
         backgroundColor: p.selection,
@@ -54,3 +55,18 @@ export const brandLight = build(LIGHT, false);
 export function cmTheme(theme: Theme): Extension {
   return theme === "light" ? brandLight : brandDark;
 }
+
+// Subtle vertical guides at each indentation level, like Postman/VS Code, so
+// nested JSON/XML is easy to scan. The package picks light/dark automatically
+// from the active editor theme's `dark` flag, so one extension serves both.
+export const indentGuides: Extension = indentationMarkers({
+  thickness: 1,
+  hideFirstIndent: true,
+  highlightActiveBlock: true,
+  colors: {
+    dark: "#2b3348",
+    activeDark: "#485270",
+    light: "#e0e3ea",
+    activeLight: "#c2c7d2",
+  },
+});

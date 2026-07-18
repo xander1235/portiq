@@ -10,7 +10,7 @@ import { StatusPill } from "../ui/StatusPill";
 import styles from "./ResponseViewer.module.css";
 import { isDerivedError } from "../../services/table";
 import type { Theme } from "../../theme/theme";
-import { cmTheme } from "../../theme/codemirrorTheme";
+import { cmTheme, indentGuides } from "../../theme/codemirrorTheme";
 
 interface RenderCellProps {
     val: any;
@@ -262,7 +262,7 @@ export function ResponseViewer({
                     value={value || ""}
                     readOnly={true}
                     theme={cmTheme(theme)}
-                    extensions={[searchExtension({ top: true, createPanel: createCustomSearchPanel }), customSearchKeymap, ...extensions]}
+                    extensions={[searchExtension({ top: true, createPanel: createCustomSearchPanel }), customSearchKeymap, indentGuides, ...extensions]}
                     basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
                     style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
                 />

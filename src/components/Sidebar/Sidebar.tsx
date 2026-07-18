@@ -461,7 +461,7 @@ export function Sidebar({
                             <div className={styles.panelRow}>
                                 <DropdownMenu open={showCollectionDropdown} onOpenChange={setShowCollectionDropdown}>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" className="flex-1 justify-between h-9 bg-panel border-border shadow-sm">
+                                        <Button variant="outline" className="flex-1 justify-between h-8 bg-panel border-border shadow-sm">
                                             <div className="flex items-center gap-2 truncate">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
                                                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -501,7 +501,7 @@ export function Sidebar({
                                 <Button
                                     variant="outline"
                                     size="icon"
-                                    className="h-9 w-9 shrink-0 bg-panel border-border text-xl"
+                                    className="h-8 w-8 shrink-0 bg-panel border-border text-xl"
                                     onClick={addCollection}
                                     title="Create Collection"
                                 >

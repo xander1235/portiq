@@ -570,7 +570,7 @@ function App() {
   const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set<string>());
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
 
-  const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 260);
+  const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 232);
   const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
   const [topHeight, setTopHeight] = useLocalStorage("ui_topHeight", window.innerHeight / 2);
   const [draggingLeft, setDraggingLeft] = useState(false);
