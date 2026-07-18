@@ -31,8 +31,8 @@ src/components/ui/statusMeta.test.ts    CREATE  TDD for statusMeta
 src/components/ui/tone.ts               CREATE  tone -> css var mapping (pure)
 src/components/ui/tone.test.ts          CREATE  TDD for toneColor
 src/components/ui/StatusPill.tsx        CREATE  consumes statusMeta + tone
-src/components/ui/Button.tsx            CREATE  primary|ghost|danger
-src/components/ui/Select.tsx            CREATE  Radix select wrapper
+src/components/ui/AppButton.tsx         CREATE  Button (primary|ghost|danger)
+src/components/ui/UiSelect.tsx           CREATE  Radix select wrapper (export Select)
 src/components/ui/SegmentedControl.tsx  CREATE  segmented tabs / toggle
 src/components/ui/JsonView.tsx          CREATE  CodeMirror + chrome (gutter, Pretty/Raw slot)
 src/components/ui/ui.module.css         CREATE  styles for the ui primitives
@@ -724,7 +724,7 @@ git commit -m "feat(theme): mount theme toggle, thread theme to panes"
 - [ ] **Step 1: Implement** `src/components/RequestPane/MethodSelect.tsx`:
 
 ```tsx
-import { Select } from "../ui/Select";
+import { Select } from "../ui/UiSelect";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
 const color = (m: string) => `var(--method-${m.toLowerCase()})`;
@@ -738,7 +738,7 @@ export function MethodSelect({ value, onChange }: { value: string; onChange: (v:
 
 ```tsx
 import { MethodSelect } from "./MethodSelect";
-import { Button } from "../ui/Button";
+import { Button } from "../ui/AppButton";
 import styles from "./RequestToolbar.module.css";
 // import EnvInput from its existing path (copy the import from RequestEditor.tsx)
 
