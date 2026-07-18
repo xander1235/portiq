@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequestToolbar } from "./RequestToolbar";
+import { RequestTabs } from "./RequestTabs";
 import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
@@ -277,17 +278,7 @@ export function RequestEditor({
             />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div className={styles.tabs} style={{ marginBottom: 0 }}>
-                    {requestTabs.map((tab: string, index: number) => (
-                        <button
-                            key={tab}
-                            className={tab === activeRequestTab ? `${styles.tab} ${styles.active}` : styles.tab}
-                            onClick={() => setActiveRequestTab(tab)}
-                        >
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+                <RequestTabs active={activeRequestTab} tabs={requestTabs} onChange={setActiveRequestTab} />
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Select value={httpVersion} onValueChange={(val) => {
                         setHttpVersion(val);
