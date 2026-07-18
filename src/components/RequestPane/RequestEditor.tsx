@@ -24,6 +24,7 @@ import styles from "./RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequestToolbar } from "./RequestToolbar";
 import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
@@ -250,47 +251,30 @@ export function RequestEditor({
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
                 </button>
             </div>
-            <div className={styles.requestBar}>
-                <Select value={method} onValueChange={(val) => {
+            <RequestToolbar
+                method={method}
+                onMethodChange={(val) => {
                     setMethod(val);
                     if (currentRequestId) updateRequestMethod(currentRequestId, val);
-                }}>
-                    <SelectTrigger 
-                        className="w-[90px] h-[30px] bg-panel-2 border-border font-bold transition-colors text-[0.75rem]"
-                        style={{ color: `var(--method-${method.toLowerCase()}, var(--text))` }}
-                    >
-                        <SelectValue placeholder="Method" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-panel-2 border-border">
-                        <SelectItem value="GET" className="font-semibold text-[var(--method-get)]">GET</SelectItem>
-                        <SelectItem value="POST" className="font-semibold text-[var(--method-post)]">POST</SelectItem>
-                        <SelectItem value="PATCH" className="font-semibold text-[var(--method-patch)]">PATCH</SelectItem>
-                        <SelectItem value="PUT" className="font-semibold text-[var(--method-put)]">PUT</SelectItem>
-                        <SelectItem value="DELETE" className="font-semibold text-[var(--method-delete)]">DELETE</SelectItem>
-                        <SelectItem value="HEAD" className="font-semibold text-[var(--method-head)]">HEAD</SelectItem>
-                        <SelectItem value="OPTIONS" className="font-semibold text-[var(--method-options)]">OPTIONS</SelectItem>
-                    </SelectContent>
-                </Select>
-                <EnvInput
-                    className={`input ${styles.url} h-[30px]`}
-                    value={url}
-                    onChange={(val) => {
-                        setUrl(val);
-                        if (currentRequestId) updateRequestState(currentRequestId, "url", val);
-                    }}
-                    envVars={getEnvVars()}
-                    onUpdateEnvVar={handleUpdateEnvVar}
-                    placeholder="https://api.example.com/v1/users/{{id}}"
-                    style={{ flex: 1 }}
-                />
-                <button
-                    className={`${isSending ? "ghost" : "primary"} h-[30px] w-full`}
-                    onClick={isSending ? handleCancelSend : handleSend}
-                    style={isSending ? { color: "#ef4444", borderColor: "#ef4444" } : undefined}
-                >
-                    {isSending ? "Cancel" : "Send"}
-                </button>
-            </div>
+                }}
+                sending={isSending}
+                onSend={handleSend}
+                onCancel={handleCancelSend}
+                urlField={
+                    <EnvInput
+                        className={`input ${styles.url} h-[30px]`}
+                        value={url}
+                        onChange={(val) => {
+                            setUrl(val);
+                            if (currentRequestId) updateRequestState(currentRequestId, "url", val);
+                        }}
+                        envVars={getEnvVars()}
+                        onUpdateEnvVar={handleUpdateEnvVar}
+                        placeholder="https://api.example.com/v1/users/{{id}}"
+                        style={{ flex: 1 }}
+                    />
+                }
+            />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <div className={styles.tabs} style={{ marginBottom: 0 }}>
