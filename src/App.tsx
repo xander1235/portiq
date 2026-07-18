@@ -3,7 +3,6 @@ import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
-import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
 import { linter, lintGutter } from '@codemirror/lint';
@@ -57,6 +56,7 @@ import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
 import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
+import { useTheme } from "./theme/useTheme";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -510,6 +510,8 @@ function App() {
     interpolate,
     redactSecrets
   } = useEnvironmentState();
+
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Stable identities for props handed down to panes (e.g. DagFlowPane): both
   // flattenCollections(collections) and getEnvVars() previously allocated a brand-new
@@ -3269,6 +3271,9 @@ function App() {
             )}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>Settings</Button>
+          <button className="ghost" onClick={toggleTheme} aria-label="Toggle theme" title="Toggle light/dark">
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
         </div>
       </header>
 
@@ -3385,6 +3390,7 @@ function App() {
                   setTestsPostText={setTestsPostText}
                   testsOutput={testsOutput}
                   handleCancelSend={handleCancelHttpSend}
+                  theme={theme}
                 />
               )}
               {protocol === "graphql" && (
@@ -3499,6 +3505,7 @@ function App() {
                 responseSummary={responseSummary}
                 isSending={isSending}
                 onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
+                theme={theme}
               />
             </>
           )}

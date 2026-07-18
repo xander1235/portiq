@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;700&display=swap");
 
 @import "tailwindcss";
 
@@ -49,7 +49,32 @@
   --muted: #a2a9b8;
   --text-muted: var(--muted);
   --border: #2a3042;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Fira Code", "IBM Plex Mono", monospace;
+  --danger: #ef4444;
+
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 22px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Syntax palette (dark) */
+  --syn-key: #2ed3c6;
+  --syn-str: #8fe3a1;
+  --syn-num: #ff9d73;
+  --syn-bool: #b79cff;
+  --syn-null: #b79cff;
+  --syn-punct: #5f6a80;
 
   /* Method Colors */
   --method-get: #2ed3c6;
@@ -59,6 +84,38 @@
   --method-delete: #ff5555;
   --method-options: var(--muted);
   --method-head: var(--muted);
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --panel: #f7f8fa;
+  --panel-2: #eceef2;
+  --panel-3: #e2e5ec;
+  --accent: #ff7a59;
+  --accent-2: #12a594;
+  --accent-green: #2f8a4a;
+  --accent-yellow: #b7791f;
+  --accent-blue: #2563eb;
+  --accent-purple: #6b4fd0;
+  --accent-red: #d64545;
+  --text: #1f2430;
+  --muted: #5c6472;
+  --text-muted: var(--muted);
+  --border: #e3e6ec;
+  --danger: #d64545;
+
+  --syn-key: #0e8f86;
+  --syn-str: #2f8a4a;
+  --syn-num: #d15a2c;
+  --syn-bool: #6b4fd0;
+  --syn-null: #6b4fd0;
+  --syn-punct: #9aa2b0;
+
+  --method-get: #0e8f86;
+  --method-post: #b7791f;
+  --method-put: #2563eb;
+  --method-patch: #6b4fd0;
+  --method-delete: #d64545;
 }
 
 @layer base {
@@ -77,7 +134,7 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: var(--font-sans);
   background: radial-gradient(circle at top left, #1b2133 0%, #0f1115 60%);
   color: var(--text);
 }
@@ -279,7 +336,7 @@ select {
   color: var(--text) !important;
   padding: 6px 10px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
-  font-family: "Space Grotesk", sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 0.85rem !important;
 }
 
@@ -305,7 +362,7 @@ select {
   padding: 6px 28px 6px 10px !important;
   margin: 4px 6px !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25) !important;
-  font-family: "Space Grotesk", system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 0.75rem !important;
   color: var(--text) !important;
   display: flex !important;
@@ -366,7 +423,7 @@ select {
   border-radius: 5px !important;
   color: var(--accent-2) !important;
   padding: 2px 8px !important;
-  font-family: "Space Grotesk", system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 0.72rem !important;
   font-weight: 500 !important;
   cursor: pointer !important;
@@ -930,7 +987,7 @@ th {
   padding: 8px 10px;
   border-bottom: 2px solid var(--border);
   border-right: 1px solid var(--border);
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1171,7 +1228,7 @@ tfoot td {
   padding: 6px 10px;
   border-top: 2px solid var(--border);
   border-right: 1px solid var(--border);
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 500;
   white-space: nowrap;
 }
