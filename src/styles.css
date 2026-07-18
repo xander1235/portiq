@@ -1880,3 +1880,264 @@ tfoot td:last-child {
    Hover no longer reveals it — selecting a node (click) does, and it stays until the
    node is deselected (click elsewhere / on the canvas). */
 .dag-node-actions { opacity: 1; }
+
+/* ===== Manage Collections modal ===== */
+.manage-modal .mc-layout {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  height: min(560px, calc(90vh - 58px));
+  overflow: hidden;
+}
+
+.manage-modal .mc-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.manage-modal .mc-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.manage-modal .mc-aside-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.manage-modal .mc-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.manage-modal .mc-new-btn:hover {
+  border-color: var(--muted);
+  background: var(--panel-2);
+}
+
+.manage-modal .mc-collection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.manage-modal .mc-collection-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.manage-modal .mc-collection-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.manage-modal .mc-collection-item.active {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border);
+}
+
+.manage-modal .mc-check {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.manage-modal .mc-check:checked {
+  background: var(--text);
+  border-color: var(--text);
+}
+.manage-modal .mc-check:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.manage-modal .mc-collection-select {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.manage-modal .mc-collection-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--panel-3);
+  color: var(--muted);
+}
+
+.manage-modal .mc-collection-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.manage-modal .mc-collection-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.manage-modal .mc-collection-count {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.manage-modal .mc-del-btn {
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-red);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.manage-modal .mc-del-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-red) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-red) 30%, transparent);
+}
+.manage-modal .mc-del-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.manage-modal .mc-del-btn.inline {
+  padding: 5px 10px;
+  font-size: 0.75rem;
+}
+
+.manage-modal .mc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel-2);
+}
+
+.manage-modal .mc-name-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.manage-modal .mc-field-label,
+.manage-modal .mc-contents-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.manage-modal .mc-contents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+.manage-modal .mc-contents-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.manage-modal .mc-mini-actions {
+  display: flex;
+  gap: 6px;
+}
+.manage-modal .mc-mini-btn {
+  padding: 3px 9px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.manage-modal .mc-mini-btn:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.manage-modal .mc-tree {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.manage-modal .mc-tree-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.manage-modal .mc-selected-count {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.manage-modal .modal-footer {
+  padding: 0;
+  margin-top: 0;
+}
+
+/* tree rows inside the manage modal */
+.manage-modal .export-list {
+  background: var(--panel);
+}
+.manage-modal .export-row {
+  border-radius: 6px;
+  border-bottom: none;
+}
+.manage-modal .export-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}

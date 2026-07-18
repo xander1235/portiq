@@ -61,12 +61,12 @@ export function cmTheme(theme: Theme): Extension {
 // from the active editor theme's `dark` flag, so one extension serves both.
 export const indentGuides: Extension = indentationMarkers({
   thickness: 1,
-  hideFirstIndent: true,
+  hideFirstIndent: false,
   highlightActiveBlock: true,
   colors: {
-    dark: "#2b3348",
-    activeDark: "#485270",
-    light: "#e0e3ea",
-    activeLight: "#c2c7d2",
+    dark: "#3a4260", // clearly visible on the near-black editor bg
+    activeDark: "#5f6b93",
+    light: "#cdd2dd",
+    activeLight: "#a6aebf",
   },
 });
