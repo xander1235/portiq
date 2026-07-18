@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { RequestToolbar } from "./RequestToolbar";
 import { RequestTabs } from "./RequestTabs";
 import { BodyTab } from "./tabs/BodyTab";
+import { AuthTab } from "./tabs/AuthTab";
 import type { Theme } from "../../theme/theme";
 
 interface RequestEditorProps {
@@ -154,10 +155,6 @@ export function RequestEditor({
     theme
 }: RequestEditorProps) {
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
-    const [showAuthTypeDropdown, setShowAuthTypeDropdown] = useState(false);
-    const [showBearerToken, setShowBearerToken] = useState(false);
-    const [showBasicPassword, setShowBasicPassword] = useState(false);
-    const [showApiKeyValue, setShowApiKeyValue] = useState(false);
 
     return (
         <section className={styles.request}>
@@ -339,207 +336,18 @@ export function RequestEditor({
                     </div>
                 )}
                 {activeRequestTab === "Auth" && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Type</span>
-                            <Select value={authType} onValueChange={(val) => {
-                                setAuthType(val);
-                                if (currentRequestId) updateRequestState(currentRequestId, "authType", val);
-                            }}>
-                                <SelectTrigger className="w-[200px] h-[28px] text-[12px] bg-panel border-border text-foreground">
-                                    <SelectValue placeholder="Select Auth Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">No Auth</SelectItem>
-                                    <SelectItem value="bearer">Bearer Token</SelectItem>
-                                    <SelectItem value="basic">Basic Auth</SelectItem>
-                                    <SelectItem value="api_key">API Key</SelectItem>
-                                    <SelectItem value="custom">Custom (Legacy)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                            {authType === "none" && (
-                                <div style={{ color: 'var(--muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                                    This request does not use any authorization.
-                                </div>
-                            )}
-
-                            {authType === "bearer" && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Token</span>
-                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <EnvInput
-                                                className="input"
-                                                placeholder="Token"
-                                                value={authConfig.bearer?.token || ""}
-                                                onChange={(val) => {
-                                                    const next = { ...authConfig, bearer: { ...authConfig.bearer, token: val } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                envVars={getEnvVars()}
-                                                onUpdateEnvVar={handleUpdateEnvVar}
-                                                maskLiterals={!showBearerToken}
-                                                style={{ flex: 1, paddingRight: '36px' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="ghost icon-button"
-                                                onClick={() => setShowBearerToken(prev => !prev)}
-                                                title={showBearerToken ? "Hide token" : "Show token"}
-                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
-                                            >
-                                                {showBearerToken ? (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                                ) : (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </label>
-                                </div>
-                            )}
-
-                            {authType === "basic" && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Username</span>
-                                        <EnvInput
-                                            className="input"
-                                            placeholder="Username"
-                                            value={authConfig.basic?.username || ""}
-                                            onChange={(val) => {
-                                                const next = { ...authConfig, basic: { ...authConfig.basic, username: val } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                            envVars={getEnvVars()}
-                                            onUpdateEnvVar={handleUpdateEnvVar}
-                                            style={{ flex: 1 }}
-                                        />
-                                    </label>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Password</span>
-                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <EnvInput
-                                                className="input"
-                                                placeholder="Password"
-                                                value={authConfig.basic?.password || ""}
-                                                onChange={(val) => {
-                                                    const next = { ...authConfig, basic: { ...authConfig.basic, password: val } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                envVars={getEnvVars()}
-                                                onUpdateEnvVar={handleUpdateEnvVar}
-                                                maskLiterals={!showBasicPassword}
-                                                style={{ flex: 1, paddingRight: '36px' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="ghost icon-button"
-                                                onClick={() => setShowBasicPassword(prev => !prev)}
-                                                title={showBasicPassword ? "Hide password" : "Show password"}
-                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
-                                            >
-                                                {showBasicPassword ? (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                                ) : (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </label>
-                                </div>
-                            )}
-
-                            {authType === "api_key" && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Key</span>
-                                        <EnvInput
-                                            className="input"
-                                            placeholder="Key"
-                                            value={authConfig.api_key?.key || ""}
-                                            onChange={(val) => {
-                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, key: val } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                            envVars={getEnvVars()}
-                                            onUpdateEnvVar={handleUpdateEnvVar}
-                                            style={{ flex: 1 }}
-                                        />
-                                    </label>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Value</span>
-                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <EnvInput
-                                                className="input"
-                                                placeholder="Value"
-                                                value={authConfig.api_key?.value || ""}
-                                                onChange={(val) => {
-                                                    const next = { ...authConfig, api_key: { ...authConfig.api_key, value: val } };
-                                                    setAuthConfig(next);
-                                                    if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                                }}
-                                                envVars={getEnvVars()}
-                                                onUpdateEnvVar={handleUpdateEnvVar}
-                                                maskLiterals={!showApiKeyValue}
-                                                style={{ flex: 1, paddingRight: '36px' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="ghost icon-button"
-                                                onClick={() => setShowApiKeyValue(prev => !prev)}
-                                                title={showApiKeyValue ? "Hide value" : "Show value"}
-                                                style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', padding: '4px', lineHeight: 1, display: 'flex', alignItems: 'center', zIndex: 10 }}
-                                            >
-                                                {showApiKeyValue ? (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                                ) : (
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </label>
-                                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                                        <span style={{ fontWeight: 500 }}>Add to</span>
-                                        <select
-                                            className="input compact"
-                                            value={authConfig.api_key?.add_to || "header"}
-                                            onChange={(e) => {
-                                                const next = { ...authConfig, api_key: { ...authConfig.api_key, add_to: e.target.value } };
-                                                setAuthConfig(next);
-                                                if (currentRequestId) updateRequestState(currentRequestId, "authConfig", next);
-                                            }}
-                                        >
-                                            <option value="header">Header</option>
-                                            <option value="query">Query Params</option>
-                                        </select>
-                                    </label>
-                                </div>
-                            )}
-
-                            {authType === "custom" && (
-                                <TableEditor
-                                    rows={authRows}
-                                    onChange={(r) => {
-                                        setAuthRows(r);
-                                        if (currentRequestId) updateRequestState(currentRequestId, "authRows", r);
-                                    }}
-                                    keyPlaceholder="Custom Key"
-                                    valuePlaceholder="Credentials"
-                                    envVars={getEnvVars()}
-                                    onUpdateEnvVar={handleUpdateEnvVar}
-                                    isMaskable
-                                />
-                            )}
-                        </div>
-                    </div>
+                    <AuthTab
+                        authType={authType}
+                        setAuthType={setAuthType}
+                        authConfig={authConfig}
+                        setAuthConfig={setAuthConfig}
+                        authRows={authRows}
+                        setAuthRows={setAuthRows}
+                        currentRequestId={currentRequestId}
+                        updateRequestState={updateRequestState}
+                        getEnvVars={getEnvVars}
+                        handleUpdateEnvVar={handleUpdateEnvVar}
+                    />
                 )}
                 {activeRequestTab === "Body" && (
                     <BodyTab
