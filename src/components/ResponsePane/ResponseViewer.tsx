@@ -111,6 +111,7 @@ interface ResponseViewerProps {
     onClearWebSocketMessages?: () => void;
     theme: Theme;
     vizSpec: VizSpec | null;
+    vizError: string | null;
 }
 
 export function ResponseViewer({
@@ -148,7 +149,8 @@ export function ResponseViewer({
     isSending,
     onClearWebSocketMessages,
     theme,
-    vizSpec
+    vizSpec,
+    vizError
 }: ResponseViewerProps) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -334,8 +336,8 @@ export function ResponseViewer({
     const autoSpec = useMemo(() => autoChartConfig(tableRows), [tableRows]);
 
     const builderSpec = useMemo(() => {
-        const x = builderX || autoSpec?.x || columns[0] || "";
-        const y = builderY || autoSpec?.y || numericColumns[0] || "";
+        const x = (builderX && columns.includes(builderX)) ? builderX : (autoSpec?.x || columns[0] || "");
+        const y = (builderY && numericColumns.includes(builderY)) ? builderY : (autoSpec?.y || numericColumns[0] || "");
         return normalizeVizSpec({ type: builderType, x, y }, tableRows);
     }, [builderType, builderX, builderY, autoSpec, columns, numericColumns, tableRows]);
 
@@ -682,18 +684,20 @@ export function ResponseViewer({
                                         <option value="line">Line</option>
                                         <option value="pie">Pie</option>
                                     </select>
-                                    <select value={builderX || autoSpec?.x || ""} onChange={(e) => setBuilderX(e.target.value)} className="ghost compact">
+                                    <select value={(builderX && columns.includes(builderX)) ? builderX : (autoSpec?.x || "")} onChange={(e) => setBuilderX(e.target.value)} className="ghost compact">
                                         {columns.map((c) => <option key={c} value={c}>x: {c}</option>)}
                                     </select>
-                                    <select value={builderY || autoSpec?.y || ""} onChange={(e) => setBuilderY(e.target.value)} className="ghost compact">
+                                    <select value={(builderY && numericColumns.includes(builderY)) ? builderY : (autoSpec?.y || "")} onChange={(e) => setBuilderY(e.target.value)} className="ghost compact">
                                         {numericColumns.map((c) => <option key={c} value={c}>y: {c}</option>)}
                                     </select>
                                 </>
                             )}
                         </div>
-                        {activeSpec
-                            ? <VizChart spec={activeSpec} />
-                            : <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>No chartable data. Return an array of objects with a numeric field, or write a visualization script.</div>}
+                        {vizError
+                            ? <div style={{ color: 'var(--error)', fontSize: '0.8rem' }}>Visualization script error: {vizError}</div>
+                            : activeSpec
+                                ? <VizChart spec={activeSpec} />
+                                : <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>No chartable data. Return an array of objects with a numeric field, or write a visualization script.</div>}
                     </div>
                 </div>
             )}

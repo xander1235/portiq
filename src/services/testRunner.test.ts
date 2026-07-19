@@ -47,6 +47,22 @@ describe("createTestHarness", () => {
     });
     expect(out[0].group).toBe("G");
   });
+
+  it("groups correctly when describe/test are NOT awaited (sync bodies, Postman-style)", () => {
+    const out: TestEntry[] = [];
+    const pm = createTestHarness(out, "post-script", () => 0);
+    // No await — the default usage pattern.
+    pm.describe("Status", () => {
+      pm.test("is 200", () => {});
+      pm.test("fails", () => { throw new Error("x"); });
+    });
+    pm.test("ungrouped ok", () => {});
+    expect(out.map((e) => [e.text, e.group, e.type])).toEqual([
+      ["is 200", "Status", "pass"],
+      ["fails", "Status", "fail"],
+      ["ungrouped ok", "Ungrouped", "pass"],
+    ]);
+  });
 });
 
 describe("summarizeTests", () => {

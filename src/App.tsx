@@ -534,6 +534,7 @@ function App() {
   const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
   const [testsMode, setTestsMode] = useLocalStorage("ui_testsMode", "post");
   const [vizSpec, setVizSpec] = useState<VizSpec | null>(null);
+  const [vizError, setVizError] = useState<string | null>(null);
   const [showTestInput, setShowTestInput] = useState(false);
   const [showTestOutput, setShowTestOutput] = useState(false);
   const [selectedTablePath, setSelectedTablePath] = useState("$");
@@ -672,6 +673,7 @@ function App() {
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
       setVizSpec(null);
+      setVizError(null);
     }
     syncDraftToCollection();
     loadRequest(req);
@@ -721,6 +723,7 @@ function App() {
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
       setVizSpec(null);
+      setVizError(null);
     }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
@@ -2963,6 +2966,8 @@ function App() {
     } catch {
       // script errors are surfaced via the tab; ignore here
     }
+    const errEntry = out.find((e: any) => e.type === "error");
+    setVizError(errEntry ? (errEntry.errorMessage || errEntry.text || "Visualization script error") : null);
     const spec = normalizeVizSpec(capture.vizSpec, rows);
     setVizSpec(spec);
   }
@@ -3536,6 +3541,7 @@ function App() {
                 onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
                 theme={theme}
                 vizSpec={vizSpec}
+                vizError={vizError}
               />
             </>
           )}

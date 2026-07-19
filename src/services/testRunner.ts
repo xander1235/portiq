@@ -22,12 +22,11 @@ export function createTestHarness(
 ): TestHarness {
   let currentGroup = "Ungrouped";
 
-  const describe = async (name: string, fn: () => any): Promise<void> => {
+  const describe = (name: string, fn: () => any): Promise<void> => {
     const prev = currentGroup;
     currentGroup = name;
-    try {
-      await fn();
-    } catch (err: any) {
+    const restore = () => { currentGroup = prev; };
+    const recordError = (err: any) => {
       output.push({
         type: "error",
         text: name,
@@ -36,28 +35,47 @@ export function createTestHarness(
         errorType: err?.name,
         errorMessage: err?.message ?? String(err),
       });
-    } finally {
-      currentGroup = prev;
+    };
+    let result: any;
+    try {
+      result = fn();
+    } catch (err: any) {
+      recordError(err);
+      restore();
+      return Promise.resolve();
     }
+    if (result && typeof result.then === "function") {
+      return result.then(restore, (err: any) => { recordError(err); restore(); });
+    }
+    restore();
+    return Promise.resolve();
   };
 
-  const test = async (name: string, fn: () => any): Promise<void> => {
+  const test = (name: string, fn: () => any): Promise<void> => {
     const group = currentGroup; // capture synchronously at call time
     const start = now();
+    const pass = () => output.push({ type: "pass", text: name, label, group, duration: now() - start });
+    const fail = (err: any) => output.push({
+      type: "fail",
+      text: name,
+      label,
+      group,
+      duration: now() - start,
+      errorType: err?.name,
+      errorMessage: err?.message ?? String(err),
+    });
+    let result: any;
     try {
-      await fn();
-      output.push({ type: "pass", text: name, label, group, duration: now() - start });
+      result = fn();
     } catch (err: any) {
-      output.push({
-        type: "fail",
-        text: name,
-        label,
-        group,
-        duration: now() - start,
-        errorType: err?.name,
-        errorMessage: err?.message ?? String(err),
-      });
+      fail(err);
+      return Promise.resolve();
     }
+    if (result && typeof result.then === "function") {
+      return result.then(pass, fail);
+    }
+    pass();
+    return Promise.resolve();
   };
 
   return { describe, test };
