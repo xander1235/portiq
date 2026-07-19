@@ -9,6 +9,7 @@ import { linter, lintGutter } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
 import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse, fetchModels } from "./services/ai";
+import { createTestHarness } from "./services/testRunner";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 
@@ -3022,6 +3023,8 @@ function App() {
       }));
     };
 
+    const harness = createTestHarness(output, label);
+
     const pm = {
       request: {
         headers: request.headers || {},
@@ -3070,20 +3073,8 @@ function App() {
         unset: (key: string) => unsetCollectionVar(key),
         toObject: () => ({ ...(collection?.variables || {}) })
       },
-      test: (name: string, fn: () => void) => {
-        try {
-          fn();
-          output.push({ type: "pass", text: name, label });
-        } catch (err: any) {
-          output.push({
-            type: "fail",
-            text: name,
-            label,
-            errorType: err.name,
-            errorMessage: err.message
-          });
-        }
-      },
+      describe: (name: string, fn: () => any) => harness.describe(name, fn),
+      test: (name: string, fn: () => any) => harness.test(name, fn),
       expect: (value: any) => ({
         to: {
           equal: (expected: any) => {
