@@ -100,6 +100,7 @@ export function useRequestState() {
     const [bodyText, setBodyText] = useLocalStorage<string>("ui_bodyText", "");
     const [testsPreText, setTestsPreText] = useLocalStorage<string>("ui_testsPreText", "");
     const [testsPostText, setTestsPostText] = useLocalStorage<string>("ui_testsPostText", "");
+    const [vizScriptText, setVizScriptText] = useLocalStorage<string>("ui_vizScriptText", "");
     const [testsInputText, setTestsInputText] = useLocalStorage<string>("ui_testsInputText", '{\n  "status": 200,\n  "body": {"ok": true}\n}');
     const [paramsRows, setParamsRows] = useLocalStorage<RequestRow[]>("ui_paramsRows", [{ key: "", value: "", comment: "", enabled: true }]);
     const [headersRows, setHeadersRows] = useLocalStorage<RequestRow[]>("ui_headersRows", [{ key: "Content-Type", value: "application/json", comment: "", enabled: true }]);
@@ -235,6 +236,7 @@ export function useRequestState() {
             bodyText: "",
             testsPreText: "",
             testsPostText: "",
+            vizScriptText: "",
             testsInputText: "",
             httpVersion: "auto",
             requestTimeoutMs: 30000,
@@ -346,6 +348,7 @@ export function useRequestState() {
         setBodyText(req.bodyText || "");
         setTestsPreText(req.testsPreText || "");
         setTestsPostText(req.testsPostText || "");
+        setVizScriptText(req.vizScriptText || "");
         setTestsInputText(req.testsInputText || "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
         setHttpVersion(req.httpVersion || "auto");
         setRequestTimeoutMs(req.requestTimeoutMs || 30000);
@@ -404,6 +407,7 @@ export function useRequestState() {
             bodyText,
             testsPreText,
             testsPostText,
+            vizScriptText,
             testsInputText,
             httpVersion,
             requestTimeoutMs,
@@ -471,6 +475,7 @@ export function useRequestState() {
                 bodyText: setBodyText,
                 testsPreText: setTestsPreText,
                 testsPostText: setTestsPostText,
+                vizScriptText: setVizScriptText,
                 testsInputText: setTestsInputText,
                 authType: setAuthType,
                 httpVersion: setHttpVersion,
@@ -948,6 +953,7 @@ export function useRequestState() {
         bodyText, setBodyText,
         testsPreText, setTestsPreText,
         testsPostText, setTestsPostText,
+        vizScriptText, setVizScriptText,
         testsInputText, setTestsInputText,
         paramsRows, setParamsRows,
         headersRows, setHeadersRows,

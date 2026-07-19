@@ -223,6 +223,7 @@ function App() {
     bodyText, setBodyText,
     testsPreText, setTestsPreText,
     testsPostText, setTestsPostText,
+    vizScriptText, setVizScriptText,
     testsInputText, setTestsInputText,
     paramsRows, setParamsRows,
     headersRows, setHeadersRows,
@@ -532,7 +533,6 @@ function App() {
   const [testsOutput, setTestsOutput] = useState<any[]>([]);
   const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
   const [testsMode, setTestsMode] = useLocalStorage("ui_testsMode", "post");
-  const [vizScriptText, setVizScriptText] = useState<string>("");
   const [vizSpec, setVizSpec] = useState<VizSpec | null>(null);
   const [showTestInput, setShowTestInput] = useState(false);
   const [showTestOutput, setShowTestOutput] = useState(false);
