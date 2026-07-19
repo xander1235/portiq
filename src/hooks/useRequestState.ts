@@ -410,6 +410,8 @@ export function useRequestState() {
             bodyText,
             testsPreSteps,
             testsPostSteps,
+            testsPreText: undefined,
+            testsPostText: undefined,
             vizScriptText,
             testsInputText,
             httpVersion,

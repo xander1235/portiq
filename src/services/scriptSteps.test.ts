@@ -4,7 +4,16 @@ import { toSteps, emptyStep, genStepId, ScriptStep } from "./scriptSteps";
 describe("toSteps", () => {
   it("returns existing steps when the array is non-empty", () => {
     const steps: ScriptStep[] = [{ id: "a", name: "One", script: "x" }];
-    expect(toSteps(steps, "legacy")).toBe(steps);
+    expect(toSteps(steps, "legacy")).toEqual(steps);
+  });
+
+  it("assigns a missing id but preserves an existing one", () => {
+    const result = toSteps(
+      [{ name: "n", script: "s" } as any, { id: "keep-me", name: "n2", script: "s2" }],
+      undefined
+    );
+    expect(result[0].id).toBeTruthy();
+    expect(result[1].id).toBe("keep-me");
   });
 
   it("wraps a legacy blob into a single Step 1", () => {

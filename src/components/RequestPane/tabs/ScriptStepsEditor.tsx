@@ -22,6 +22,7 @@ interface ScriptStepsEditorProps {
 
 export function ScriptStepsEditor({ steps, onChange, theme, placeholder }: ScriptStepsEditorProps) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const [starter, setStarter] = useState<ScriptStep>(() => emptyStep("Step 1"));
 
     const patch = (id: string, fields: Partial<ScriptStep>) =>
         onChange(steps.map((s) => (s.id === id ? { ...s, ...fields } : s)));
@@ -35,6 +36,55 @@ export function ScriptStepsEditor({ steps, onChange, theme, placeholder }: Scrip
     };
     const add = () => onChange([...steps, emptyStep(`Step ${steps.length + 1}`)]);
     const toggle = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
+
+    const patchStarter = (fields: Partial<ScriptStep>) => {
+        const next = { ...starter, ...fields };
+        setStarter(next);
+        onChange([next]);
+    };
+
+    if (steps.length === 0) {
+        const isCollapsed = !!collapsed[starter.id];
+        return (
+            <div className={styles.stepsList}>
+                <div className={styles.stepCard} key={starter.id}>
+                    <div className={styles.stepHeader}>
+                        <button
+                            className={styles.stepIconBtn}
+                            title={isCollapsed ? "Expand" : "Collapse"}
+                            onClick={() => toggle(starter.id)}
+                        >
+                            {isCollapsed ? "▸" : "▾"}
+                        </button>
+                        <input
+                            className={styles.stepName}
+                            value={starter.name}
+                            spellCheck={false}
+                            placeholder="Step 1"
+                            onChange={(e) => patchStarter({ name: e.target.value })}
+                        />
+                        <button className={styles.stepIconBtn} title="Move up" disabled>↑</button>
+                        <button className={styles.stepIconBtn} title="Move down" disabled>↓</button>
+                        <button className={styles.stepIconBtn} title="Remove step" disabled>✕</button>
+                    </div>
+                    {!isCollapsed && (
+                        <div className={styles.stepBody}>
+                            <CodeMirror
+                                value={starter.script}
+                                theme={cmTheme(theme)}
+                                extensions={[javascript(), ...searchWithReplace()]}
+                                onChange={(value) => patchStarter({ script: value })}
+                                basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                                style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: "13px" }}
+                                placeholder={placeholder}
+                            />
+                        </div>
+                    )}
+                </div>
+                <button className={styles.stepAdd} onClick={add}>+ Add step</button>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.stepsList}>

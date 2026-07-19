@@ -25,7 +25,13 @@ export function toSteps(
   steps: ScriptStep[] | undefined,
   legacyText?: string
 ): ScriptStep[] {
-  if (Array.isArray(steps) && steps.length > 0) return steps;
+  if (Array.isArray(steps) && steps.length > 0) {
+    return steps.map((s) => ({
+      id: s.id || genStepId(),
+      name: typeof s.name === "string" ? s.name : "",
+      script: typeof s.script === "string" ? s.script : ""
+    }));
+  }
   if (legacyText && legacyText.trim()) {
     return [{ id: genStepId(), name: "Step 1", script: legacyText }];
   }
