@@ -24,6 +24,20 @@ export function ScriptStepsEditor({ steps, onChange, theme, placeholder }: Scrip
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [starter, setStarter] = useState<ScriptStep>(() => emptyStep("Step 1"));
 
+    // Reset the un-promoted starter whenever the list transitions into empty —
+    // removing the last step, or switching to another request whose steps are
+    // empty. Without this, the starter's local state would leak the prior
+    // step/request's content into the next blank card. Using React's
+    // adjust-state-during-render pattern (not an effect) avoids a cascading
+    // re-render. Stale starter content only exists once a step was promoted
+    // (steps non-empty), so detecting the non-empty→empty transition covers it.
+    const isEmpty = steps.length === 0;
+    const [prevEmpty, setPrevEmpty] = useState(isEmpty);
+    if (isEmpty !== prevEmpty) {
+        setPrevEmpty(isEmpty);
+        if (isEmpty) setStarter(emptyStep("Step 1"));
+    }
+
     const patch = (id: string, fields: Partial<ScriptStep>) =>
         onChange(steps.map((s) => (s.id === id ? { ...s, ...fields } : s)));
     const remove = (id: string) => onChange(steps.filter((s) => s.id !== id));
