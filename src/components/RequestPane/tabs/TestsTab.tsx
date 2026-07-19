@@ -75,7 +75,7 @@ export function TestsTab({
                         { value: "viz", label: "Visualize" }
                     ]}
                 />
-                <div className="toolbarRight" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div className={styles.toolbarRight}>
                     <button
                         className={`${styles.toolbarChip} ${showTestOutput ? styles.toolbarChipOn : ''}`}
                         onClick={() => setShowTestOutput((prev) => !prev)}
