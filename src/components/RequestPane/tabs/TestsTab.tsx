@@ -18,6 +18,8 @@ import styles from "../RequestEditor.module.css";
 import { cmTheme } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
 import { summarizeTests } from "../../../services/testRunner";
+import { ScriptStep } from "../../../services/scriptSteps";
+import { ScriptStepsEditor } from "./ScriptStepsEditor";
 
 interface TestsTabProps {
     showTestOutput: boolean;
@@ -29,10 +31,10 @@ interface TestsTabProps {
     runTests: () => void;
     testsInputText: string;
     setTestsInputText: (text: string) => void;
-    testsPreText: string;
-    setTestsPreText: (text: string) => void;
-    testsPostText: string;
-    setTestsPostText: (text: string) => void;
+    testsPreSteps: ScriptStep[];
+    setTestsPreSteps: (next: ScriptStep[]) => void;
+    testsPostSteps: ScriptStep[];
+    setTestsPostSteps: (next: ScriptStep[]) => void;
     vizScriptText: string;
     setVizScriptText: (text: string) => void;
     runVizScript: () => void;
@@ -50,10 +52,10 @@ export function TestsTab({
     runTests,
     testsInputText,
     setTestsInputText,
-    testsPreText,
-    setTestsPreText,
-    testsPostText,
-    setTestsPostText,
+    testsPreSteps,
+    setTestsPreSteps,
+    testsPostSteps,
+    setTestsPostSteps,
     vizScriptText,
     setVizScriptText,
     runVizScript,
@@ -62,49 +64,33 @@ export function TestsTab({
 }: TestsTabProps) {
     return (
         <>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <Button
-                    variant="ghost"
-                    className="compact"
-                    style={{
-                        padding: '4px 10px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: showTestOutput ? 'var(--accent)' : 'var(--muted)',
-                        borderColor: showTestOutput ? 'var(--accent)' : 'var(--border)',
-                        background: showTestOutput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
-                    }}
-                    onClick={() => setShowTestOutput((prev) => !prev)}
-                >
-                    Output
-                </Button>
-                <Button
-                    variant="ghost"
-                    className="compact"
-                    style={{
-                        padding: '4px 10px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: showTestInput ? 'var(--accent)' : 'var(--muted)',
-                        borderColor: showTestInput ? 'var(--accent)' : 'var(--border)',
-                        background: showTestInput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
-                    }}
-                    onClick={() => setShowTestInput((prev) => !prev)}
-                >
-                    Test Input
-                </Button>
+            <div className={styles.testsToolbar}>
                 <SegmentedControl
                     value={testsMode}
                     onChange={setTestsMode}
+                    size="sm"
                     options={[
                         { value: "pre", label: "Pre-request" },
                         { value: "post", label: "Post-response" },
                         { value: "viz", label: "Visualize" }
                     ]}
                 />
-                <Button variant="primary" className="compact" style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600 }} onClick={testsMode === 'viz' ? runVizScript : runTests}>
-                    {testsMode === 'viz' ? 'Run Visualization' : 'Run Tests'}
-                </Button>
+                <div className="toolbarRight" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                        className={`${styles.toolbarChip} ${showTestOutput ? styles.toolbarChipOn : ''}`}
+                        onClick={() => setShowTestOutput((prev) => !prev)}
+                    >Output</button>
+                    <button
+                        className={`${styles.toolbarChip} ${showTestInput ? styles.toolbarChipOn : ''}`}
+                        onClick={() => setShowTestInput((prev) => !prev)}
+                    >Test Input</button>
+                    <Button
+                        variant="primary"
+                        className="compact"
+                        style={{ height: '28px', padding: '0 12px', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                        onClick={testsMode === 'viz' ? runVizScript : runTests}
+                    >{testsMode === 'viz' ? 'Run Visualization' : 'Run Tests'}</Button>
+                </div>
             </div>
             <div className={styles.testsEditor}>
                 {showTestInput && (
@@ -123,30 +109,20 @@ export function TestsTab({
                     </div>
                 )}
                 {testsMode === "pre" && (
-                    <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <CodeMirror
-                            value={testsPreText}
-                            theme={cmTheme(theme)}
-                            extensions={[javascript(), ...searchWithReplace()]}
-                            onChange={(value) => setTestsPreText(value)}
-                            basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                            style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                            placeholder="// Pre-request script (JavaScript)"
-                        />
-                    </div>
+                    <ScriptStepsEditor
+                        steps={testsPreSteps}
+                        onChange={setTestsPreSteps}
+                        theme={theme}
+                        placeholder="// Pre-request step (JavaScript)"
+                    />
                 )}
                 {testsMode === "post" && (
-                    <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <CodeMirror
-                            value={testsPostText}
-                            theme={cmTheme(theme)}
-                            extensions={[javascript(), ...searchWithReplace()]}
-                            onChange={(value) => setTestsPostText(value)}
-                            basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                            style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                            placeholder="// Post-response script (JavaScript)"
-                        />
-                    </div>
+                    <ScriptStepsEditor
+                        steps={testsPostSteps}
+                        onChange={setTestsPostSteps}
+                        theme={theme}
+                        placeholder="// Post-response step (JavaScript)"
+                    />
                 )}
                 {testsMode === "viz" && (
                     <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>

@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { getGitHubToken } from "./githubAuth";
+import { toSteps } from "./scriptSteps";
 
 const SYNC_REPO_NAME = "portiq-sync";
 const WORKSPACE_ROOT = "workspace";
@@ -402,8 +403,8 @@ function buildWorkspaceFiles(appState: any, maskedVarIds: Set<string> = new Set(
             url: appState.url || "",
             headersText: appState.headersText || "",
             bodyText: appState.bodyText || "",
-            testsPreText: appState.testsPreText || "",
-            testsPostText: appState.testsPostText || "",
+            testsPreSteps: appState.testsPreSteps || [],
+            testsPostSteps: appState.testsPostSteps || [],
             testsInputText: appState.testsInputText || "",
             httpVersion: appState.httpVersion || "auto",
             requestTimeoutMs: appState.requestTimeoutMs || 30000,
@@ -665,8 +666,8 @@ function writeWorkspaceStateToStorage(appState: any, history: any[]): void {
     setStorageJson("ui_url", appState.url || "");
     setStorageJson("ui_headersText", appState.headersText || "");
     setStorageJson("ui_bodyText", appState.bodyText || "");
-    setStorageJson("ui_testsPreText", appState.testsPreText || "");
-    setStorageJson("ui_testsPostText", appState.testsPostText || "");
+    setStorageJson("ui_testsPreSteps", toSteps(appState.testsPreSteps, appState.testsPreText));
+    setStorageJson("ui_testsPostSteps", toSteps(appState.testsPostSteps, appState.testsPostText));
     setStorageJson("ui_testsInputText", appState.testsInputText || "");
     setStorageJson("ui_httpVersion", appState.httpVersion || "auto");
     setStorageJson("ui_requestTimeoutMs", appState.requestTimeoutMs || 30000);

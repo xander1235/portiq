@@ -13,6 +13,7 @@ import { ParamsTab } from "./tabs/ParamsTab";
 import { HeadersTab } from "./tabs/HeadersTab";
 import { TestsTab } from "./tabs/TestsTab";
 import type { Theme } from "../../theme/theme";
+import { ScriptStep } from "../../services/scriptSteps";
 
 interface RequestEditorProps {
     editingMainRequestName: boolean;
@@ -70,10 +71,10 @@ interface RequestEditorProps {
     setBodyRows: (rows: any[]) => void;
     testsInputText: string;
     setTestsInputText: (text: string) => void;
-    testsPreText: string;
-    setTestsPreText: (text: string) => void;
-    testsPostText: string;
-    setTestsPostText: (text: string) => void;
+    testsPreSteps: ScriptStep[];
+    setTestsPreSteps: (next: ScriptStep[]) => void;
+    testsPostSteps: ScriptStep[];
+    setTestsPostSteps: (next: ScriptStep[]) => void;
     vizScriptText: string;
     setVizScriptText: (text: string) => void;
     runVizScript: () => void;
@@ -138,10 +139,10 @@ export function RequestEditor({
     setBodyRows,
     testsInputText,
     setTestsInputText,
-    testsPreText,
-    setTestsPreText,
-    testsPostText,
-    setTestsPostText,
+    testsPreSteps,
+    setTestsPreSteps,
+    testsPostSteps,
+    setTestsPostSteps,
     vizScriptText,
     setVizScriptText,
     runVizScript,
@@ -314,10 +315,10 @@ export function RequestEditor({
                         runTests={runTests}
                         testsInputText={testsInputText}
                         setTestsInputText={setTestsInputText}
-                        testsPreText={testsPreText}
-                        setTestsPreText={setTestsPreText}
-                        testsPostText={testsPostText}
-                        setTestsPostText={setTestsPostText}
+                        testsPreSteps={testsPreSteps}
+                        setTestsPreSteps={setTestsPreSteps}
+                        testsPostSteps={testsPostSteps}
+                        setTestsPostSteps={setTestsPostSteps}
                         vizScriptText={vizScriptText}
                         setVizScriptText={setVizScriptText}
                         runVizScript={runVizScript}

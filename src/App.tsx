@@ -10,6 +10,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
 import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse, fetchModels } from "./services/ai";
 import { createTestHarness } from "./services/testRunner";
+import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
@@ -221,8 +222,8 @@ function App() {
     url, setUrl,
     headersText, setHeadersText,
     bodyText, setBodyText,
-    testsPreText, setTestsPreText,
-    testsPostText, setTestsPostText,
+    testsPreSteps, setTestsPreSteps,
+    testsPostSteps, setTestsPostSteps,
     vizScriptText, setVizScriptText,
     testsInputText, setTestsInputText,
     paramsRows, setParamsRows,
@@ -896,8 +897,10 @@ function App() {
       if (state.url) setUrl(state.url);
       if (state.headersText) setHeadersText(state.headersText);
       if (state.bodyText !== undefined) setBodyText(state.bodyText);
-      if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
-      if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
+      if (state.testsPreSteps !== undefined || state.testsPreText !== undefined)
+        setTestsPreSteps(toSteps(state.testsPreSteps, state.testsPreText));
+      if (state.testsPostSteps !== undefined || state.testsPostText !== undefined)
+        setTestsPostSteps(toSteps(state.testsPostSteps, state.testsPostText));
       if (state.vizScriptText !== undefined) setVizScriptText(state.vizScriptText);
       if (state.testsInputText) setTestsInputText(state.testsInputText);
       if (state.httpVersion) setHttpVersion(state.httpVersion);
@@ -944,8 +947,8 @@ function App() {
     setUrl,
     setHeadersText,
     setBodyText,
-    setTestsPreText,
-    setTestsPostText,
+    setTestsPreSteps,
+    setTestsPostSteps,
     setTestsInputText,
     setHttpVersion,
     setRequestTimeoutMs,
@@ -1019,8 +1022,8 @@ function App() {
       url,
       headersText,
       bodyText,
-      testsPreText,
-      testsPostText,
+      testsPreSteps,
+      testsPostSteps,
       vizScriptText,
       testsInputText,
       httpVersion,
@@ -1063,8 +1066,8 @@ function App() {
     url,
     headersText,
     bodyText,
-    testsPreText,
-    testsPostText,
+    testsPreSteps,
+    testsPostSteps,
     vizScriptText,
     testsInputText,
     httpVersion,
@@ -1140,8 +1143,8 @@ function App() {
         url,
         headersText,
         bodyText,
-        testsPreText,
-        testsPostText,
+        testsPreSteps,
+        testsPostSteps,
         vizScriptText,
         testsInputText,
         httpVersion,
@@ -1184,8 +1187,8 @@ function App() {
     url,
     headersText,
     bodyText,
-    testsPreText,
-    testsPostText,
+    testsPreSteps,
+    testsPostSteps,
     vizScriptText,
     testsInputText,
     httpVersion,
@@ -1525,8 +1528,8 @@ function App() {
       url: finalUrl,
       headersText: JSON.stringify(headers, null, 2),
       bodyText: bodyTextValue,
-      testsPreText: "",
-      testsPostText: "",
+      testsPreSteps: [],
+      testsPostSteps: [],
       vizScriptText: "",
       testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
       httpVersion: "auto",
@@ -2406,7 +2409,7 @@ function App() {
         },
         response: null
       };
-      await runScript(testsPreText, preContext, preOutput);
+      await runSteps(testsPreSteps, preContext, preOutput, "pre-script");
       payload.method = preContext.request.method || payload.method;
       payload.url = preContext.request.url || payload.url;
       payload.headers = preContext.request.headers || payload.headers;
@@ -2476,7 +2479,7 @@ function App() {
       });
 
       const postOutput: any[] = [];
-      await runScript(testsPostText, { request: payload, response: result }, postOutput);
+      await runSteps(testsPostSteps, { request: payload, response: result }, postOutput, "post-script");
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
@@ -2531,7 +2534,7 @@ function App() {
         },
         response: null
       };
-      await runScript(testsPreText, preContext, preOutput);
+      await runSteps(testsPreSteps, preContext, preOutput, "pre-script");
       if (preOutput.length) {
         setTestsOutput(preOutput);
         setShowTestOutput(true);
@@ -2580,7 +2583,7 @@ function App() {
       setHistory(prev => [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs));
 
       const postOutput: any[] = [];
-      await runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
+      await runSteps(testsPostSteps, { request: preContext.request, response: result }, postOutput, "post-script");
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
@@ -2689,7 +2692,7 @@ function App() {
     };
     const tests = await generateTestsFromResponse({ method, url }, response, aiSettings);
     setActiveRequestTab("Tests");
-    setTestsPostText(tests.join("\n"));
+    setTestsPostSteps((prev) => [...(prev || []), { ...emptyStep("AI Generated"), script: tests.join("\n") }]);
   }
 
   async function handleAiChatSubmit(overridePrompt?: any) {
@@ -2785,7 +2788,7 @@ function App() {
             } else if (op.type === "GENERATE_TESTS") {
               if (op.payload && op.payload.tests && Array.isArray(op.payload.tests)) {
                 setActiveRequestTab("Tests");
-                setTestsPostText(op.payload.tests.join("\n"));
+                setTestsPostSteps((prev) => [...(prev || []), { ...emptyStep("AI Generated"), script: op.payload.tests.join("\n") }]);
                 assistantMsg += "\n\n*(Tests have been added to your Tests > Post-response script tab.)*";
               }
             } else if (op.type === "DELETE_REQUEST") {
@@ -2851,8 +2854,8 @@ function App() {
                 url: (op.payload.url || "") as string,
                 headersText: JSON.stringify(op.payload.headers || {}, null, 2),
                 bodyText: JSON.stringify(op.payload.body || {}, null, 2),
-                testsPreText: "",
-                testsPostText: "",
+                testsPreSteps: [],
+                testsPostSteps: [],
                 vizScriptText: "",
                 testsInputText: "",
                 protocol: (op.payload.protocol || "http") as string,
@@ -2945,9 +2948,9 @@ function App() {
         response: input.response || input
       };
       if (testsMode === "pre") {
-        await runScript(testsPreText, ctx, out, "pre-script");
+        await runSteps(testsPreSteps, ctx, out, "pre-script");
       } else {
-        await runScript(testsPostText, ctx, out, "post-script");
+        await runSteps(testsPostSteps, ctx, out, "post-script");
       }
       setTestsOutput(out.length ? out : [{ type: "info", text: "Tests executed.", label: testsMode }]);
       setShowTestOutput(true);
@@ -2972,12 +2975,19 @@ function App() {
     setVizSpec(spec);
   }
 
-  async function runScript(code: string, context: any, output: any[], label?: string, capture?: { vizSpec?: any }) {
+  async function runSteps(steps: ScriptStep[], context: any, output: any[], label: string) {
+    for (const step of steps || []) {
+      const name = (step.name || "").trim() || "Untitled step";
+      await runScript(step.script, context, output, label, undefined, name);
+    }
+  }
+
+  async function runScript(code: string, context: any, output: any[], label?: string, capture?: { vizSpec?: any }, group?: string) {
     if (!code || !code.trim()) return;
     const safeOutput = output || [];
     const request = context.request || {};
     const response = context.response || {};
-    const pm = buildPm(request, response, safeOutput, label || "script", capture);
+    const pm = buildPm(request, response, safeOutput, label || "script", capture, group);
     const api = {
       log: (msg: any) => safeOutput.push({ type: "log", text: String(msg), label: label || "script" }),
       setHeader: (key: string, value: string) => {
@@ -3005,13 +3015,14 @@ function App() {
         type: "error",
         text: `Script Error: ${err.message}`,
         label: label || "script",
+        group,
         errorType: err.name,
         stack: err.stack
       });
     }
   }
 
-  function buildPm(request: any, response: any, output: any[], label: string, capture?: { vizSpec?: any }) {
+  function buildPm(request: any, response: any, output: any[], label: string, capture?: { vizSpec?: any }, group?: string) {
     const env = environments.find((entry) => entry.id === activeEnvId) || null;
     const collection = collections.find((entry) => entry.id === activeCollectionId) || null;
 
@@ -3053,7 +3064,7 @@ function App() {
       }));
     };
 
-    const harness = createTestHarness(output, label);
+    const harness = createTestHarness(output, label, undefined, group);
 
     const pm = {
       request: {
@@ -3415,10 +3426,10 @@ function App() {
                   setBodyRows={setBodyRows}
                   testsInputText={testsInputText}
                   setTestsInputText={setTestsInputText}
-                  testsPreText={testsPreText}
-                  setTestsPreText={setTestsPreText}
-                  testsPostText={testsPostText}
-                  setTestsPostText={setTestsPostText}
+                  testsPreSteps={testsPreSteps}
+                  setTestsPreSteps={setTestsPreSteps}
+                  testsPostSteps={testsPostSteps}
+                  setTestsPostSteps={setTestsPostSteps}
                   vizScriptText={vizScriptText}
                   setVizScriptText={setVizScriptText}
                   runVizScript={runVizScript}
