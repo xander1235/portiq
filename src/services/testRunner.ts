@@ -18,9 +18,10 @@ const clock = (): number => Date.now();
 export function createTestHarness(
   output: TestEntry[],
   label: string,
-  now: () => number = clock
+  now: () => number = clock,
+  defaultGroup: string = "Ungrouped"
 ): TestHarness {
-  let currentGroup = "Ungrouped";
+  let currentGroup = defaultGroup;
 
   const describe = (name: string, fn: () => any): Promise<void> => {
     const prev = currentGroup;

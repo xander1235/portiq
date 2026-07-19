@@ -89,3 +89,25 @@ describe("summarizeTests", () => {
     expect(s.passed).toBe(1);
   });
 });
+
+describe("createTestHarness defaultGroup", () => {
+  it("groups ungrouped tests under the provided default group", async () => {
+    const out: TestEntry[] = [];
+    const h = createTestHarness(out, "post-script", () => 0, "Login step");
+    await h.test("status is 200", () => {});
+    const summary = summarizeTests(out);
+    expect(summary.groups.map((g) => g.name)).toEqual(["Login step"]);
+    expect(summary.groups[0].passed).toBe(1);
+  });
+
+  it("a describe inside still overrides the default group", async () => {
+    const out: TestEntry[] = [];
+    const h = createTestHarness(out, "post-script", () => 0, "Login step");
+    await h.describe("Headers", () => {
+      h.test("has content-type", () => {});
+    });
+    await h.test("top-level check", () => {});
+    const summary = summarizeTests(out);
+    expect(summary.groups.map((g) => g.name)).toEqual(["Headers", "Login step"]);
+  });
+});
