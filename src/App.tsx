@@ -3535,6 +3535,7 @@ function App() {
                 isSending={isSending}
                 onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
                 theme={theme}
+                vizSpec={vizSpec}
               />
             </>
           )}

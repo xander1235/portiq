@@ -11,6 +11,8 @@ import styles from "./ResponseViewer.module.css";
 import { isDerivedError } from "../../services/table";
 import type { Theme } from "../../theme/theme";
 import { cmTheme, indentGuides } from "../../theme/codemirrorTheme";
+import { VizChart } from "./VizChart";
+import { autoChartConfig, normalizeVizSpec, type VizSpec } from "../../services/visualize";
 
 interface RenderCellProps {
     val: any;
@@ -108,6 +110,7 @@ interface ResponseViewerProps {
     isSending: boolean;
     onClearWebSocketMessages?: () => void;
     theme: Theme;
+    vizSpec: VizSpec | null;
 }
 
 export function ResponseViewer({
@@ -144,7 +147,8 @@ export function ResponseViewer({
     responseSummary,
     isSending,
     onClearWebSocketMessages,
-    theme
+    theme,
+    vizSpec
 }: ResponseViewerProps) {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -313,6 +317,29 @@ export function ResponseViewer({
             wsMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [response?.protocol, filteredWebSocketMessages, wsAutoScroll]);
+
+    const [builderType, setBuilderType] = useState<"bar" | "line" | "pie">("bar");
+    const [builderX, setBuilderX] = useState<string>("");
+    const [builderY, setBuilderY] = useState<string>("");
+
+    const columns = useMemo(
+        () => (Array.isArray(tableRows) && tableRows[0] ? Object.keys(tableRows[0]) : []),
+        [tableRows]
+    );
+    const numericColumns = useMemo(
+        () => columns.filter((k) => tableRows.some((r: any) => typeof r[k] === "number" && !Number.isNaN(r[k]))),
+        [columns, tableRows]
+    );
+
+    const autoSpec = useMemo(() => autoChartConfig(tableRows), [tableRows]);
+
+    const builderSpec = useMemo(() => {
+        const x = builderX || autoSpec?.x || columns[0] || "";
+        const y = builderY || autoSpec?.y || numericColumns[0] || "";
+        return normalizeVizSpec({ type: builderType, x, y }, tableRows);
+    }, [builderType, builderX, builderY, autoSpec, columns, numericColumns, tableRows]);
+
+    const activeSpec = vizSpec || builderSpec;
 
     const chartConfig = useMemo(() => {
         if (!Array.isArray(tableRows) || tableRows.length === 0) return null;
@@ -660,34 +687,31 @@ export function ResponseViewer({
                         <div className={styles.vizTitle}>Status</div>
                         <div className={styles.vizValue}>{response?.status || "-"}</div>
                     </div>
-                    {chartConfig && (
-                        <div className={styles.vizCard} style={{ gridColumn: "1 / -1" }}>
-                            <div className={styles.vizTitle}>Chart</div>
-                            <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginBottom: "10px" }}>
-                                {chartConfig.valueKey} across the first {chartConfig.points.length} rows
+                    <div className={styles.vizCard} style={{ gridColumn: "1 / -1" }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                            <div className={styles.vizTitle} style={{ marginRight: 'auto' }}>
+                                {vizSpec ? "Chart (from visualization script)" : "Chart builder"}
                             </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                {chartConfig.points.map((point) => (
-                                    <div key={point.label} style={{ display: "grid", gridTemplateColumns: "140px 1fr 80px", gap: "10px", alignItems: "center" }}>
-                                        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-muted)" }}>
-                                            {point.label}
-                                        </div>
-                                        <div style={{ height: "10px", borderRadius: "999px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-                                            <div
-                                                style={{
-                                                    width: `${(point.value / chartConfig.maxValue) * 100}%`,
-                                                    height: "100%",
-                                                    borderRadius: "999px",
-                                                    background: "linear-gradient(90deg, var(--accent-2), var(--accent))"
-                                                }}
-                                            />
-                                        </div>
-                                        <div style={{ textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{point.value}</div>
-                                    </div>
-                                ))}
-                            </div>
+                            {!vizSpec && (
+                                <>
+                                    <select value={builderType} onChange={(e) => setBuilderType(e.target.value as any)} className="ghost compact">
+                                        <option value="bar">Bar</option>
+                                        <option value="line">Line</option>
+                                        <option value="pie">Pie</option>
+                                    </select>
+                                    <select value={builderX || autoSpec?.x || ""} onChange={(e) => setBuilderX(e.target.value)} className="ghost compact">
+                                        {columns.map((c) => <option key={c} value={c}>x: {c}</option>)}
+                                    </select>
+                                    <select value={builderY || autoSpec?.y || ""} onChange={(e) => setBuilderY(e.target.value)} className="ghost compact">
+                                        {numericColumns.map((c) => <option key={c} value={c}>y: {c}</option>)}
+                                    </select>
+                                </>
+                            )}
                         </div>
-                    )}
+                        {activeSpec
+                            ? <VizChart spec={activeSpec} />
+                            : <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>No chartable data. Return an array of objects with a numeric field, or write a visualization script.</div>}
+                    </div>
                 </div>
             )}
         </div>
