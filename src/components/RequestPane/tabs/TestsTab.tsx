@@ -17,6 +17,7 @@ import { SegmentedControl } from "../../ui/SegmentedControl";
 import styles from "../RequestEditor.module.css";
 import { cmTheme } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
+import { summarizeTests } from "../../../services/testRunner";
 
 interface TestsTabProps {
     showTestOutput: boolean;
@@ -138,22 +139,50 @@ export function TestsTab({
                         />
                     </div>
                 )}
-                {showTestOutput && (
-                    <div className={styles.testsOutput}>
-                        {testsOutput.map((entry: any, index: number) => (
-                            <div className={`log ${entry.type}`} key={index}>
-                                <span className="log-label">{entry.label || "script"}&gt;</span>
-                                {entry.type === "pass" && <span className="log-type">PASS</span>}
-                                {entry.type === "fail" && <span className="log-type">FAIL</span>}
-                                {entry.type === "error" && <span className="log-type">ERROR</span>}
-                                {entry.type === "info" && <span className="log-type">INFO</span>}
-                                {entry.type === "log" && <span className="log-type">LOG</span>}
-                                <span className="log-text">{entry.text}</span>
-                                {entry.errorType && <span className="log-error">({entry.errorType}{entry.errorMessage ? `: ${entry.errorMessage}` : ""})</span>}
+                {showTestOutput && (() => {
+                    const summary = summarizeTests(testsOutput);
+                    return (
+                        <div className={styles.testsOutput}>
+                            <div style={{ display: 'flex', gap: '12px', padding: '6px 8px', marginBottom: '8px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--success)' }}>✓ {summary.passed} passed</span>
+                                <span style={{ color: summary.failed ? 'var(--error)' : 'var(--muted)' }}>✗ {summary.failed} failed</span>
+                                {summary.errored > 0 && <span style={{ color: 'var(--error)' }}>⚠ {summary.errored} errored</span>}
+                                <span style={{ color: 'var(--muted)', marginLeft: 'auto' }}>{summary.duration} ms</span>
                             </div>
-                        ))}
-                    </div>
-                )}
+                            {summary.groups.map((group) => (
+                                <div key={group.name} style={{ marginBottom: '10px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'color-mix(in srgb, var(--border) 30%, transparent)', fontSize: '0.75rem', fontWeight: 700 }}>
+                                        <span>{group.name}</span>
+                                        <span style={{ color: 'var(--success)' }}>{group.passed}✓</span>
+                                        {group.failed > 0 && <span style={{ color: 'var(--error)' }}>{group.failed}✗</span>}
+                                        {group.errored > 0 && <span style={{ color: 'var(--error)' }}>{group.errored}⚠</span>}
+                                    </div>
+                                    {group.entries.map((entry, index) => (
+                                        <div className={`log ${entry.type}`} key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 10px' }}>
+                                            <span className="log-type">
+                                                {entry.type === "pass" ? "PASS" : entry.type === "fail" ? "FAIL" : "ERROR"}
+                                            </span>
+                                            <span className="log-text">{entry.text}</span>
+                                            {entry.errorMessage && <span className="log-error">— {entry.errorMessage}</span>}
+                                            {typeof entry.duration === "number" && <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: '0.7rem' }}>{entry.duration} ms</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                            {summary.console.length > 0 && (
+                                <div style={{ marginTop: '8px' }}>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Console</div>
+                                    {summary.console.map((entry, index) => (
+                                        <div className={`log ${entry.type}`} key={index}>
+                                            <span className="log-type">{entry.type.toUpperCase()}</span>
+                                            <span className="log-text">{entry.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
         </>
     );
