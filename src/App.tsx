@@ -12,6 +12,7 @@ import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse
 import { createTestHarness } from "./services/testRunner";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
+import { normalizeVizSpec, type VizSpec } from "./services/visualize";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
@@ -531,6 +532,8 @@ function App() {
   const [testsOutput, setTestsOutput] = useState<any[]>([]);
   const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
   const [testsMode, setTestsMode] = useLocalStorage("ui_testsMode", "post");
+  const [vizScriptText, setVizScriptText] = useState<string>("");
+  const [vizSpec, setVizSpec] = useState<VizSpec | null>(null);
   const [showTestInput, setShowTestInput] = useState(false);
   const [showTestOutput, setShowTestOutput] = useState(false);
   const [selectedTablePath, setSelectedTablePath] = useState("$");
@@ -668,6 +671,7 @@ function App() {
     // Save current response to cache before switching
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
+      setVizSpec(null);
     }
     syncDraftToCollection();
     loadRequest(req);
@@ -716,6 +720,7 @@ function App() {
     // Save current response before switching
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
+      setVizSpec(null);
     }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
@@ -890,6 +895,7 @@ function App() {
       if (state.bodyText !== undefined) setBodyText(state.bodyText);
       if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
       if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
+      if (state.vizScriptText !== undefined) setVizScriptText(state.vizScriptText);
       if (state.testsInputText) setTestsInputText(state.testsInputText);
       if (state.httpVersion) setHttpVersion(state.httpVersion);
       if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
@@ -1012,6 +1018,7 @@ function App() {
       bodyText,
       testsPreText,
       testsPostText,
+      vizScriptText,
       testsInputText,
       httpVersion,
       requestTimeoutMs,
@@ -1055,6 +1062,7 @@ function App() {
     bodyText,
     testsPreText,
     testsPostText,
+    vizScriptText,
     testsInputText,
     httpVersion,
     requestTimeoutMs,
@@ -1131,6 +1139,7 @@ function App() {
         bodyText,
         testsPreText,
         testsPostText,
+        vizScriptText,
         testsInputText,
         httpVersion,
         requestTimeoutMs,
@@ -1174,6 +1183,7 @@ function App() {
     bodyText,
     testsPreText,
     testsPostText,
+    vizScriptText,
     testsInputText,
     httpVersion,
     requestTimeoutMs,
@@ -1514,6 +1524,7 @@ function App() {
       bodyText: bodyTextValue,
       testsPreText: "",
       testsPostText: "",
+      vizScriptText: "",
       testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
       httpVersion: "auto",
       requestTimeoutMs: 30000,
@@ -2839,6 +2850,7 @@ function App() {
                 bodyText: JSON.stringify(op.payload.body || {}, null, 2),
                 testsPreText: "",
                 testsPostText: "",
+                vizScriptText: "",
                 testsInputText: "",
                 protocol: (op.payload.protocol || "http") as string,
                 httpVersion: (op.payload.httpVersion || "1.1") as string,
@@ -2942,12 +2954,25 @@ function App() {
     }
   }
 
-  async function runScript(code: string, context: any, output: any[], label?: string) {
+  async function runVizScript() {
+    const capture: { vizSpec?: any } = {};
+    const out: any[] = [];
+    const rows = Array.isArray(tableRows) ? tableRows : [];
+    try {
+      await runScript(vizScriptText, { request: {}, response }, out, "viz-script", capture);
+    } catch {
+      // script errors are surfaced via the tab; ignore here
+    }
+    const spec = normalizeVizSpec(capture.vizSpec, rows);
+    setVizSpec(spec);
+  }
+
+  async function runScript(code: string, context: any, output: any[], label?: string, capture?: { vizSpec?: any }) {
     if (!code || !code.trim()) return;
     const safeOutput = output || [];
     const request = context.request || {};
     const response = context.response || {};
-    const pm = buildPm(request, response, safeOutput, label || "script");
+    const pm = buildPm(request, response, safeOutput, label || "script", capture);
     const api = {
       log: (msg: any) => safeOutput.push({ type: "log", text: String(msg), label: label || "script" }),
       setHeader: (key: string, value: string) => {
@@ -2981,7 +3006,7 @@ function App() {
     }
   }
 
-  function buildPm(request: any, response: any, output: any[], label: string) {
+  function buildPm(request: any, response: any, output: any[], label: string, capture?: { vizSpec?: any }) {
     const env = environments.find((entry) => entry.id === activeEnvId) || null;
     const collection = collections.find((entry) => entry.id === activeCollectionId) || null;
 
@@ -3072,6 +3097,9 @@ function App() {
         set: (key: string, value: any) => writeCollectionVar(key, value),
         unset: (key: string) => unsetCollectionVar(key),
         toObject: () => ({ ...(collection?.variables || {}) })
+      },
+      visualizer: {
+        set: (spec: any) => { if (capture) capture.vizSpec = spec; }
       },
       describe: (name: string, fn: () => any) => harness.describe(name, fn),
       test: (name: string, fn: () => any) => harness.test(name, fn),
@@ -3386,6 +3414,9 @@ function App() {
                   setTestsPreText={setTestsPreText}
                   testsPostText={testsPostText}
                   setTestsPostText={setTestsPostText}
+                  vizScriptText={vizScriptText}
+                  setVizScriptText={setVizScriptText}
+                  runVizScript={runVizScript}
                   testsOutput={testsOutput}
                   handleCancelSend={handleCancelHttpSend}
                   theme={theme}

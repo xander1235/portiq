@@ -74,6 +74,9 @@ interface RequestEditorProps {
     setTestsPreText: (text: string) => void;
     testsPostText: string;
     setTestsPostText: (text: string) => void;
+    vizScriptText: string;
+    setVizScriptText: (text: string) => void;
+    runVizScript: () => void;
     testsOutput: any;
     handleCancelSend: () => void;
     theme: Theme;
@@ -139,6 +142,9 @@ export function RequestEditor({
     setTestsPreText,
     testsPostText,
     setTestsPostText,
+    vizScriptText,
+    setVizScriptText,
+    runVizScript,
     testsOutput,
     handleCancelSend,
     theme
@@ -312,6 +318,9 @@ export function RequestEditor({
                         setTestsPreText={setTestsPreText}
                         testsPostText={testsPostText}
                         setTestsPostText={setTestsPostText}
+                        vizScriptText={vizScriptText}
+                        setVizScriptText={setVizScriptText}
+                        runVizScript={runVizScript}
                         testsOutput={testsOutput}
                         theme={theme}
                     />

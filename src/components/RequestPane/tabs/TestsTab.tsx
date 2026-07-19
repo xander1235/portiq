@@ -33,6 +33,9 @@ interface TestsTabProps {
     setTestsPreText: (text: string) => void;
     testsPostText: string;
     setTestsPostText: (text: string) => void;
+    vizScriptText: string;
+    setVizScriptText: (text: string) => void;
+    runVizScript: () => void;
     testsOutput: any;
     theme: Theme;
 }
@@ -51,6 +54,9 @@ export function TestsTab({
     setTestsPreText,
     testsPostText,
     setTestsPostText,
+    vizScriptText,
+    setVizScriptText,
+    runVizScript,
     testsOutput,
     theme
 }: TestsTabProps) {
@@ -92,10 +98,13 @@ export function TestsTab({
                     onChange={setTestsMode}
                     options={[
                         { value: "pre", label: "Pre-request" },
-                        { value: "post", label: "Post-response" }
+                        { value: "post", label: "Post-response" },
+                        { value: "viz", label: "Visualize" }
                     ]}
                 />
-                <Button variant="primary" className="compact" style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600 }} onClick={runTests}>Run Tests</Button>
+                <Button variant="primary" className="compact" style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600 }} onClick={testsMode === 'viz' ? runVizScript : runTests}>
+                    {testsMode === 'viz' ? 'Run Visualization' : 'Run Tests'}
+                </Button>
             </div>
             <div className={styles.testsEditor}>
                 {showTestInput && (
@@ -136,6 +145,19 @@ export function TestsTab({
                             basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
                             placeholder="// Post-response script (JavaScript)"
+                        />
+                    </div>
+                )}
+                {testsMode === "viz" && (
+                    <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                        <CodeMirror
+                            value={vizScriptText}
+                            theme={cmTheme(theme)}
+                            extensions={[javascript(), ...searchWithReplace()]}
+                            onChange={(value) => setVizScriptText(value)}
+                            basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
+                            style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
+                            placeholder={"// Visualization script — build a chart spec and call:\n// pm.visualizer.set({ type: 'bar', x: 'name', y: 'revenue' });"}
                         />
                     </div>
                 )}

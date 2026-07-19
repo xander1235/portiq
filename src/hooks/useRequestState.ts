@@ -58,6 +58,7 @@ export interface RequestItem {
     bodyText?: string;
     testsPreText?: string;
     testsPostText?: string;
+    vizScriptText?: string;
     testsInputText?: string;
     httpVersion?: string;
     requestTimeoutMs?: number;
