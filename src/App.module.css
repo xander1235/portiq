@@ -9,7 +9,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 20px;
-    background: linear-gradient(90deg, #141a28, #10131c);
+    background: linear-gradient(90deg, var(--panel-2), var(--panel));
     border-bottom: 1px solid var(--border);
 }
 

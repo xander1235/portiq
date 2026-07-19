@@ -73,6 +73,7 @@ export function AuthTab({
             <div className={styles.body}>
                 {authType === "none" && (
                     <div className={styles.noAuth}>
+                        <svg className={styles.noAuthIcon} width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                         This request does not use any authorization.
                     </div>
                 )}
