@@ -2,7 +2,7 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 8px;
+    padding: 5px;
     overflow: hidden;
     transition: width 0.2s ease, padding 0.2s ease;
     display: flex;
@@ -12,8 +12,8 @@
 .sidebarPanel {
     background: var(--panel-2);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px;
+    border-radius: 8px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -45,9 +45,9 @@
 .collectionSection {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding-bottom: 10px;
-    margin-bottom: 10px;
+    gap: 6px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
     border-bottom: 1px solid var(--border);
 }
 
@@ -59,8 +59,8 @@
 
 .panelTitle {
     font-weight: 600;
-    margin-bottom: 6px;
-    padding: 0 4px;
+    margin-bottom: 4px;
+    padding: 0 2px;
 }
 
 .panelBody {
@@ -77,21 +77,21 @@
 }
 
 .panelRow {
-    padding: 4px;
-    gap: 8px;
+    padding: 2px;
+    gap: 6px;
 }
 
 .treeNode {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
 }
 
 .treeFolder {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
+    gap: 6px;
+    padding: 4px 8px;
     cursor: pointer;
     border-radius: 6px;
     transition: background 0.15s ease;
@@ -109,13 +109,13 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 6px 10px;
+    padding: 4px 8px;
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.1s ease;
     user-select: none;
     position: relative;
-    margin: 1px 0;
+    margin: 0;
 }
 
 .treeRequest:hover {
@@ -162,18 +162,18 @@
 .treeRequestHeader {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
 }
 
 .itemName {
     flex: 1;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-right: 4px;
+    padding-right: 2px;
 }
 
 .editInput {
@@ -291,11 +291,11 @@
     background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 0px 6px;
-    font-size: 0.65rem;
+    padding: 0px 4px;
+    font-size: 0.62rem;
     font-weight: 600;
-    width: 52px;
-    min-width: 52px;
+    width: 46px;
+    min-width: 46px;
     text-align: center;
     color: var(--muted);
     display: inline-flex;
@@ -307,11 +307,11 @@
 .protocolBadge {
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 0px 6px;
-    font-size: 0.65rem;
+    padding: 0px 4px;
+    font-size: 0.62rem;
     font-weight: 700;
-    width: 52px;
-    min-width: 52px;
+    width: 46px;
+    min-width: 46px;
     text-align: center;
     display: inline-flex;
     align-items: center;
@@ -420,7 +420,7 @@
 .panelList {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
 }
 
 .treeDesc {
@@ -438,8 +438,8 @@
 
 .treeChildren {
     border-left: 1px solid rgba(255, 255, 255, 0.05);
-    margin-left: 11px;
-    padding-left: 12px;
+    margin-left: 8px;
+    padding-left: 8px;
 }
 
 .tag {
@@ -451,62 +451,259 @@
     color: var(--muted);
 }
 
+/* ===== History tab ===== */
 .historyGroup {
     display: flex;
     flex-direction: column;
 }
 
-.historyGroupHeader {
-    padding: 8px 12px;
-    background: var(--panel-1);
-    border-bottom: 1px solid var(--border);
-    border-top: 1px solid var(--border);
+.historyDateHeader {
+    width: 100%;
+    padding: 5px 8px;
+    background: var(--panel-2);
+    border: none;
+    border-radius: 6px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
     position: sticky;
     top: 0;
     z-index: 10;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text-muted);
+    user-select: none;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.historyGroupTitle {
+.historyDateHeader:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+}
+
+.historyCaret {
+    display: inline-flex;
+    color: var(--muted);
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.historyCaret.open {
+    transform: rotate(90deg);
+    opacity: 0.9;
+}
+
+.historyFolderIcon {
+    display: inline-flex;
+    color: var(--text-muted);
+    opacity: 0.55;
+}
+
+.historyDate {
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     color: var(--text);
 }
 
 .historyGroupCount {
-    font-size: 0.75rem;
-    color: var(--muted);
     margin-left: auto;
+    min-width: 20px;
+    padding: 1px 8px;
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--panel-3);
+    border-radius: 999px;
 }
 
-.historyItem {
-    margin: 4px 8px;
-    padding: 10px;
+/* nested under the date like the collection tree's .treeChildren */
+.historyList {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
+    margin-left: 12px;
+    padding: 5px 0 8px 10px;
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.historyCard {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px 8px 12px;
     cursor: pointer;
+    text-align: left;
+    font-family: inherit;
     background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: all 0.15s ease;
+    overflow: hidden;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
-.historyItem:hover {
+/* method-colored left accent stripe */
+.historyCard::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--muted);
+    opacity: 0.8;
+}
+
+.historyCard[data-method="get"]::before { background: var(--accent-2); }
+.historyCard[data-method="post"]::before { background: #ffcc00; }
+.historyCard[data-method="put"]::before { background: #599eff; }
+.historyCard[data-method="patch"]::before { background: #bd93f9; }
+.historyCard[data-method="delete"]::before { background: #ff5555; }
+
+.historyCard:hover {
     background: var(--panel-3);
     border-color: var(--accent-2);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateX(1px);
 }
 
-.caret {
-    transition: transform 0.2s ease;
+.historyCardTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
-.caret.open {
-    transform: rotate(90deg);
+.historyTime {
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.historyUrl {
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-mono, monospace);
+}
+
+.historyCardBottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.historyLatency {
+    font-size: 0.66rem;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+/* ===== Collection selector popup ===== */
+.collectionMenu {
+    width: 288px;
+    padding: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.collectionMenuHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 6px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.collectionMenuCount {
+    padding: 1px 7px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: var(--panel-3);
+    border-radius: 999px;
+}
+
+.collectionMenuList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+/* scoped under .collectionMenu to win over the DropdownMenuItem Tailwind defaults */
+.collectionMenu .collectionMenuItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.collectionMenu .collectionMenuItem:hover,
+.collectionMenu .collectionMenuItem:focus {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.collectionMenu .collectionMenuItem.active {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--border);
+}
+
+.collectionMenu .collectionTile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: var(--panel-3);
+    color: var(--muted);
+}
+
+.collectionMeta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+}
+
+.collectionMenuName {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.collectionMenuSub {
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+.collectionMenu .collectionCheck {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--text-muted);
 }

@@ -20,7 +20,7 @@ import { FullScreenModal } from "../../Modals/FullScreenModal";
 import { prettifyXml } from "../../../services/format";
 import styles from "../RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cmTheme } from "../../../theme/codemirrorTheme";
+import { cmTheme, indentGuides } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
 
 interface MultipartRow {
@@ -216,9 +216,9 @@ export function BodyTab({
                             theme={cmTheme(theme)}
                             extensions={
                                 bodyType === "json"
-                                    ? [json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
+                                    ? [json(), customJsonLinter, lintGutter(), indentGuides, envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                     : bodyType === "xml"
-                                        ? [xmlLang(), xmlLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
+                                        ? [xmlLang(), xmlLinter, lintGutter(), indentGuides, envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                         : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                             }
                             onChange={(value) => setBodyText(value)}

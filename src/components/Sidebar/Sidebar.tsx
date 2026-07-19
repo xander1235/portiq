@@ -6,10 +6,17 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
-    DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import styles from "./Sidebar.module.css";
 import { ProtocolPicker, PROTOCOLS } from "../ProtocolPicker";
+import { StatusPill } from "../ui/StatusPill";
+
+function countRequests(items: (RequestItem | FolderItem)[] | undefined): number {
+    if (!Array.isArray(items)) return 0;
+    return items.reduce((total, item) => (
+        item.type === "folder" ? total + countRequests(item.items) : total + 1
+    ), 0);
+}
 
 interface RequestItem {
     id: string;
@@ -461,7 +468,7 @@ export function Sidebar({
                             <div className={styles.panelRow}>
                                 <DropdownMenu open={showCollectionDropdown} onOpenChange={setShowCollectionDropdown}>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" className="flex-1 justify-between h-9 bg-panel border-border shadow-sm">
+                                        <Button variant="outline" className="flex-1 justify-between h-8 bg-panel border-border shadow-sm">
                                             <div className="flex items-center gap-2 truncate">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--accent-2)' }}>
                                                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -475,33 +482,48 @@ export function Sidebar({
                                             </svg>
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent className="w-[300px] bg-panel border-border p-2">
-                                        <DropdownMenuLabel className="text-[11px] font-semibold uppercase text-muted-foreground">Your Collections</DropdownMenuLabel>
-                                        {collections.map((col) => {
-                                            const isActive = col.id === activeCollectionId;
-                                            return (
-                                                <DropdownMenuItem
-                                                    key={col.id}
-                                                    onClick={() => {
-                                                        setActiveCollectionId(col.id);
-                                                        setShowCollectionDropdown(false);
-                                                    }}
-                                                    className={`flex items-center gap-2 cursor-pointer ${isActive ? 'bg-accent-2/10 text-accent-2' : ''}`}
-                                                >
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
-                                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                                                    </svg>
-                                                    <span className="truncate">{col.name}</span>
-                                                    {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-auto"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                                                </DropdownMenuItem>
-                                            );
-                                        })}
+                                    <DropdownMenuContent align="start" className={styles.collectionMenu}>
+                                        <div className={styles.collectionMenuHead}>
+                                            <span>Your Collections</span>
+                                            <span className={styles.collectionMenuCount}>{collections.length}</span>
+                                        </div>
+                                        <div className={styles.collectionMenuList}>
+                                            {collections.map((col) => {
+                                                const isActive = col.id === activeCollectionId;
+                                                const reqCount = countRequests(col.items);
+                                                return (
+                                                    <DropdownMenuItem
+                                                        key={col.id}
+                                                        onClick={() => {
+                                                            setActiveCollectionId(col.id);
+                                                            setShowCollectionDropdown(false);
+                                                        }}
+                                                        className={`${styles.collectionMenuItem} ${isActive ? styles.active : ''}`}
+                                                    >
+                                                        <span className={styles.collectionTile}>
+                                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                                            </svg>
+                                                        </span>
+                                                        <span className={styles.collectionMeta}>
+                                                            <span className={styles.collectionMenuName}>{col.name}</span>
+                                                            <span className={styles.collectionMenuSub}>{reqCount} request{reqCount !== 1 ? 's' : ''}</span>
+                                                        </span>
+                                                        {isActive && (
+                                                            <span className={styles.collectionCheck}>
+                                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                            </span>
+                                                        )}
+                                                    </DropdownMenuItem>
+                                                );
+                                            })}
+                                        </div>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                                 <Button
                                     variant="outline"
                                     size="icon"
-                                    className="h-9 w-9 shrink-0 bg-panel border-border text-xl"
+                                    className="h-8 w-8 shrink-0 bg-panel border-border text-xl"
                                     onClick={addCollection}
                                     title="Create Collection"
                                 >
@@ -622,88 +644,59 @@ export function Sidebar({
                                 const items = groupedHistory[dateStr];
 
                                 return (
-                                    <div key={dateStr} style={{ display: 'flex', flexDirection: 'column' }}>
-                                        <div
+                                    <div key={dateStr} className={styles.historyGroup}>
+                                        <button
+                                            type="button"
+                                            className={styles.historyDateHeader}
                                             onClick={() => {
                                                 const newCollapsed = new Set(collapsedHistoryDates);
                                                 if (isCollapsed) newCollapsed.delete(dateStr);
                                                 else newCollapsed.add(dateStr);
                                                 setCollapsedHistoryDates(newCollapsed);
                                             }}
-                                            style={{
-                                                padding: '6px 12px',
-                                                background: 'var(--panel-1)',
-                                                borderBottom: '1px solid var(--border)',
-                                                borderTop: '1px solid var(--border)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                cursor: 'pointer',
-                                                position: 'sticky',
-                                                top: 0,
-                                                zIndex: 10
-                                            }}
                                         >
-                                            <div className={`caret ${isCollapsed ? '' : 'open'}`}>
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                                            </div>
-                                            <div className={`${styles.caret} ${isCollapsed ? '' : styles.open}`}>
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                                            </div>
-                                            <div className={styles.historyGroupTitle}>
-                                                {dateStr}
-                                            </div>
-                                            <div className={styles.historyGroupCount}>
-                                                {items.length} req
-                                            </div>
-                                        </div>
+                                            <span className={`${styles.historyCaret} ${isCollapsed ? '' : styles.open}`}>
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                            </span>
+                                            <span className={styles.historyFolderIcon}>
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                            </span>
+                                            <span className={styles.historyDate}>{dateStr}</span>
+                                            <span className={styles.historyGroupCount}>{items.length}</span>
+                                        </button>
 
-                                        {!isCollapsed && items.map((item: HistoryItem, idx: number) => (
-                                            <div
-                                                key={idx}
-                                                className={styles.historyItem}
-                                                onClick={() => {
-                                                    loadHistoryItem(item);
-                                                }}
-                                            >
-                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                                    <span className={`${styles.methodBadge} ${styles[(item.request?.method || "GET").toLowerCase()] || ''}`} style={{ opacity: 0.9 }}>
-                                                        {item.request?.method || "GET"}
-                                                    </span>
-                                                    <span style={{ color: "var(--muted)", fontSize: "0.7rem", fontWeight: 500 }}>
-                                                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                </div>
-
-                                                <div style={{
-                                                    fontSize: "0.75rem",
-                                                    fontWeight: 500,
-                                                    color: "var(--text)",
-                                                    overflow: "hidden",
-                                                    textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap",
-                                                }} title={item.request?.url}>
-                                                    {item.request?.url || "Unknown URL"}
-                                                </div>
-
-                                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                    <span style={{
-                                                        fontSize: "0.65rem",
-                                                        padding: "1px 5px",
-                                                        borderRadius: "4px",
-                                                        background: (item.response?.status ?? 0) >= 200 && (item.response?.status ?? 0) < 300 ? "rgba(46, 211, 198, 0.1)" : "rgba(255, 85, 85, 0.1)",
-                                                        color: (item.response?.status ?? 0) >= 200 && (item.response?.status ?? 0) < 300 ? "var(--accent-2)" : "#ff5555",
-                                                        fontWeight: 600,
-                                                        border: (item.response?.status ?? 0) >= 200 && (item.response?.status ?? 0) < 300 ? "1px solid rgba(46, 211, 198, 0.2)" : "1px solid rgba(255, 85, 85, 0.2)"
-                                                    }}>
-                                                        {item.response?.status} {item.response?.statusText}
-                                                    </span>
-                                                    <span style={{ fontSize: "0.65rem", color: "var(--muted)", fontWeight: 500 }}>
-                                                        {item.response?.time ? `${item.response.time} ms` : ""}
-                                                    </span>
-                                                </div>
+                                        {!isCollapsed && (
+                                            <div className={styles.historyList}>
+                                                {items.map((item: HistoryItem, idx: number) => {
+                                                    const method = (item.request?.method || "GET").toUpperCase();
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            key={idx}
+                                                            className={styles.historyCard}
+                                                            data-method={method.toLowerCase()}
+                                                            onClick={() => loadHistoryItem(item)}
+                                                        >
+                                                            <span className={styles.historyCardTop}>
+                                                                <span className={`${styles.methodBadge} ${styles[method.toLowerCase()] || ''}`}>{method}</span>
+                                                                <span className={styles.historyTime}>
+                                                                    {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </span>
+                                                            <span className={styles.historyUrl} title={item.request?.url}>
+                                                                {item.request?.url || "Unknown URL"}
+                                                            </span>
+                                                            <span className={styles.historyCardBottom}>
+                                                                <StatusPill status={item.response?.status ?? null} />
+                                                                {item.response?.time != null && (
+                                                                    <span className={styles.historyLatency}>{item.response.time} ms</span>
+                                                                )}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
                                 );
                             });

@@ -570,7 +570,7 @@ function App() {
   const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set<string>());
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
 
-  const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 260);
+  const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 232);
   const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
   const [topHeight, setTopHeight] = useLocalStorage("ui_topHeight", window.innerHeight / 2);
   const [draggingLeft, setDraggingLeft] = useState(false);
@@ -1963,6 +1963,13 @@ function App() {
         </label>
       </div>
     );
+  }
+
+  function countCollectionRequests(items: any): number {
+    if (!Array.isArray(items)) return 0;
+    return items.reduce((total: number, item: any) => (
+      item.type === "folder" ? total + countCollectionRequests(item.items) : total + 1
+    ), 0);
   }
 
   function rowsToObject(rows: any[], interpolateValues = true) {
@@ -3652,37 +3659,56 @@ function App() {
       {
         showCollectionModal && (
           <div className="modal-backdrop" onClick={() => setShowCollectionModal(false)}>
-            <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-title">Manage Collections</div>
-              <div className="env-layout">
-                <div className="env-sidebar">
-                  <div className="env-sidebar-header">
-                    <div className="field-label">Collections</div>
-                    <button className="ghost" onClick={addCollection}>Create Collection</button>
+            <div className="modal modal-wide manage-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-title">
+                <div>Manage Collections</div>
+                <button className="ghost icon-button" onClick={() => setShowCollectionModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+              </div>
+              <div className="mc-layout">
+                <aside className="mc-aside">
+                  <div className="mc-aside-head">
+                    <span className="mc-aside-title">Collections</span>
+                    <button className="mc-new-btn" onClick={addCollection} title="Create Collection">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                      New
+                    </button>
                   </div>
-                  <div className="env-list scroll">
-                    {collections.map((col) => (
-                      <label key={col.id} className="env-item">
-                        <input
-                          type="checkbox"
-                          checked={selectedCollectionIds.includes(col.id)}
-                          onChange={(e) => {
-                            setSelectedCollectionIds((prev) =>
-                              e.target.checked ? [...prev, col.id] : prev.filter((id) => id !== col.id)
-                            );
-                          }}
-                        />
-                        <button className="ghost env-select" onClick={() => {
-                          handleCollectionSwitch(col.id);
-                          setManageItemSelections(new Set());
-                        }}>
-                          {col.name}
-                        </button>
-                      </label>
-                    ))}
+                  <div className="mc-collection-list scroll">
+                    {collections.map((col) => {
+                      const checked = selectedCollectionIds.includes(col.id);
+                      const isActive = col.id === activeCollectionId;
+                      const reqCount = countCollectionRequests(col.items);
+                      return (
+                        <div key={col.id} className={`mc-collection-item ${isActive ? 'active' : ''}`}>
+                          <input
+                            type="checkbox"
+                            className="mc-check"
+                            checked={checked}
+                            onChange={(e) => {
+                              setSelectedCollectionIds((prev) =>
+                                e.target.checked ? [...prev, col.id] : prev.filter((id) => id !== col.id)
+                              );
+                            }}
+                          />
+                          <button className="mc-collection-select" onClick={() => {
+                            handleCollectionSwitch(col.id);
+                            setManageItemSelections(new Set());
+                          }}>
+                            <span className="mc-collection-icon">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            </span>
+                            <span className="mc-collection-meta">
+                              <span className="mc-collection-name">{col.name}</span>
+                              <span className="mc-collection-count">{reqCount} request{reqCount !== 1 ? 's' : ''}</span>
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                   <button
-                    className="ghost"
+                    className="mc-del-btn"
+                    disabled={selectedCollectionIds.length === 0}
                     onClick={() => {
                       if (selectedCollectionIds.length === 0) return;
                       const remaining = collections.filter((col) => !selectedCollectionIds.includes(col.id));
@@ -3697,50 +3723,48 @@ function App() {
                       setSelectedCollectionIds([]);
                     }}
                   >
-                    Delete Selected
+                    Delete Selected{selectedCollectionIds.length > 0 ? ` (${selectedCollectionIds.length})` : ''}
                   </button>
-                </div>
+                </aside>
 
-                <div className="env-editor">
+                <div className="mc-main">
                   {getActiveCollection() ? (
                     <>
-                      <div className="panel-row">
+                      <label className="mc-name-field">
+                        <span className="mc-field-label">Collection name</span>
                         <input
                           className="input"
                           placeholder="Collection name"
                           value={getActiveCollection()?.name || ""}
                           onChange={(e) => updateCollectionName(e.target.value)}
                         />
-                      </div>
-                      <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.9rem', color: 'var(--text)' }}>
-                            Contents of {getActiveCollection()?.name || "Untitled"}
-                          </span>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="ghost compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => {
+                      </label>
+                      <div className="mc-contents">
+                        <div className="mc-contents-head">
+                          <span className="mc-contents-title">Contents</span>
+                          <div className="mc-mini-actions">
+                            <button className="mc-mini-btn" onClick={() => {
                               const activeCol = getActiveCollection();
                               if (!activeCol) return;
                               const allIds = new Set<string>();
                               const collectIds = (n: any) => { allIds.add(n.id); if (n.items) n.items.forEach(collectIds); };
                               collectIds(activeCol);
                               setManageItemSelections(allIds);
-                            }}>Select All</button>
-                            <button className="ghost compact" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => setManageItemSelections(new Set())}>None</button>
+                            }}>Select all</button>
+                            <button className="mc-mini-btn" onClick={() => setManageItemSelections(new Set())}>None</button>
                           </div>
                         </div>
 
-                        <div className="export-list" style={{ flex: 1, minHeight: 0 }}>
+                        <div className="export-list mc-tree">
                           {getActiveCollection() ? renderManageTree(getActiveCollection()) : null}
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-                            {manageItemSelections.size} items selected
-                          </div>
+                        <div className="mc-tree-foot">
+                          <span className="mc-selected-count">
+                            {manageItemSelections.size} item{manageItemSelections.size !== 1 ? 's' : ''} selected
+                          </span>
                           <button
-                            className="ghost"
-                            style={{ color: 'var(--accent-red)', borderColor: 'var(--border)' }}
+                            className="mc-del-btn inline"
                             disabled={manageItemSelections.size === 0}
                             onClick={() => {
                               if (!window.confirm(`Are you sure you want to delete ${manageItemSelections.size} items?`)) return;
@@ -3755,7 +3779,7 @@ function App() {
                               }
                             }}
                           >
-                            Delete Selected Items
+                            Delete selected items
                           </button>
                         </div>
                       </div>
