@@ -341,23 +341,6 @@ export function ResponseViewer({
 
     const activeSpec = vizSpec || builderSpec;
 
-    const chartConfig = useMemo(() => {
-        if (!Array.isArray(tableRows) || tableRows.length === 0) return null;
-        const numericKeys = Object.keys(tableRows[0] || {}).filter((key) =>
-            tableRows.some((row: any) => typeof row[key] === "number" && !Number.isNaN(row[key]))
-        );
-        if (numericKeys.length === 0) return null;
-        const valueKey = numericKeys[0];
-        const labelKey = Object.keys(tableRows[0] || {}).find((key) => key !== valueKey && typeof tableRows[0][key] !== "object")
-            || null;
-        const points = tableRows.slice(0, 10).map((row: any, index: number) => ({
-            label: labelKey ? String(row[labelKey] ?? `Row ${index + 1}`) : `Row ${index + 1}`,
-            value: Number(row[valueKey] || 0)
-        }));
-        const maxValue = Math.max(...points.map((point: any) => point.value), 1);
-        return { valueKey, labelKey, points, maxValue };
-    }, [tableRows]);
-
     if (response?.protocol === "websocket") {
         const wsStatus = response?.ws?.status || "disconnected";
         const wsError = response?.error || error;
