@@ -65,9 +65,48 @@ jobs:
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
 
+      # Attach this OS's binaries to the release. Note: release notes are NOT
+      # generated here — that runs once in the release-notes job below, so they
+      # aren't written three times (once per matrix leg).
       - name: Attach artifacts to GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ matrix.artifact_path }}
+
+  release-notes:
+    name: Publish release notes
+    runs-on: ubuntu-latest
+    needs: build-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Pull the human-written highlights for this tag out of CHANGELOG.md
+      # (matches the "## <version>" heading; empty if none is written yet).
+      - name: Extract highlights from CHANGELOG
+        id: highlights
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="## ${version}" '
+            $0 == ver { flag = 1; next }
+            /^## / && flag { flag = 0 }
+            flag { print }
+          ' CHANGELOG.md > highlights.md
+          # Trim leading/trailing blank lines
+          sed -i -e '/./,$!d' highlights.md
+          if [ -s highlights.md ]; then
+            { echo "## Highlights"; echo; cat highlights.md; } > release-body.md
+          else
+            echo "No CHANGELOG entry found for ${version}; using generated notes only."
+            : > release-body.md
+          fi
+
+      # Sets the release body once: highlights on top, then the auto-generated
+      # (and categorized via .github/release.yml) "What's Changed" list.
+      - name: Publish release notes
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release-body.md
           generate_release_notes: true

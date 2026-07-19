@@ -1,5 +1,26 @@
 # Portiq
 
+## 0.5.0
+
+### Minor Changes
+
+- Redesigned the request panel and introduced full light and dark theming, with a refreshed request/response layout and consistent theming across the app.
+
+### Patch Changes
+
+- Improved DAG editor performance — the graph is no longer rewritten on every drag frame, and node components are memoized for smoother panning and editing.
+- Platform and dependency upgrades: React 19, Electron 41, Vite 8, TypeScript 6, and ESLint 10. Migrated from `@xenova/transformers` to `@huggingface/transformers`, clearing 4 npm audit advisories.
+
+## 0.4.0
+
+### Minor Changes
+
+- Redesigned the DAG flow with a reference-first data model on a react-flow canvas, and added editing and execution controls for building and running request graphs.
+
+### Patch Changes
+
+- Added variable-aware secret masking, fixed request-name synchronization, refreshed the README, and added desktop build scripting.
+
 ## 0.3.2
 
 ### Patch Changes
