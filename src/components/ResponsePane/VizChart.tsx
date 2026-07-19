@@ -5,14 +5,13 @@ import type { VizSpec, VizPoint } from "../../services/visualize";
 // Categorical palette validated against the app's chart surfaces via the dataviz
 // skill's validate_palette.js (CVD ΔE >= 8.4, normal-vision ΔE >= 19.3, contrast
 // >= 3:1 on both surfaces). Dark-surface steps are the default; light-surface
-// steps override under :root[data-theme="light"] — same token pattern as
-// src/styles.css (--bg/--text/--muted).
-const PALETTE_DARK = ["#3987e5", "#008300", "#d55181", "#c98500", "#199e70", "#d95926", "#9085e9", "#e66767"];
-const PALETTE_LIGHT = ["#2a78d6", "#008300", "#e87ba4", "#eda100", "#1baf7a", "#eb6834", "#4a3aa7", "#e34948"];
+// steps override under :root[data-theme="light"] — defined globally in
+// src/styles.css as --viz-series-0..7, same token pattern as --bg/--text/--muted.
+const VIZ_SERIES_COUNT = 8;
 const VIZ_CHART_CLASS = "viz-chart-root";
 
 function seriesColor(i: number): string {
-  return `var(--viz-series-${i % PALETTE_DARK.length})`;
+  return `var(--viz-series-${i % VIZ_SERIES_COUNT})`;
 }
 
 const W = 640;
@@ -104,10 +103,6 @@ export function VizChart({ spec }: { spec: VizSpec }) {
   }
   return (
     <div className={VIZ_CHART_CLASS}>
-      <style>{`
-        .${VIZ_CHART_CLASS} { ${PALETTE_DARK.map((c, i) => `--viz-series-${i}: ${c};`).join(" ")} }
-        :root[data-theme="light"] .${VIZ_CHART_CLASS} { ${PALETTE_LIGHT.map((c, i) => `--viz-series-${i}: ${c};`).join(" ")} }
-      `}</style>
       {spec.title && <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: "8px" }}>{spec.title}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={spec.title || `${spec.type} chart`}>
         {spec.type === "bar" && <BarChart points={spec.points} />}

@@ -84,6 +84,16 @@
   --method-delete: #ff5555;
   --method-options: var(--muted);
   --method-head: var(--muted);
+
+  /* Viz chart series palette (dark/default) */
+  --viz-series-0: #3987e5;
+  --viz-series-1: #008300;
+  --viz-series-2: #d55181;
+  --viz-series-3: #c98500;
+  --viz-series-4: #199e70;
+  --viz-series-5: #d95926;
+  --viz-series-6: #9085e9;
+  --viz-series-7: #e66767;
 }
 
 :root[data-theme="light"] {
@@ -116,6 +126,16 @@
   --method-put: #2563eb;
   --method-patch: #6b4fd0;
   --method-delete: #d64545;
+
+  /* Viz chart series palette (light) */
+  --viz-series-0: #2a78d6;
+  --viz-series-1: #008300;
+  --viz-series-2: #e87ba4;
+  --viz-series-3: #eda100;
+  --viz-series-4: #1baf7a;
+  --viz-series-5: #eb6834;
+  --viz-series-6: #4a3aa7;
+  --viz-series-7: #e34948;
 }
 
 @layer base {
