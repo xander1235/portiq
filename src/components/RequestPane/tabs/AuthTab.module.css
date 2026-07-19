@@ -1,79 +1,128 @@
 .wrapper {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
-    padding: var(--space-2);
+    height: 100%;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
 }
 
 .typeRow {
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 .typeLabel {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
 .body {
-    border-top: 1px solid var(--border);
-    padding-top: var(--space-4);
+    flex: 1;
+    min-height: 0;
+    padding: 16px 14px;
 }
 
 .noAuth {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
     color: var(--muted);
     font-size: var(--text-sm);
-    font-style: italic;
+    padding: 36px 16px;
+}
+
+.noAuthIcon {
+    color: var(--muted);
+    opacity: 0.5;
 }
 
 .fieldGroup {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    max-width: 400px;
+    gap: 14px;
+    max-width: 460px;
 }
 
 .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    font-size: var(--text-sm);
+    gap: 6px;
 }
 
 .fieldLabel {
-    font-weight: 500;
-    color: var(--text);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
-.maskedInputRow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.maskedInput {
-    flex: 1;
-}
-
+/* single-input fields (username / key) */
 .plainInput {
     flex: 1;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 7px;
+}
+.plainInput:focus,
+.plainInput:focus-within {
+    border-color: var(--accent);
+    outline: none;
+}
+
+/* masked field: one seamless box with the eye toggle flush inside */
+.maskedInputRow {
+    display: flex;
+    align-items: stretch;
+    min-height: 34px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+}
+.maskedInputRow:focus-within {
+    border-color: var(--accent);
+}
+
+.maskedInputRow .maskedInput {
+    flex: 1;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
 }
 
 .maskedInputRow .toggleButton {
     flex: none;
-    padding: var(--space-2);
-    line-height: 1;
+    padding: 0 10px;
     display: flex;
     align-items: center;
+    justify-content: center;
     border: none;
+    border-left: 1px solid var(--border);
     background: transparent;
     color: var(--muted);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 .maskedInputRow .toggleButton:hover {
-    background: var(--panel-2);
+    background: var(--panel-3);
     color: var(--text);
 }

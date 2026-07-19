@@ -135,7 +135,7 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: radial-gradient(circle at top left, #1b2133 0%, #0f1115 60%);
+  background: radial-gradient(circle at top left, var(--panel-2) 0%, var(--bg) 60%);
   color: var(--text);
 }
 
@@ -150,7 +150,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  background: linear-gradient(90deg, #141a28, #10131c);
+  background: linear-gradient(90deg, var(--panel-2), var(--panel));
   border-bottom: 1px solid var(--border);
 }
 
@@ -874,22 +874,35 @@ select {
 .table-editor {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   height: 100%;
   overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
 }
 
+/* header + rows share the same horizontal padding so grid tracks line up
+   (column widths come from the inline gridTemplateColumns in TableEditor.tsx) */
 .table-editor-header,
-.table-editor-row {
+.table-row {
   display: grid;
-  grid-template-columns: 40px 1fr 1fr auto;
   gap: 8px;
   align-items: center;
+  padding: 6px 10px;
 }
 
 .table-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .table-editor-actions {
@@ -897,15 +910,107 @@ select {
   justify-content: flex-end;
 }
 
-.table-editor-row.active {
-  background: rgba(46, 211, 198, 0.08);
-  border-radius: 10px;
-  padding: 6px;
+.table-editor-actions .ghost {
+  padding: 3px 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.table-editor-actions .ghost:hover {
+  color: var(--text);
+  border-color: var(--muted);
+  background: var(--panel-3);
+  transform: none;
 }
 
-.table-editor-toggle {
+.table-rows {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  padding: 3px 0;
+}
+
+.table-row {
+  border: 1px solid transparent;
+  transition: background 0.12s ease;
+}
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+/* row inputs read as borderless cells until focused */
+.table-editor .table-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 7px;
+  height: 28px;
+  font-size: 0.8rem;
+}
+.table-editor .table-input:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.table-editor .table-input:focus,
+.table-editor .table-input:focus-within {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.table-editor input.checkbox {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.table-editor input.checkbox:checked {
+  background: var(--text);
+  border-color: var(--text);
+}
+.table-editor input.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* per-row icon buttons (remove, secret/mask toggles) stay quiet until hovered */
+.table-editor .table-row .icon-button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px;
+  min-height: 0;
+  border-radius: 6px;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.65;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.table-editor .table-row .icon-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  opacity: 1;
+  transform: none;
+}
+.table-editor .table-row button[aria-label="Remove row"]:hover {
+  color: var(--accent-red);
+  background: color-mix(in srgb, var(--accent-red) 14%, transparent);
 }
 
 .dual-editor {
@@ -1847,34 +1952,6 @@ tfoot td:last-child {
   }
 }
 
-.table-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.table-editor-header,
-.table-row {
-  display: grid;
-  grid-template-columns: 24px 1fr 1fr 1fr 32px;
-  gap: 8px;
-  align-items: center;
-}
-
-.table-editor-header {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--muted);
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.table-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 /* The node action bar is rendered only while a node is selected (see the node
    components' `sel && <NodeActions/>`), so it is always fully visible when present.
    Hover no longer reveals it — selecting a node (click) does, and it stays until the
@@ -2075,6 +2152,27 @@ tfoot td:last-child {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.manage-modal .mc-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.manage-modal .mc-hint code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.manage-modal .mc-aside-empty {
+  padding: 14px 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
 }
 
 .manage-modal .mc-contents {

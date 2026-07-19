@@ -56,10 +56,34 @@ export function TestsTab({
     return (
         <>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <Button variant="ghost" className="compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestOutput((prev) => !prev)}>
+                <Button
+                    variant="ghost"
+                    className="compact"
+                    style={{
+                        padding: '4px 10px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: showTestOutput ? 'var(--accent)' : 'var(--muted)',
+                        borderColor: showTestOutput ? 'var(--accent)' : 'var(--border)',
+                        background: showTestOutput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
+                    }}
+                    onClick={() => setShowTestOutput((prev) => !prev)}
+                >
                     Output
                 </Button>
-                <Button variant="ghost" className="compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowTestInput((prev) => !prev)}>
+                <Button
+                    variant="ghost"
+                    className="compact"
+                    style={{
+                        padding: '4px 10px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: showTestInput ? 'var(--accent)' : 'var(--muted)',
+                        borderColor: showTestInput ? 'var(--accent)' : 'var(--border)',
+                        background: showTestInput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
+                    }}
+                    onClick={() => setShowTestInput((prev) => !prev)}
+                >
                     Test Input
                 </Button>
                 <SegmentedControl
@@ -70,7 +94,7 @@ export function TestsTab({
                         { value: "post", label: "Post-response" }
                     ]}
                 />
-                <Button variant="primary" className="compact" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={runTests}>Run Tests</Button>
+                <Button variant="primary" className="compact" style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600 }} onClick={runTests}>Run Tests</Button>
             </div>
             <div className={styles.testsEditor}>
                 {showTestInput && (
