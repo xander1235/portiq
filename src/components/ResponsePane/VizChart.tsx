@@ -72,17 +72,25 @@ function LineChart({ points }: { points: VizPoint[] }) {
 function PieChart({ points }: { points: VizPoint[] }) {
   const total = points.reduce((s, p) => s + p.value, 0) || 1;
   const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 40;
-  let angle = -Math.PI / 2;
+  // Precompute each slice's start angle from the sum of preceding values, so
+  // nothing is reassigned mid-render (n <= 20, so the O(n^2) sum is negligible).
+  const START = -Math.PI / 2;
+  const slices = points.map((p, i) => {
+    const before = points.slice(0, i).reduce((s, q) => s + q.value, 0);
+    const start = START + (before / total) * Math.PI * 2;
+    const sweep = (p.value / total) * Math.PI * 2;
+    return { start, sweep };
+  });
   return (
     <>
       {points.map((p, i) => {
-        const slice = (p.value / total) * Math.PI * 2;
-        const x1 = cx + r * Math.cos(angle);
-        const y1 = cy + r * Math.sin(angle);
-        angle += slice;
-        const x2 = cx + r * Math.cos(angle);
-        const y2 = cy + r * Math.sin(angle);
-        const large = slice > Math.PI ? 1 : 0;
+        const { start, sweep } = slices[i];
+        const x1 = cx + r * Math.cos(start);
+        const y1 = cy + r * Math.sin(start);
+        const end = start + sweep;
+        const x2 = cx + r * Math.cos(end);
+        const y2 = cy + r * Math.sin(end);
+        const large = sweep > Math.PI ? 1 : 0;
         return (
           <path
             key={i}
