@@ -175,3 +175,107 @@
     overflow: hidden;
     height: 100%;
 }
+
+/* Tests-tab compact toolbar --------------------------------------------- */
+.testsToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.testsToolbar .toolbarRight {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.toolbarChip {
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background .12s, border-color .12s, color .12s;
+}
+.toolbarChip:hover { background: var(--panel-2); }
+.toolbarChipOn {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Named script step blocks ---------------------------------------------- */
+.stepsList {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    overflow: auto;
+}
+.stepCard {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+    overflow: hidden;
+}
+.stepHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: color-mix(in srgb, var(--border) 22%, transparent);
+}
+.stepName {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: 3px 6px;
+}
+.stepName:hover { border-color: var(--border); }
+.stepName:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+.stepIconBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+}
+.stepIconBtn:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
+.stepIconBtn:disabled { opacity: .35; cursor: default; }
+.stepBody {
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+}
+.stepAdd {
+    align-self: flex-start;
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+.stepAdd:hover { border-color: var(--accent); color: var(--accent); }
