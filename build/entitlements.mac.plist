@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Ad-hoc (unnotarized) distribution runs under the hardened runtime. These
+    entitlements are what electron-builder's default hardened-runtime profile
+    applies for Electron/V8 (JIT + writable-executable memory), plus
+    disable-library-validation so the ad-hoc-signed native modules
+    (e.g. better-sqlite3) load without tripping library validation, which
+    Apple flags as a launch-failure risk for ad-hoc + hardened runtime.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
