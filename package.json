@@ -21,6 +21,7 @@
     "package:release": "vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/xander1235/portiq.git"

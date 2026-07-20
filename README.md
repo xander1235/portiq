@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0f172a?style=for-the-badge&labelColor=111827&color=22c55e"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-0f172a?style=for-the-badge&labelColor=111827&color=22c55e"></a>
   <img alt="Electron" src="https://img.shields.io/badge/electron-30-0f172a?style=for-the-badge&labelColor=111827&color=38bdf8">
   <img alt="React 18" src="https://img.shields.io/badge/react-18-0f172a?style=for-the-badge&labelColor=111827&color=61dafb">
   <img alt="Vite 5" src="https://img.shields.io/badge/vite-5-0f172a?style=for-the-badge&labelColor=111827&color=f59e0b">
@@ -505,4 +505,4 @@ When opening issues or pull requests, it helps a lot to include:
 
 ## 📄 License
 
-Portiq is released under the [MIT License](LICENSE).
+Portiq is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
