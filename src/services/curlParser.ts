@@ -83,6 +83,12 @@ function objectToRows(obj: Record<string, string>): RequestRow[] {
   return entries.map(([key, value]) => ({ key, value, comment: "", enabled: true }));
 }
 
+function splitFirst(input: string, separator: string): [string, string] {
+  const index = input.indexOf(separator);
+  if (index === -1) return [input, ""];
+  return [input.slice(0, index), input.slice(index + 1)];
+}
+
 export function parseCurl(command: string): ParsedCurl {
   const tokens = tokenizeShellCommand(command);
   if (tokens.length === 0 || tokens[0] !== "curl") {
@@ -117,7 +123,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token.startsWith("--request=")) {
-      method = token.split("=", 2)[1].toUpperCase();
+      method = splitFirst(token, "=")[1].toUpperCase();
       explicitMethod = true;
       continue;
     }
@@ -128,7 +134,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token.startsWith("--header=")) {
-      const header = token.split("=", 2)[1];
+      const header = splitFirst(token, "=")[1];
       const idx = header.indexOf(":");
       if (idx !== -1) headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
       continue;
@@ -144,7 +150,7 @@ export function parseCurl(command: string): ParsedCurl {
       token.startsWith("--data-ascii=") ||
       token.startsWith("--data-urlencode=")
     ) {
-      dataParts.push(token.split("=", 2)[1]);
+      dataParts.push(splitFirst(token, "=")[1]);
       continue;
     }
     if (token === "-F" || token === "--form" || token === "--form-string") {
@@ -152,7 +158,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token.startsWith("--form=") || token.startsWith("--form-string=")) {
-      formParts.push(token.split("=", 2)[1]);
+      formParts.push(splitFirst(token, "=")[1]);
       continue;
     }
     if (token === "-G" || token === "--get") {
@@ -164,7 +170,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token.startsWith("--cookie=")) {
-      headers["Cookie"] = token.split("=", 2)[1];
+      headers["Cookie"] = splitFirst(token, "=")[1];
       continue;
     }
     if (token === "--url") {
@@ -172,7 +178,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token.startsWith("--url=")) {
-      urlValue = token.split("=", 2)[1];
+      urlValue = splitFirst(token, "=")[1];
       continue;
     }
     if (token === "-u" || token === "--user") {
@@ -196,22 +202,17 @@ export function parseCurl(command: string): ParsedCurl {
   let bodyType = "none";
   let bodyText = "";
   let bodyRows: RequestRow[] = emptyRows();
+  const collectedParams: Array<[string, string]> = [];
 
   if (useQueryString && dataParts.length > 0) {
-    try {
-      const urlObject = new URL(finalUrl);
-      dataParts.forEach((part) => {
-        const [key, value = ""] = part.split("=", 2);
-        urlObject.searchParams.append(key, value);
-      });
-      finalUrl = urlObject.toString();
-    } catch {
-      // leave url unchanged if it is not absolute
-    }
+    dataParts.forEach((part) => {
+      const [key, value] = splitFirst(part, "=");
+      collectedParams.push([key, value]);
+    });
   } else if (formParts.length > 0) {
     bodyType = "multipart";
     bodyRows = formParts.map((part) => {
-      const [key, rawValue = ""] = part.split("=", 2);
+      const [key, rawValue] = splitFirst(part, "=");
       if (rawValue.startsWith("@")) {
         const filePath = rawValue.slice(1);
         const fileName = filePath.split(/[/\\]/).pop() || "upload.bin";
@@ -232,7 +233,7 @@ export function parseCurl(command: string): ParsedCurl {
         .split("&")
         .filter(Boolean)
         .map((pair) => {
-          const [key, value = ""] = pair.split("=", 2);
+          const [key, value] = splitFirst(pair, "=");
           return { key, value, comment: "", enabled: true };
         });
     } else {
@@ -241,23 +242,19 @@ export function parseCurl(command: string): ParsedCurl {
     }
   }
 
-  let paramsRows: RequestRow[] = emptyRows();
-  try {
-    const urlObject = new URL(finalUrl);
-    const rows = Array.from(urlObject.searchParams.entries()).map(([key, value]) => ({
-      key,
-      value,
-      comment: "",
-      enabled: true,
-    }));
-    if (rows.length > 0) {
-      paramsRows = rows;
-      urlObject.search = "";
-      finalUrl = urlObject.toString();
-    }
-  } catch {
-    // relative/opaque URL: keep as-is
+  // Strip any query string from the URL while preserving templates in the path.
+  const queryIndex = finalUrl.indexOf("?");
+  if (queryIndex !== -1) {
+    const queryString = finalUrl.slice(queryIndex + 1);
+    finalUrl = finalUrl.slice(0, queryIndex);
+    new URLSearchParams(queryString).forEach((value, key) => {
+      collectedParams.push([key, value]);
+    });
   }
+  const paramsRows: RequestRow[] =
+    collectedParams.length > 0
+      ? collectedParams.map(([key, value]) => ({ key, value, comment: "", enabled: true }))
+      : emptyRows();
 
   let authType = "none";
   const authConfig = defaultAuthConfig();

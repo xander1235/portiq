@@ -123,6 +123,30 @@ describe("parseCurl", () => {
     expect(row?.kind).toBe("file");
     expect(row?.fileName).toBe("logo.png");
   });
+
+  it("preserves {{template}} vars in the URL path when a query string is present", () => {
+    const r = parseCurl("curl 'https://x.com/{{id}}?a=1'");
+    expect(r.url).toBe("https://x.com/{{id}}");
+    expect(r.paramsRows.map((row) => [row.key, row.value])).toEqual([["a", "1"]]);
+  });
+
+  it("keeps '=' inside a multipart field value", () => {
+    const r = parseCurl("curl -X POST https://x.com -F 'token=dG9rZW4='");
+    const row = r.bodyRows.find((b) => b.key === "token");
+    expect(row?.value).toBe("dG9rZW4=");
+  });
+
+  it("keeps '=' inside a urlencoded body value", () => {
+    const r = parseCurl(
+      `curl -X POST https://x.com -H 'Content-Type: application/x-www-form-urlencoded' -d 'q=a=b'`
+    );
+    expect(r.bodyRows.map((row) => [row.key, row.value])).toEqual([["q", "a=b"]]);
+  });
+
+  it("keeps '=' inside a --data=VALUE form value", () => {
+    const r = parseCurl("curl -X POST https://x.com --data=q=a=b");
+    expect(r.bodyRows.map((row) => [row.key, row.value])).toEqual([["q", "a=b"]]);
+  });
 });
 
 describe("inferRequestNameFromUrl", () => {

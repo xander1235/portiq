@@ -1332,7 +1332,7 @@ function App() {
   }
 
   function applyParsedCurlToCurrent(parsed: ParsedCurl) {
-    const headersText = JSON.stringify(rowsToObject(parsed.headersRows), null, 2);
+    const headersText = JSON.stringify(rowsToObject(parsed.headersRows, false), null, 2);
     setMethod(parsed.method);
     setUrl(parsed.url);
     setParamsRows(parsed.paramsRows);
