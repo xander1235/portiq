@@ -55,7 +55,14 @@ jobs:
       - name: Build release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # We have no Apple Developer ID cert in CI. Do NOT set
+          # CSC_IDENTITY_AUTO_DISCOVERY=false — that also suppresses the
+          # automatic ad-hoc signature electron-builder applies, and an
+          # unsigned arm64 .app is rejected by macOS as "damaged" once the
+          # download quarantine flag is set. With auto-discovery left on and
+          # no cert present, electron-builder falls back to ad-hoc signing,
+          # which makes the app launchable (users still do a one-time
+          # right-click -> Open, since ad-hoc is not notarized).
         run: ${{ matrix.command }}
 
       - name: Upload workflow artifacts

@@ -1,6 +1,6 @@
 {
   "name": "portiq",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -21,6 +21,7 @@
     "package:release": "vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/xander1235/portiq.git"
@@ -44,6 +45,9 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "src/assets/logo.png",
+      "identity": "-",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         "dmg",
         "zip"

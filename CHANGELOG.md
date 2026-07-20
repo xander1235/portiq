@@ -1,5 +1,17 @@
 # Portiq
 
+## 0.6.1
+
+### Patch Changes
+
+- Fixed macOS downloads failing to open with a "damaged / can't be opened" error. The release build now ad-hoc signs the macOS app (hardened runtime + entitlements) so arm64 binaries launch after download. The build is not notarized, so the first launch is via right-click → Open (or clearing the download quarantine).
+- Bumped CI/release GitHub Actions (`checkout`, `setup-node`) to v5 for the Node 24 runtime, clearing the Node 20 deprecation warning.
+
+### Other
+
+- Relicensed the project from MIT to AGPL-3.0.
+- Refreshed the website/landing-page docs.
+
 ## 0.6.0
 
 ### Minor Changes

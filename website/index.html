@@ -36,6 +36,7 @@
           <a href="#features">Features</a>
           <a href="#explainer">Why It Works</a>
           <a href="#screens">Screens</a>
+          <a href="#changelog">Changelog</a>
           <a href="#download">Download</a>
         </nav>
         <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle color theme">
@@ -52,7 +53,8 @@
           <h1>One clean desktop workspace for modern API development.</h1>
           <p class="lead">
             Portiq keeps request building, response inspection, environments,
-            GraphQL, WebSocket, mock workflows, and AI assistance in one focused app.
+            GraphQL, WebSocket, mock workflows, test suites, response visualization,
+            and AI assistance in one focused app.
           </p>
 
           <div class="hero-actions">
@@ -62,7 +64,8 @@
 
           <div class="hero-points">
             <span>HTTP, GraphQL, WebSocket, SSE, DAG, MCP</span>
-            <span>Desktop-first and local-friendly</span>
+            <span>Paste cURL to build a request instantly</span>
+            <span>Test suites and response visualization</span>
             <span>AI support where it helps</span>
           </div>
         </div>
@@ -94,9 +97,10 @@
       </section>
 
       <section class="signal-strip" aria-label="Key benefits">
-        <span>Fast request building</span>
+        <span>Paste cURL to build requests</span>
         <span>Multi-protocol workflows</span>
-        <span>Visual response tools</span>
+        <span>Grouped test suites</span>
+        <span>Response visualization</span>
         <span>Direct release downloads</span>
       </section>
 
@@ -116,12 +120,24 @@
               <p>Build requests quickly with structured auth, headers, params, bodies, environments, and saved collections.</p>
             </article>
             <article class="feature-card">
+              <h3>Paste cURL to build</h3>
+              <p>Drop a cURL command into the URL bar and preview the parsed method, URL, params, headers, body, and auth before it fills the current request. Undefined <code>{{variables}}</code> and matching literals can be parameterized on import.</p>
+            </article>
+            <article class="feature-card">
               <h3>Protocol coverage</h3>
               <p>Switch between REST, GraphQL, WebSocket, SSE, mock servers, DAG flows, and MCP from one app.</p>
             </article>
             <article class="feature-card">
               <h3>Response visibility</h3>
               <p>Inspect JSON, raw text, XML, tables, headers, and fullscreen views without changing tools.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Test suites</h3>
+              <p>Organize assertions into grouped test suites under a dedicated Tests tab, with named pre- and post-request script steps to prepare and verify each call.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Response visualization</h3>
+              <p>Turn response data into SVG visualizations from a dedicated Visualize tab to spot shape and trends without leaving the app.</p>
             </article>
             <article class="feature-card">
               <h3>Environment control</h3>
@@ -155,13 +171,23 @@
               <p>
                 Create HTTP, GraphQL, WebSocket, SSE, mock-server, DAG-flow, and MCP
                 workflows from one interface instead of maintaining different tools for each protocol.
+                Already have a cURL command? Paste it into the URL bar and Portiq fills the request for you.
               </p>
             </article>
             <article class="explain-card">
               <h3>Debug with better visibility</h3>
               <p>
                 Move between pretty, raw, XML, table, headers, and fullscreen response
-                views so it is easier to inspect the exact shape of returned data.
+                views, or switch to the Visualize tab to render response data as SVG charts
+                so it is easier to inspect the exact shape of returned data.
+              </p>
+            </article>
+            <article class="explain-card">
+              <h3>Test as part of the request flow</h3>
+              <p>
+                Group assertions into test suites and attach named pre- and post-request
+                script steps, so validating a response happens right next to the request
+                instead of in a separate tool.
               </p>
             </article>
             <article class="explain-card">
@@ -245,13 +271,100 @@
           </div>
         </section>
 
+      <section class="section" id="changelog">
+        <div class="section-heading">
+          <p class="eyebrow">Changelog</p>
+          <h2>What's new in Portiq.</h2>
+          <p class="section-copy">
+            A short history of recent releases. See the full
+            <a class="text-link" href="https://github.com/xander1235/portiq/releases">release notes on GitHub</a>.
+          </p>
+        </div>
+
+        <ol class="changelog-list">
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.6.0</span>
+              <span class="changelog-tag">Latest</span>
+              <time class="changelog-date">Jul 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>cURL paste import, tests &amp; visualize</h3>
+              <ul>
+                <li>Paste a cURL command into the URL bar to build the current request, with a confirmation dialog that previews the parsed method, URL, params, headers, body, and auth, and can fill or parameterize <code>{{variables}}</code> on import.</li>
+                <li>New Tests tab with grouped test suites, plus named pre- and post-request script steps.</li>
+                <li>New Visualize tab that renders SVG visualizations from response data.</li>
+                <li>More compact request toolbar.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.5.0</span>
+              <time class="changelog-date">Jul 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>Redesigned request panel and full theming</h3>
+              <ul>
+                <li>Refreshed request/response layout with consistent light and dark theming across the app.</li>
+                <li>Faster DAG editor — the graph is no longer rewritten on every drag frame, and nodes are memoized for smoother panning.</li>
+                <li>Platform upgrades: React 19, Electron 41, Vite 8, and TypeScript 6.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.4.0</span>
+              <time class="changelog-date">Jul 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>Reworked DAG flow</h3>
+              <ul>
+                <li>Redesigned the DAG flow with a reference-first data model on a react-flow canvas, with editing and execution controls for building and running request graphs.</li>
+                <li>Variable-aware secret masking and desktop build scripting.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.3.0</span>
+              <time class="changelog-date">Mar 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>The Portiq rebrand</h3>
+              <ul>
+                <li>Rebranded the application from Commu to Portiq.</li>
+                <li>Fixed GitHub OAuth login in packaged production builds and unified cross-environment requests behind a shared safeFetch utility.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.0</span>
+              <time class="changelog-date">Mar 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>GitHub sync and environments</h3>
+              <ul>
+                <li>Added GitHub Sync to back up and restore collections and environments, with support for secret environment variables.</li>
+                <li>Inline environment-variable editing and persistent layout and workspace-state caching across restarts.</li>
+              </ul>
+            </div>
+          </li>
+        </ol>
+      </section>
+
       <section class="section" id="download">
         <div class="download-shell">
           <div class="section-heading section-heading-tight">
             <p class="eyebrow">Download</p>
             <h2>Download the packaged release directly.</h2>
             <p class="section-copy">
-              Grab the build for your platform. Each download links straight to the latest signed GitHub release — clicking starts it immediately.
+              Grab the build for your platform. Each download links straight to the latest signed GitHub release (<strong>v0.6.0</strong>) — clicking starts it immediately.
             </p>
           </div>
 
@@ -262,7 +375,7 @@
                 <p>Direct DMG download for <code>arm64</code> builds.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-mac-arm64.dmg"
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-mac-arm64.dmg"
                 download>
                 Download for Mac
               </a>
@@ -274,18 +387,18 @@
                 <p>Direct installer download for the Windows packaged build.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-win-x64.exe" download>
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-win-x64.exe" download>
                 Download for Windows
               </a>
             </article>
 
             <article class="download-card">
               <div class="download-copy">
-                <h3>Linux x64</h3>
+                <h3>Linux x86_64</h3>
                 <p>Direct AppImage download for Linux users who want a portable build.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.3.2/Portiq-0.3.2-linux-x64.AppImage"
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-linux-x86_64.AppImage"
                 download>
                 Download for Linux
               </a>
