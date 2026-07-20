@@ -36,25 +36,36 @@ Pure module with no React/DOM dependencies.
 
 - `looksLikeCurl(text: string): boolean` — trims, returns true if it begins with
   `curl` followed by whitespace or end-of-token. Cheap gate run on every paste.
-- `parseCurl(input: string): ParsedCurl | null` — returns `null` when the input
-  is not a parseable curl command.
+- `parseCurl(input: string): ParsedCurl` — throws when the input is not a
+  parseable curl command or has no URL (callers catch).
+- `inferRequestNameFromUrl(url: string): string` — last path segment / hostname.
+- `collectTemplateVars(parsed: ParsedCurl): string[]` — unique `{{name}}` tokens
+  referenced anywhere in the parsed request.
+- `findParameterizableVars(parsed, envVars): { name: string; value: string }[]` —
+  active-environment vars whose non-empty value appears literally in the parsed
+  request (candidates for literal→`{{var}}` swap).
+- `parameterizeParsedCurl(parsed, literal, varName): ParsedCurl` — returns a copy
+  with every occurrence of `literal` replaced by `{{varName}}` across string
+  fields.
 
 **`ParsedCurl` shape** (normalized, maps 1:1 to the UI request state):
 
 ```ts
 interface ParsedCurl {
   method: string;                       // GET, POST, ...
-  url: string;
-  headers: { name: string; value: string }[];
-  queryParams: { name: string; value: string }[];
-  body:
-    | { type: "none" }
-    | { type: "json" | "raw"; text: string }
-    | { type: "form" | "multipart"; rows: { key: string; value: string }[] };
-  authType: "none" | "bearer" | "basic";
+  url: string;                          // query string stripped into paramsRows
+  headersRows: RequestRow[];            // Authorization removed when auth extracted
+  paramsRows: RequestRow[];
+  bodyType: string;                     // "none" | "json" | "form" | "raw" | "multipart"
+  bodyText: string;                     // used when bodyType is json/raw
+  bodyRows: RequestRow[];               // used when bodyType is form/multipart
+  authType: string;                     // "none" | "bearer" | "basic"
   authConfig: AuthConfig;               // same AuthConfig used elsewhere
 }
 ```
+
+`RequestRow` / `AuthConfig` are imported from `src/hooks/useRequestState.ts`.
+Empty collections fall back to a single blank row.
 
 **Tokenizer** — shell-aware, handling:
 
@@ -98,11 +109,27 @@ interface ParsedCurl {
 Confirmation dialog using the existing `modal-backdrop` / `modal` CSS classes
 (same pattern as the Export Code Snippet modal in `App.tsx`).
 
-Props: `{ parsed: ParsedCurl; onConfirm: () => void; onCancel: () => void }`.
+Props:
+`{ parsed: ParsedCurl; envVars: Record<string,string>;
+   onConfirm: (result: { fills: Record<string,string>; parameterize: string[] }) => void;
+   onCancel: () => void }`.
 
-Renders: title "Import from curl", a read-only preview (`METHOD URL` line + a
-summary line of counts: headers / body type / auth), and **Cancel** / **Import**
-buttons. Backdrop click and ✕ = cancel.
+Renders:
+- Title "Import from cURL" and a note that the current request will be replaced.
+- A read-only preview (`METHOD URL` line + a summary line of counts: headers /
+  query params / body type / auth).
+- **Environment variables** section (only shown when there is something to do):
+  - **Fill undefined `{{vars}}`:** any `{{name}}` token used in the parsed
+    request whose name is undefined (or empty) in `envVars` is listed with a
+    text input. Filling one and importing saves it via `handleUpdateEnvVar`.
+    Leaving them blank is fine — import proceeds as-is.
+  - **Parameterize literals:** any active-environment variable whose non-empty
+    value appears literally in the parsed request is listed with a checkbox
+    "Replace `<value>` → `{{name}}`". Checked ones are swapped on import.
+    All unchecked by default.
+- **Cancel** / **Import** buttons. Backdrop click and ✕ = cancel. **Import is
+  always enabled** — clicking it with nothing filled/checked imports the request
+  exactly as pasted (default = Continue as-is).
 
 ### 3. `EnvInput` (`src/components/TableEditor.tsx`) — extend
 
@@ -144,16 +171,32 @@ existing call sites keep working).
 - `Authorization: Bearer xyz` header → bearer auth, header removed
 - `-G -d q=1 -d r=2` → GET with query params
 - multiline curl with `\` line continuations
+- `-d @payload.json` → raw body with literal `@payload.json` placeholder
+- `-F file=@logo.png` → multipart file row (`kind: "file"`, `fileName: "logo.png"`)
 - `looksLikeCurl` returns false for a plain URL / JSON / random text
-- `parseCurl` returns null for non-curl input
+- `parseCurl` throws for non-curl input
+- `collectTemplateVars` finds `{{id}}` in a URL and `{{token}}` in a header
+- `findParameterizableVars` returns a var whose value appears literally in the URL
+- `parameterizeParsedCurl` replaces the literal with `{{var}}` in url/headers/body
+
+## File references — represented as placeholders (not dropped)
+
+Files are never read from disk (the parser is pure and has no filesystem
+access), but a `@file` reference must leave a **visible placeholder** the user
+can fill in, rather than being silently discarded:
+
+- `-F field=@path/to/x.png` → a multipart body **file row** with `kind: "file"`
+  and `fileName` set (empty `fileBase64`). The Body tab shows the field with the
+  filename as a placeholder to re-attach.
+- `-d @payload.json` (and `--data*` `@file`) → a **raw body** whose text is the
+  literal `@payload.json`, serving as a placeholder the user replaces with the
+  real payload.
 
 ## Out of Scope (YAGNI)
 
-- File references: `-d @file` and `-F field=@file` are treated as literal string
-  values, not read from disk.
+- Actually reading `@file` contents from disk.
 - Cookie jars (`-c`/`--cookie-jar`).
 - Multiple requests in one paste.
-- `--data-binary` with `@file`.
 
 These are rare in pasted curls; if needed later they extend the parser without
 changing the flow.
