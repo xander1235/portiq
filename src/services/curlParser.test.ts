@@ -28,6 +28,12 @@ describe("parseCurl", () => {
     expect(r.url).toBe("https://api.example.com/users");
   });
 
+  it("keeps a URL fragment on the URL and out of the query params", () => {
+    const r = parseCurl("curl 'https://x.com/path?a=1#section'");
+    expect(r.url).toBe("https://x.com/path#section");
+    expect(r.paramsRows.map((row) => [row.key, row.value])).toEqual([["a", "1"]]);
+  });
+
   it("throws when there is no URL", () => {
     expect(() => parseCurl("curl -X POST")).toThrow();
   });

@@ -242,7 +242,14 @@ export function parseCurl(command: string): ParsedCurl {
     }
   }
 
-  // Strip any query string from the URL while preserving templates in the path.
+  // Separate off a fragment (curl ignores it, but keep it out of the query params) then
+  // strip the query string via string ops so templates in the path are preserved.
+  let fragment = "";
+  const hashIndex = finalUrl.indexOf("#");
+  if (hashIndex !== -1) {
+    fragment = finalUrl.slice(hashIndex);
+    finalUrl = finalUrl.slice(0, hashIndex);
+  }
   const queryIndex = finalUrl.indexOf("?");
   if (queryIndex !== -1) {
     const queryString = finalUrl.slice(queryIndex + 1);
@@ -251,6 +258,7 @@ export function parseCurl(command: string): ParsedCurl {
       collectedParams.push([key, value]);
     });
   }
+  finalUrl = finalUrl + fragment;
   const paramsRows: RequestRow[] =
     collectedParams.length > 0
       ? collectedParams.map(([key, value]) => ({ key, value, comment: "", enabled: true }))
