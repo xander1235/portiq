@@ -17,6 +17,9 @@ import { SegmentedControl } from "../../ui/SegmentedControl";
 import styles from "../RequestEditor.module.css";
 import { cmTheme } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
+import { summarizeTests } from "../../../services/testRunner";
+import { ScriptStep } from "../../../services/scriptSteps";
+import { ScriptStepsEditor } from "./ScriptStepsEditor";
 
 interface TestsTabProps {
     showTestOutput: boolean;
@@ -28,10 +31,13 @@ interface TestsTabProps {
     runTests: () => void;
     testsInputText: string;
     setTestsInputText: (text: string) => void;
-    testsPreText: string;
-    setTestsPreText: (text: string) => void;
-    testsPostText: string;
-    setTestsPostText: (text: string) => void;
+    testsPreSteps: ScriptStep[];
+    setTestsPreSteps: (next: ScriptStep[]) => void;
+    testsPostSteps: ScriptStep[];
+    setTestsPostSteps: (next: ScriptStep[]) => void;
+    vizScriptText: string;
+    setVizScriptText: (text: string) => void;
+    runVizScript: () => void;
     testsOutput: any;
     theme: Theme;
 }
@@ -46,55 +52,45 @@ export function TestsTab({
     runTests,
     testsInputText,
     setTestsInputText,
-    testsPreText,
-    setTestsPreText,
-    testsPostText,
-    setTestsPostText,
+    testsPreSteps,
+    setTestsPreSteps,
+    testsPostSteps,
+    setTestsPostSteps,
+    vizScriptText,
+    setVizScriptText,
+    runVizScript,
     testsOutput,
     theme
 }: TestsTabProps) {
     return (
         <>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <Button
-                    variant="ghost"
-                    className="compact"
-                    style={{
-                        padding: '4px 10px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: showTestOutput ? 'var(--accent)' : 'var(--muted)',
-                        borderColor: showTestOutput ? 'var(--accent)' : 'var(--border)',
-                        background: showTestOutput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
-                    }}
-                    onClick={() => setShowTestOutput((prev) => !prev)}
-                >
-                    Output
-                </Button>
-                <Button
-                    variant="ghost"
-                    className="compact"
-                    style={{
-                        padding: '4px 10px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: showTestInput ? 'var(--accent)' : 'var(--muted)',
-                        borderColor: showTestInput ? 'var(--accent)' : 'var(--border)',
-                        background: showTestInput ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent'
-                    }}
-                    onClick={() => setShowTestInput((prev) => !prev)}
-                >
-                    Test Input
-                </Button>
+            <div className={styles.testsToolbar}>
                 <SegmentedControl
                     value={testsMode}
                     onChange={setTestsMode}
+                    size="sm"
                     options={[
                         { value: "pre", label: "Pre-request" },
-                        { value: "post", label: "Post-response" }
+                        { value: "post", label: "Post-response" },
+                        { value: "viz", label: "Visualize" }
                     ]}
                 />
-                <Button variant="primary" className="compact" style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600 }} onClick={runTests}>Run Tests</Button>
+                <div className={styles.toolbarRight}>
+                    <button
+                        className={`${styles.toolbarChip} ${showTestOutput ? styles.toolbarChipOn : ''}`}
+                        onClick={() => setShowTestOutput((prev) => !prev)}
+                    >Output</button>
+                    <button
+                        className={`${styles.toolbarChip} ${showTestInput ? styles.toolbarChipOn : ''}`}
+                        onClick={() => setShowTestInput((prev) => !prev)}
+                    >Test Input</button>
+                    <Button
+                        variant="primary"
+                        className="compact"
+                        style={{ height: '28px', padding: '0 12px', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                        onClick={testsMode === 'viz' ? runVizScript : runTests}
+                    >{testsMode === 'viz' ? 'Run Visualization' : 'Run Tests'}</Button>
+                </div>
             </div>
             <div className={styles.testsEditor}>
                 {showTestInput && (
@@ -113,47 +109,78 @@ export function TestsTab({
                     </div>
                 )}
                 {testsMode === "pre" && (
-                    <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <CodeMirror
-                            value={testsPreText}
-                            theme={cmTheme(theme)}
-                            extensions={[javascript(), ...searchWithReplace()]}
-                            onChange={(value) => setTestsPreText(value)}
-                            basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
-                            style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                            placeholder="// Pre-request script (JavaScript)"
-                        />
-                    </div>
+                    <ScriptStepsEditor
+                        steps={testsPreSteps}
+                        onChange={setTestsPreSteps}
+                        theme={theme}
+                        placeholder="// Pre-request step (JavaScript)"
+                    />
                 )}
                 {testsMode === "post" && (
+                    <ScriptStepsEditor
+                        steps={testsPostSteps}
+                        onChange={setTestsPostSteps}
+                        theme={theme}
+                        placeholder="// Post-response step (JavaScript)"
+                    />
+                )}
+                {testsMode === "viz" && (
                     <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <CodeMirror
-                            value={testsPostText}
+                            value={vizScriptText}
                             theme={cmTheme(theme)}
                             extensions={[javascript(), ...searchWithReplace()]}
-                            onChange={(value) => setTestsPostText(value)}
+                            onChange={(value) => setVizScriptText(value)}
                             basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontSize: '13px' }}
-                            placeholder="// Post-response script (JavaScript)"
+                            placeholder={"// Visualization script — build a chart spec and call:\n// pm.visualizer.set({ type: 'bar', x: 'name', y: 'revenue' });"}
                         />
                     </div>
                 )}
-                {showTestOutput && (
-                    <div className={styles.testsOutput}>
-                        {testsOutput.map((entry: any, index: number) => (
-                            <div className={`log ${entry.type}`} key={index}>
-                                <span className="log-label">{entry.label || "script"}&gt;</span>
-                                {entry.type === "pass" && <span className="log-type">PASS</span>}
-                                {entry.type === "fail" && <span className="log-type">FAIL</span>}
-                                {entry.type === "error" && <span className="log-type">ERROR</span>}
-                                {entry.type === "info" && <span className="log-type">INFO</span>}
-                                {entry.type === "log" && <span className="log-type">LOG</span>}
-                                <span className="log-text">{entry.text}</span>
-                                {entry.errorType && <span className="log-error">({entry.errorType}{entry.errorMessage ? `: ${entry.errorMessage}` : ""})</span>}
+                {showTestOutput && (() => {
+                    const summary = summarizeTests(testsOutput);
+                    return (
+                        <div className={styles.testsOutput}>
+                            <div style={{ display: 'flex', gap: '12px', padding: '6px 8px', marginBottom: '8px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--success)' }}>✓ {summary.passed} passed</span>
+                                <span style={{ color: summary.failed ? 'var(--error)' : 'var(--muted)' }}>✗ {summary.failed} failed</span>
+                                {summary.errored > 0 && <span style={{ color: 'var(--error)' }}>⚠ {summary.errored} errored</span>}
+                                <span style={{ color: 'var(--muted)', marginLeft: 'auto' }}>{summary.duration} ms</span>
                             </div>
-                        ))}
-                    </div>
-                )}
+                            {summary.groups.map((group) => (
+                                <div key={group.name} style={{ marginBottom: '10px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'color-mix(in srgb, var(--border) 30%, transparent)', fontSize: '0.75rem', fontWeight: 700 }}>
+                                        <span>{group.name}</span>
+                                        <span style={{ color: 'var(--success)' }}>{group.passed}✓</span>
+                                        {group.failed > 0 && <span style={{ color: 'var(--error)' }}>{group.failed}✗</span>}
+                                        {group.errored > 0 && <span style={{ color: 'var(--error)' }}>{group.errored}⚠</span>}
+                                    </div>
+                                    {group.entries.map((entry, index) => (
+                                        <div className={`log ${entry.type}`} key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 10px' }}>
+                                            <span className="log-type">
+                                                {entry.type === "pass" ? "PASS" : entry.type === "fail" ? "FAIL" : "ERROR"}
+                                            </span>
+                                            <span className="log-text">{entry.text}</span>
+                                            {entry.errorMessage && <span className="log-error">— {entry.errorMessage}</span>}
+                                            {typeof entry.duration === "number" && <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: '0.7rem' }}>{entry.duration} ms</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                            {summary.console.length > 0 && (
+                                <div style={{ marginTop: '8px' }}>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Console</div>
+                                    {summary.console.map((entry, index) => (
+                                        <div className={`log ${entry.type}`} key={index}>
+                                            <span className="log-type">{entry.type.toUpperCase()}</span>
+                                            <span className="log-text">{entry.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
         </>
     );

@@ -1,26 +1,14 @@
 import React from "react";
 import rightRailStyles from "../Layout/RightRail.module.css";
-
-interface TestOutput {
-    type: string;
-    text: string;
-    label?: string;
-    errorType?: string;
-}
+import { summarizeTests, type TestEntry } from "../../services/testRunner";
 
 interface TestsPaneProps {
-    testsOutput: TestOutput[];
+    testsOutput: TestEntry[];
     setShowRightRail: (show: boolean) => void;
 }
 
 export function TestsPane({ testsOutput, setShowRightRail }: TestsPaneProps) {
-    // Parse test results if they follow a standard pattern from runScript (e.g. Test Passed/Failed)
-    let passed = 0;
-    let failed = 0;
-    if (Array.isArray(testsOutput)) {
-        passed = testsOutput.filter(o => o.text.includes("Test Passed")).length;
-        failed = testsOutput.filter(o => o.text.includes("Test Failed")).length;
-    }
+    const summary = summarizeTests(Array.isArray(testsOutput) ? testsOutput : []);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -46,21 +34,43 @@ export function TestsPane({ testsOutput, setShowRightRail }: TestsPaneProps) {
             <div className={rightRailStyles.paneSurface} style={{ padding: '12px', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                     <div style={{ flex: 1, background: 'var(--bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--success)' }}>{passed}</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--success)' }}>{summary.passed}</div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Passed</div>
                     </div>
-                    <div style={{ flex: 1, background: 'var(--bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--error-alpha, rgba(255,100,100,0.1))', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: failed > 0 ? 'var(--error)' : 'var(--text-muted)' }}>{failed}</div>
+                    <div style={{ flex: 1, background: 'var(--bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: summary.failed > 0 ? 'var(--error)' : 'var(--text-muted)' }}>{summary.failed}</div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Failed</div>
+                    </div>
+                    <div style={{ flex: 1, background: 'var(--bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: summary.errored > 0 ? 'var(--error)' : 'var(--text-muted)' }}>{summary.errored}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Errored</div>
                     </div>
                 </div>
 
-                <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Raw Output</h4>
-                <pre style={{ margin: 0, padding: '12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.8rem', minHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {testsOutput && testsOutput.length > 0
-                        ? testsOutput.map(o => `[${o.type.toUpperCase()}] ${o.text}`).join('\n')
-                        : "No test output available for this request."}
-                </pre>
+                {summary.groups.map((group) => (
+                    <div key={group.name} style={{ marginBottom: '12px' }}>
+                        <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', display: 'flex', gap: '8px' }}>
+                            <span>{group.name}</span>
+                            <span style={{ color: 'var(--success)' }}>{group.passed}✓</span>
+                            {group.failed > 0 && <span style={{ color: 'var(--error)' }}>{group.failed}✗</span>}
+                        </h4>
+                        {group.entries.map((entry, index) => (
+                            <div key={index} style={{ display: 'flex', gap: '8px', fontSize: '0.8rem', padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                                <span style={{ color: entry.type === 'pass' ? 'var(--success)' : 'var(--error)', fontWeight: 600, minWidth: '44px' }}>
+                                    {entry.type.toUpperCase()}
+                                </span>
+                                <span style={{ flex: 1 }}>{entry.text}</span>
+                                {entry.errorMessage && <span style={{ color: 'var(--error)', fontSize: '0.72rem' }}>{entry.errorMessage}</span>}
+                            </div>
+                        ))}
+                    </div>
+                ))}
+
+                {summary.groups.length === 0 && (
+                    <pre style={{ margin: 0, padding: '12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.8rem', minHeight: '100px' }}>
+                        No test output available for this request.
+                    </pre>
+                )}
             </div>
         </div>
     );

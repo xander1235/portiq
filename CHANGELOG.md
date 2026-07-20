@@ -1,5 +1,17 @@
 # Portiq
 
+## 0.6.0
+
+### Minor Changes
+
+- Paste a cURL command into the request URL bar to build the current request: a confirmation dialog previews the parsed method, URL, query params, headers, body, and auth, and can fill undefined `{{variables}}` or parameterize literals that match existing environment values before importing. `@file` references become visible placeholders. The same parser now also backs the "Import from cURL" new-request flow, fixing a bug where it produced empty requests.
+- Added a Tests tab with grouped test suites and a Visualize tab that renders SVG visualizations from response data.
+- Introduced named script steps for pre/post request scripts and a more compact request toolbar.
+
+### Patch Changes
+
+- cURL import preserves `{{templates}}` in the URL path, keeps `=` inside header/form/query values, keeps raw environment templates in headers so they resolve at send time, and preserves URL fragments.
+
 ## 0.5.0
 
 ### Minor Changes

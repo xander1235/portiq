@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { DagGraph } from "../components/ProtocolPanes/dag/types";
+import { ScriptStep, toSteps } from "../services/scriptSteps";
 
 export interface RequestRow {
     key: string;
@@ -56,8 +57,11 @@ export interface RequestItem {
     url: string;
     headersText?: string;
     bodyText?: string;
-    testsPreText?: string;
-    testsPostText?: string;
+    testsPreText?: string;   // deprecated: migrated to testsPreSteps
+    testsPostText?: string;  // deprecated: migrated to testsPostSteps
+    testsPreSteps?: ScriptStep[];
+    testsPostSteps?: ScriptStep[];
+    vizScriptText?: string;
     testsInputText?: string;
     httpVersion?: string;
     requestTimeoutMs?: number;
@@ -97,8 +101,9 @@ export function useRequestState() {
     const [url, setUrl] = useLocalStorage<string>("ui_url", "https://api.example.com/users");
     const [headersText, setHeadersText] = useLocalStorage<string>("ui_headersText", '{\n  "Content-Type": "application/json"\n}');
     const [bodyText, setBodyText] = useLocalStorage<string>("ui_bodyText", "");
-    const [testsPreText, setTestsPreText] = useLocalStorage<string>("ui_testsPreText", "");
-    const [testsPostText, setTestsPostText] = useLocalStorage<string>("ui_testsPostText", "");
+    const [testsPreSteps, setTestsPreSteps] = useLocalStorage<ScriptStep[]>("ui_testsPreSteps", []);
+    const [testsPostSteps, setTestsPostSteps] = useLocalStorage<ScriptStep[]>("ui_testsPostSteps", []);
+    const [vizScriptText, setVizScriptText] = useLocalStorage<string>("ui_vizScriptText", "");
     const [testsInputText, setTestsInputText] = useLocalStorage<string>("ui_testsInputText", '{\n  "status": 200,\n  "body": {"ok": true}\n}');
     const [paramsRows, setParamsRows] = useLocalStorage<RequestRow[]>("ui_paramsRows", [{ key: "", value: "", comment: "", enabled: true }]);
     const [headersRows, setHeadersRows] = useLocalStorage<RequestRow[]>("ui_headersRows", [{ key: "Content-Type", value: "application/json", comment: "", enabled: true }]);
@@ -232,8 +237,9 @@ export function useRequestState() {
             url: "",
             headersText: "",
             bodyText: "",
-            testsPreText: "",
-            testsPostText: "",
+            testsPreSteps: [],
+            testsPostSteps: [],
+            vizScriptText: "",
             testsInputText: "",
             httpVersion: "auto",
             requestTimeoutMs: 30000,
@@ -301,8 +307,8 @@ export function useRequestState() {
             setUrl("");
             setHeadersText("");
             setBodyText("");
-            setTestsPreText("");
-            setTestsPostText("");
+            setTestsPreSteps([]);
+            setTestsPostSteps([]);
             setHeadersRows([{ key: "", value: "", comment: "", enabled: true }]);
             setParamsRows([{ key: "", value: "", comment: "", enabled: true }]);
             setAuthRows([{ key: "", value: "", comment: "", enabled: false }]);
@@ -343,8 +349,9 @@ export function useRequestState() {
         setUrl(req.url || "");
         setHeadersText(req.headersText || "");
         setBodyText(req.bodyText || "");
-        setTestsPreText(req.testsPreText || "");
-        setTestsPostText(req.testsPostText || "");
+        setTestsPreSteps(toSteps(req.testsPreSteps, req.testsPreText));
+        setTestsPostSteps(toSteps(req.testsPostSteps, req.testsPostText));
+        setVizScriptText(req.vizScriptText || "");
         setTestsInputText(req.testsInputText || "{\n  \"status\": 200,\n  \"body\": {\"ok\": true}\n}");
         setHttpVersion(req.httpVersion || "auto");
         setRequestTimeoutMs(req.requestTimeoutMs || 30000);
@@ -401,8 +408,11 @@ export function useRequestState() {
             url,
             headersText,
             bodyText,
-            testsPreText,
-            testsPostText,
+            testsPreSteps,
+            testsPostSteps,
+            testsPreText: undefined,
+            testsPostText: undefined,
+            vizScriptText,
             testsInputText,
             httpVersion,
             requestTimeoutMs,
@@ -468,8 +478,9 @@ export function useRequestState() {
                 protocol: setProtocol,
                 headersText: setHeadersText,
                 bodyText: setBodyText,
-                testsPreText: setTestsPreText,
-                testsPostText: setTestsPostText,
+                testsPreSteps: setTestsPreSteps,
+                testsPostSteps: setTestsPostSteps,
+                vizScriptText: setVizScriptText,
                 testsInputText: setTestsInputText,
                 authType: setAuthType,
                 httpVersion: setHttpVersion,
@@ -945,8 +956,9 @@ export function useRequestState() {
         url, setUrl,
         headersText, setHeadersText,
         bodyText, setBodyText,
-        testsPreText, setTestsPreText,
-        testsPostText, setTestsPostText,
+        testsPreSteps, setTestsPreSteps,
+        testsPostSteps, setTestsPostSteps,
+        vizScriptText, setVizScriptText,
         testsInputText, setTestsInputText,
         paramsRows, setParamsRows,
         headersRows, setHeadersRows,

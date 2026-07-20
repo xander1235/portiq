@@ -9,13 +9,24 @@ import { linter, lintGutter } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
 import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse, fetchModels } from "./services/ai";
+import { createTestHarness } from "./services/testRunner";
+import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
+import { normalizeVizSpec, type VizSpec } from "./services/visualize";
+import {
+  parseCurl,
+  inferRequestNameFromUrl,
+  looksLikeCurl,
+  parameterizeParsedCurl,
+  type ParsedCurl,
+} from "./services/curlParser";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
 import { xmlLinter } from "./utils/codemirror/xmlExtensions";
 import { customJsonLinter } from "./utils/codemirror/jsonExtensions";
+import { cmTheme } from "./theme/codemirrorTheme";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
@@ -23,6 +34,7 @@ import { get, set } from "idb-keyval";
 
 import { TableEditor } from "./components/TableEditor";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
+import { CurlImportModal } from "./components/Modals/CurlImportModal";
 import { ExportModal } from "./components/Modals/ExportModal";
 import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal";
 import { SettingsModal } from "./components/Modals/SettingsModal";
@@ -130,88 +142,20 @@ function getValueByPath(root: any, path: string): any {
   return current;
 }
 
-const SnippetLanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+// Shared icons + target metadata for the Export code snippet modal.
+const SNIPPET_ICON_CODE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>;
+const SNIPPET_ICON_CHECK = <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
+const SNIPPET_ICON_COPY = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const options = [
-    { id: "curl", name: "cURL", desc: "Command line utility", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg> },
-    { id: "raw", name: "Raw HTTP", desc: "Plain HTTP text", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
-    { id: "python", name: "Python", desc: "Requests library", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4-4 4"></path><path d="M10 16h4"></path><circle cx="12" cy="12" r="10"></circle></svg> },
-    { id: "node", name: "Node.js", desc: "Native fetch API", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> },
-    { id: "go", name: "Go", desc: "net/http package", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> },
-    { id: "c", name: "C", desc: "libcurl binding", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 16V8l6 8V8"></path></svg> },
-    { id: "csharp", name: "C#", desc: "HttpClient", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path></svg> },
-  ];
-
-  const selected = options.find(o => o.id === value) || options[0];
-
-  return (
-    <div ref={dropdownRef} style={{ position: 'relative', minWidth: '240px', zIndex: 10 }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '10px 14px', background: 'var(--panel)', border: '1px solid var(--border)',
-          borderRadius: '8px', cursor: 'pointer', userSelect: 'none', transition: 'box-shadow 0.2s, border-color 0.2s',
-          ...(isOpen ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px var(--accent-alpha, rgba(var(--accent-rgb), 0.2))' } : {})
-        }}
-      >
-        <span style={{ color: 'var(--accent)', display: 'flex', background: 'var(--bg)', padding: '6px', borderRadius: '6px', border: '1px solid var(--border)' }}>{selected.icon}</span>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)', lineHeight: 1 }}>{selected.name}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1 }}>{selected.desc}</span>
-        </div>
-        <svg style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-      </div>
-
-      {isOpen && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-          background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '8px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden', padding: '6px', zIndex: 100
-        }}>
-          {options.map((opt) => (
-            <div
-              key={opt.id}
-              onClick={() => { onChange(opt.id); setIsOpen(false); }}
-              onMouseOver={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = 'var(--bg)'; }}
-              onMouseOut={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = opt.id === value ? 'var(--bg)' : 'transparent'; }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', transition: 'background 0.1s',
-                background: opt.id === value ? 'var(--bg)' : 'transparent',
-                border: '1px solid transparent',
-                ...(opt.id === value ? { borderColor: 'var(--border)' } : {})
-              }}
-            >
-              <span style={{ color: opt.id === value ? 'var(--accent)' : 'var(--text-muted)', display: 'flex' }}>{opt.icon}</span>
-              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: opt.id === value ? 'var(--text)' : 'var(--text-muted)', lineHeight: 1 }}>{opt.name}</span>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1 }}>{opt.desc}</span>
-              </div>
-              {opt.id === value && (
-                <span style={{ color: 'var(--accent)' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+const SNIPPET_LANGS = [
+  { id: "curl", name: "cURL", desc: "Command line utility", file: "request.sh", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg> },
+  { id: "raw", name: "Raw HTTP", desc: "Plain HTTP text", file: "request.http", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
+  { id: "python", name: "Python", desc: "Requests library", file: "request.py", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4-4 4"></path><path d="M10 16h4"></path><circle cx="12" cy="12" r="10"></circle></svg> },
+  { id: "node", name: "Node.js", desc: "Native fetch API", file: "request.mjs", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> },
+  { id: "go", name: "Go", desc: "net/http package", file: "main.go", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> },
+  { id: "c", name: "C", desc: "libcurl binding", file: "request.c", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 16V8l6 8V8"></path></svg> },
+  { id: "csharp", name: "C#", desc: "HttpClient", file: "Request.cs", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path></svg> },
+];
 
 function App() {
   const {
@@ -219,8 +163,9 @@ function App() {
     url, setUrl,
     headersText, setHeadersText,
     bodyText, setBodyText,
-    testsPreText, setTestsPreText,
-    testsPostText, setTestsPostText,
+    testsPreSteps, setTestsPreSteps,
+    testsPostSteps, setTestsPostSteps,
+    vizScriptText, setVizScriptText,
     testsInputText, setTestsInputText,
     paramsRows, setParamsRows,
     headersRows, setHeadersRows,
@@ -530,6 +475,8 @@ function App() {
   const [testsOutput, setTestsOutput] = useState<any[]>([]);
   const [headersMode, setHeadersMode] = useLocalStorage("ui_headersMode", "table");
   const [testsMode, setTestsMode] = useLocalStorage("ui_testsMode", "post");
+  const [vizSpec, setVizSpec] = useState<VizSpec | null>(null);
+  const [vizError, setVizError] = useState<string | null>(null);
   const [showTestInput, setShowTestInput] = useState(false);
   const [showTestOutput, setShowTestOutput] = useState(false);
   const [selectedTablePath, setSelectedTablePath] = useState("$");
@@ -540,6 +487,7 @@ function App() {
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
   const [showImportCurlModal, setShowImportCurlModal] = useState(false);
+  const [pendingCurl, setPendingCurl] = useState<ParsedCurl | null>(null);
   const [showImportCollisionModal, setShowImportCollisionModal] = useState(false);
   const [importCollisionData, setImportCollisionData] = useState<any>(null);
   const [importCollisionNameDraft, setImportCollisionNameDraft] = useState("");
@@ -552,6 +500,14 @@ function App() {
   const [showSnippetModal, setShowSnippetModal] = useState(false);
   const [snippetLanguage, setSnippetLanguage] = useState("curl");
   const [snippetInterpolate, setSnippetInterpolate] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
+  const snippetCopyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copySnippet = () => {
+    navigator.clipboard.writeText(generateSnippet());
+    setSnippetCopied(true);
+    if (snippetCopyTimer.current) clearTimeout(snippetCopyTimer.current);
+    snippetCopyTimer.current = setTimeout(() => setSnippetCopied(false), 1500);
+  };
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showGitHubSyncModal, setShowGitHubSyncModal] = useState(false);
@@ -667,6 +623,8 @@ function App() {
     // Save current response to cache before switching
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
+      setVizSpec(null);
+      setVizError(null);
     }
     syncDraftToCollection();
     loadRequest(req);
@@ -715,6 +673,8 @@ function App() {
     // Save current response before switching
     if (currentRequestId) {
       cacheResponseForRequest(currentRequestId, response, responseSummary);
+      setVizSpec(null);
+      setVizError(null);
     }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
@@ -887,8 +847,11 @@ function App() {
       if (state.url) setUrl(state.url);
       if (state.headersText) setHeadersText(state.headersText);
       if (state.bodyText !== undefined) setBodyText(state.bodyText);
-      if (state.testsPreText !== undefined) setTestsPreText(state.testsPreText);
-      if (state.testsPostText !== undefined) setTestsPostText(state.testsPostText);
+      if (state.testsPreSteps !== undefined || state.testsPreText !== undefined)
+        setTestsPreSteps(toSteps(state.testsPreSteps, state.testsPreText));
+      if (state.testsPostSteps !== undefined || state.testsPostText !== undefined)
+        setTestsPostSteps(toSteps(state.testsPostSteps, state.testsPostText));
+      if (state.vizScriptText !== undefined) setVizScriptText(state.vizScriptText);
       if (state.testsInputText) setTestsInputText(state.testsInputText);
       if (state.httpVersion) setHttpVersion(state.httpVersion);
       if (state.requestTimeoutMs) setRequestTimeoutMs(state.requestTimeoutMs);
@@ -934,8 +897,8 @@ function App() {
     setUrl,
     setHeadersText,
     setBodyText,
-    setTestsPreText,
-    setTestsPostText,
+    setTestsPreSteps,
+    setTestsPostSteps,
     setTestsInputText,
     setHttpVersion,
     setRequestTimeoutMs,
@@ -1009,8 +972,9 @@ function App() {
       url,
       headersText,
       bodyText,
-      testsPreText,
-      testsPostText,
+      testsPreSteps,
+      testsPostSteps,
+      vizScriptText,
       testsInputText,
       httpVersion,
       requestTimeoutMs,
@@ -1052,8 +1016,9 @@ function App() {
     url,
     headersText,
     bodyText,
-    testsPreText,
-    testsPostText,
+    testsPreSteps,
+    testsPostSteps,
+    vizScriptText,
     testsInputText,
     httpVersion,
     requestTimeoutMs,
@@ -1128,8 +1093,9 @@ function App() {
         url,
         headersText,
         bodyText,
-        testsPreText,
-        testsPostText,
+        testsPreSteps,
+        testsPostSteps,
+        vizScriptText,
         testsInputText,
         httpVersion,
         requestTimeoutMs,
@@ -1171,8 +1137,9 @@ function App() {
     url,
     headersText,
     bodyText,
-    testsPreText,
-    testsPostText,
+    testsPreSteps,
+    testsPostSteps,
+    vizScriptText,
     testsInputText,
     httpVersion,
     requestTimeoutMs,
@@ -1265,278 +1232,6 @@ function App() {
     setImportCollisionData(null);
   }
 
-  function tokenizeShellCommand(command: string): string[] {
-    const input = String(command || "").replace(new RegExp("\\\\\r?\\n", "g"), " ").trim();
-    const tokens = [];
-    let current = "";
-    let quote = null;
-    let escaping = false;
-
-    for (let i = 0; i < input.length; i += 1) {
-      const char = input[i];
-      if (escaping) {
-        current += char;
-        escaping = false;
-        continue;
-      }
-      if (char === "\\" && quote !== "'") {
-        escaping = true;
-        continue;
-      }
-      if (quote) {
-        if (char === quote) {
-          quote = null;
-        } else {
-          current += char;
-        }
-        continue;
-      }
-      if (char === "\"" || char === "'") {
-        quote = char;
-        continue;
-      }
-      if (/\s/.test(char)) {
-        if (current) {
-          tokens.push(current);
-          current = "";
-        }
-        continue;
-      }
-      current += char;
-    }
-
-    if (current) tokens.push(current);
-    return tokens;
-  }
-
-  function inferRequestNameFromUrl(value: string) {
-    try {
-      const parsed = new URL(value);
-      const segments = parsed.pathname.split("/").filter(Boolean);
-      return segments.length ? segments[segments.length - 1] : parsed.hostname;
-    } catch {
-      return "Imported cURL Request";
-    }
-  }
-
-  function parseCurlCommand(command: string) {
-    const tokens = tokenizeShellCommand(command);
-    if (tokens.length === 0 || tokens[0] !== "curl") {
-      throw new Error("Command must start with curl");
-    }
-
-    let method = "";
-    let urlValue = "";
-    let explicitMethod = false;
-    let useQueryString = false;
-    const headers: Record<string, string> = {};
-    const dataParts: string[] = [];
-    const formParts: string[] = [];
-
-    const readValue = (index: number, label: string): string => {
-      const value = tokens[index + 1];
-      if (value == null) throw new Error(`Missing value for ${label}`);
-      return value;
-    };
-
-    for (let i = 1; i < tokens.length; i += 1) {
-      const token = tokens[i];
-      const nextValue = () => {
-        const value = readValue(i, token);
-        i += 1;
-        return value;
-      };
-
-      if (token === "-X" || token === "--request") {
-        method = nextValue().toUpperCase();
-        explicitMethod = true;
-        continue;
-      }
-      if (token.startsWith("--request=")) {
-        method = token.split("=", 2)[1].toUpperCase();
-        explicitMethod = true;
-        continue;
-      }
-      if (token === "-H" || token === "--header") {
-        const header = nextValue();
-        const idx = header.indexOf(":");
-        if (idx !== -1) {
-          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
-        }
-        continue;
-      }
-      if (token.startsWith("--header=")) {
-        const header = token.split("=", 2)[1];
-        const idx = header.indexOf(":");
-        if (idx !== -1) {
-          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
-        }
-        continue;
-      }
-      if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
-        dataParts.push(nextValue());
-        continue;
-      }
-      if (token.startsWith("--data=") || token.startsWith("--data-raw=") || token.startsWith("--data-binary=") || token.startsWith("--data-ascii=") || token.startsWith("--data-urlencode=")) {
-        dataParts.push(token.split("=", 2)[1]);
-        continue;
-      }
-      if (token === "-F" || token === "--form" || token === "--form-string") {
-        formParts.push(nextValue());
-        continue;
-      }
-      if (token.startsWith("--form=") || token.startsWith("--form-string=")) {
-        formParts.push(token.split("=", 2)[1]);
-        continue;
-      }
-      if (token === "-G" || token === "--get") {
-        useQueryString = true;
-        continue;
-      }
-      if (token === "--url") {
-        urlValue = nextValue();
-        continue;
-      }
-      if (token.startsWith("--url=")) {
-        urlValue = token.split("=", 2)[1];
-        continue;
-      }
-      if (token === "-u" || token === "--user") {
-        const creds = nextValue();
-        headers["Authorization"] = `Basic ${btoa(creds)}`;
-        continue;
-      }
-      if (!token.startsWith("-") && !urlValue) {
-        urlValue = token;
-      }
-    }
-
-    if (!urlValue) {
-      throw new Error("cURL command does not contain a URL");
-    }
-
-    const normalizedMethod = explicitMethod
-      ? method
-      : (formParts.length > 0 || dataParts.length > 0) && !useQueryString
-        ? "POST"
-        : "GET";
-
-    let finalUrl = urlValue;
-    let bodyType = "none";
-    let bodyTextValue = "";
-    let bodyRowsValue: RequestRow[] = [{ key: "", value: "", enabled: true, comment: "" }];
-
-    if (useQueryString && dataParts.length > 0) {
-      const urlObject = new URL(finalUrl);
-      dataParts.forEach((part) => {
-        const [key, value = ""] = part.split("=", 2);
-        urlObject.searchParams.append(key, value);
-      });
-      finalUrl = urlObject.toString();
-    } else if (formParts.length > 0) {
-      bodyType = "multipart";
-      bodyRowsValue = formParts.map((part) => {
-        const [key, rawValue = ""] = part.split("=", 2);
-        if (rawValue.startsWith("@")) {
-          const filePath = rawValue.slice(1);
-          const fileName = filePath.split(/[\/]/).pop() || "upload.bin";
-          return {
-            key,
-            value: "",
-            enabled: true,
-            kind: "file",
-            fileName,
-            fileBase64: "",
-            mimeType: "application/octet-stream",
-            sourcePath: filePath,
-            comment: ""
-          };
-        }
-        return { key, value: rawValue, enabled: true, kind: "text", comment: "" };
-      });
-    } else if (dataParts.length > 0 && !useQueryString) {
-      const joined = dataParts.join("&");
-      const contentType = Object.keys(headers as Record<string, string>).find((key) => key.toLowerCase() === "content-type");
-      const contentTypeValue = contentType ? (headers as Record<string, string>)[contentType].toLowerCase() : "";
-      if (contentTypeValue.includes("application/json") || /^[\[{]/.test(joined.trim())) {
-        bodyType = "json";
-        bodyTextValue = joined;
-      } else if (contentTypeValue.includes("application/x-www-form-urlencoded") || dataParts.every((part) => part.includes("="))) {
-        bodyType = "form";
-        bodyRowsValue = dataParts.map((part) => {
-          const [key, value = ""] = part.split("=", 2);
-          return { key, value, enabled: true, comment: "" };
-        });
-      } else {
-        bodyType = "raw";
-        bodyTextValue = joined;
-      }
-    }
-
-    let paramsRowsValue: RequestRow[] = [{ key: "", value: "", enabled: true, comment: "" }];
-    try {
-      const urlObject = new URL(finalUrl);
-      const paramRows = Array.from(urlObject.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true, comment: "" }));
-      paramsRowsValue = paramRows.length > 0 ? paramRows : paramsRowsValue;
-      urlObject.search = "";
-      finalUrl = urlObject.toString();
-    } catch {
-      // ignore URL parsing failure
-    }
-
-    const headersRowsValue: RequestRow[] = Object.keys(headers).length > 0 ? objectToRows(headers) : [{ key: "", value: "", enabled: true, comment: "" }];
-    const requestName = inferRequestNameFromUrl(finalUrl);
-
-    const DEFAULT_WS_CONFIG: WsConfig = {
-      headersText: "{\n}",
-      headersRows: [{ key: "", value: "", comment: "", enabled: true }],
-      headersMode: "table",
-      protocolsText: "",
-      protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
-      autoReconnect: false,
-      reconnectInterval: 3000,
-      connectTimeout: 10000,
-      messageType: "text",
-      messages: [] as any[]
-    };
-
-    const httpNewReq: RequestItem = {
-      type: "request",
-      id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: requestName,
-      description: "",
-      tags: [],
-      protocol: "http", // Added protocol here
-      method: normalizedMethod,
-      url: finalUrl,
-      headersText: JSON.stringify(headers, null, 2),
-      bodyText: bodyTextValue,
-      testsPreText: "",
-      testsPostText: "",
-      testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
-      httpVersion: "auto",
-      requestTimeoutMs: 30000,
-      bodyType,
-      paramsRows: paramsRowsValue as RequestRow[],
-      headersRows: headersRowsValue as RequestRow[],
-      authRows: [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }],
-      authType: "none",
-      authConfig: {
-        bearer: { token: "" },
-        basic: { username: "", password: "" },
-        api_key: { key: "", value: "", add_to: "header" }
-      },
-      bodyRows: bodyRowsValue as RequestRow[],
-      graphqlConfig: {
-        query: "",
-        variables: "{}",
-        operationName: "",
-        headers: {}
-      },
-      wsConfig: DEFAULT_WS_CONFIG
-    };
-  }
-
   function importCollection() {
     const input = document.createElement("input");
     input.type = "file";
@@ -1594,11 +1289,22 @@ function App() {
   function handleImportCurlSubmit() {
     if (!importCurlDraft.trim()) return;
     try {
-      const parsedReq = parseCurlCommand(importCurlDraft);
+      const parsed = parseCurl(importCurlDraft);
       const createdReq = addRequestToCollection(null, (req) => {
-        Object.assign(req, parsedReq);
+        Object.assign(req, {
+          method: parsed.method,
+          url: parsed.url,
+          headersRows: parsed.headersRows,
+          paramsRows: parsed.paramsRows,
+          bodyType: parsed.bodyType,
+          bodyText: parsed.bodyText,
+          bodyRows: parsed.bodyRows,
+          authType: parsed.authType,
+          authConfig: parsed.authConfig,
+        });
         req.type = "request";
         req.id = req.id || "req_" + Date.now();
+        req.name = req.name || inferRequestNameFromUrl(parsed.url);
         req.description = req.description || "";
         req.tags = req.tags || [];
         return req;
@@ -1611,6 +1317,62 @@ function App() {
     } catch (err: any) {
       alert("Failed to parse the provided cURL command. Error: " + err.message);
     }
+  }
+
+  function handleCurlPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text");
+    if (!looksLikeCurl(text)) return; // normal paste
+    try {
+      const parsed = parseCurl(text);
+      e.preventDefault(); // keep the raw curl out of the URL field
+      setPendingCurl(parsed);
+    } catch {
+      // not parseable as curl — let it paste normally
+    }
+  }
+
+  function applyParsedCurlToCurrent(parsed: ParsedCurl) {
+    const headersText = JSON.stringify(rowsToObject(parsed.headersRows, false), null, 2);
+    setMethod(parsed.method);
+    setUrl(parsed.url);
+    setParamsRows(parsed.paramsRows);
+    setHeadersRows(parsed.headersRows);
+    setHeadersText(headersText);
+    setBodyType(parsed.bodyType);
+    setBodyText(parsed.bodyText);
+    setBodyRows(parsed.bodyRows);
+    setAuthType(parsed.authType);
+    setAuthConfig(parsed.authConfig);
+    if (currentRequestId) {
+      updateRequestById(currentRequestId as string, {
+        method: parsed.method,
+        url: parsed.url,
+        paramsRows: parsed.paramsRows,
+        headersRows: parsed.headersRows,
+        headersText,
+        bodyType: parsed.bodyType,
+        bodyText: parsed.bodyText,
+        bodyRows: parsed.bodyRows,
+        authType: parsed.authType,
+        authConfig: parsed.authConfig,
+      });
+    }
+    setPendingCurl(null);
+  }
+
+  function handleCurlConfirm(result: { fills: Record<string, string>; parameterize: string[] }) {
+    if (!pendingCurl) return;
+    let parsed = pendingCurl;
+    // 1. Swap chosen literals for {{var}} references first.
+    for (const name of result.parameterize) {
+      const value = envVars[name];
+      if (value) parsed = parameterizeParsedCurl(parsed, value, name);
+    }
+    // 2. Persist any newly-filled variable values into the active environment.
+    for (const [name, value] of Object.entries(result.fills)) {
+      if (value) handleUpdateEnvVar(name, value);
+    }
+    applyParsedCurlToCurrent(parsed);
   }
 
   function handleImportApiSubmit() {
@@ -2391,7 +2153,7 @@ function App() {
         },
         response: null
       };
-      await runScript(testsPreText, preContext, preOutput);
+      await runSteps(testsPreSteps, preContext, preOutput, "pre-script");
       payload.method = preContext.request.method || payload.method;
       payload.url = preContext.request.url || payload.url;
       payload.headers = preContext.request.headers || payload.headers;
@@ -2461,7 +2223,7 @@ function App() {
       });
 
       const postOutput: any[] = [];
-      await runScript(testsPostText, { request: payload, response: result }, postOutput);
+      await runSteps(testsPostSteps, { request: payload, response: result }, postOutput, "post-script");
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
@@ -2516,7 +2278,7 @@ function App() {
         },
         response: null
       };
-      await runScript(testsPreText, preContext, preOutput);
+      await runSteps(testsPreSteps, preContext, preOutput, "pre-script");
       if (preOutput.length) {
         setTestsOutput(preOutput);
         setShowTestOutput(true);
@@ -2565,7 +2327,7 @@ function App() {
       setHistory(prev => [...(prev || []), historyEntry].filter(h => now - h.timestamp < retentionMs));
 
       const postOutput: any[] = [];
-      await runScript(testsPostText, { request: preContext.request, response: result }, postOutput);
+      await runSteps(testsPostSteps, { request: preContext.request, response: result }, postOutput, "post-script");
       if (postOutput.length) {
         setTestsOutput(postOutput);
         setShowTestOutput(true);
@@ -2674,7 +2436,7 @@ function App() {
     };
     const tests = await generateTestsFromResponse({ method, url }, response, aiSettings);
     setActiveRequestTab("Tests");
-    setTestsPostText(tests.join("\n"));
+    setTestsPostSteps((prev) => [...(prev || []), { ...emptyStep("AI Generated"), script: tests.join("\n") }]);
   }
 
   async function handleAiChatSubmit(overridePrompt?: any) {
@@ -2770,7 +2532,7 @@ function App() {
             } else if (op.type === "GENERATE_TESTS") {
               if (op.payload && op.payload.tests && Array.isArray(op.payload.tests)) {
                 setActiveRequestTab("Tests");
-                setTestsPostText(op.payload.tests.join("\n"));
+                setTestsPostSteps((prev) => [...(prev || []), { ...emptyStep("AI Generated"), script: op.payload.tests.join("\n") }]);
                 assistantMsg += "\n\n*(Tests have been added to your Tests > Post-response script tab.)*";
               }
             } else if (op.type === "DELETE_REQUEST") {
@@ -2836,8 +2598,9 @@ function App() {
                 url: (op.payload.url || "") as string,
                 headersText: JSON.stringify(op.payload.headers || {}, null, 2),
                 bodyText: JSON.stringify(op.payload.body || {}, null, 2),
-                testsPreText: "",
-                testsPostText: "",
+                testsPreSteps: [],
+                testsPostSteps: [],
+                vizScriptText: "",
                 testsInputText: "",
                 protocol: (op.payload.protocol || "http") as string,
                 httpVersion: (op.payload.httpVersion || "1.1") as string,
@@ -2929,9 +2692,9 @@ function App() {
         response: input.response || input
       };
       if (testsMode === "pre") {
-        await runScript(testsPreText, ctx, out, "pre-script");
+        await runSteps(testsPreSteps, ctx, out, "pre-script");
       } else {
-        await runScript(testsPostText, ctx, out, "post-script");
+        await runSteps(testsPostSteps, ctx, out, "post-script");
       }
       setTestsOutput(out.length ? out : [{ type: "info", text: "Tests executed.", label: testsMode }]);
       setShowTestOutput(true);
@@ -2941,12 +2704,34 @@ function App() {
     }
   }
 
-  async function runScript(code: string, context: any, output: any[], label?: string) {
+  async function runVizScript() {
+    const capture: { vizSpec?: any } = {};
+    const out: any[] = [];
+    const rows = Array.isArray(tableRows) ? tableRows : [];
+    try {
+      await runScript(vizScriptText, { request: {}, response }, out, "viz-script", capture);
+    } catch {
+      // script errors are surfaced via the tab; ignore here
+    }
+    const errEntry = out.find((e: any) => e.type === "error");
+    setVizError(errEntry ? (errEntry.errorMessage || errEntry.text || "Visualization script error") : null);
+    const spec = normalizeVizSpec(capture.vizSpec, rows);
+    setVizSpec(spec);
+  }
+
+  async function runSteps(steps: ScriptStep[], context: any, output: any[], label: string) {
+    for (const step of steps || []) {
+      const name = (step.name || "").trim() || "Untitled step";
+      await runScript(step.script, context, output, label, undefined, name);
+    }
+  }
+
+  async function runScript(code: string, context: any, output: any[], label?: string, capture?: { vizSpec?: any }, group?: string) {
     if (!code || !code.trim()) return;
     const safeOutput = output || [];
     const request = context.request || {};
     const response = context.response || {};
-    const pm = buildPm(request, response, safeOutput, label || "script");
+    const pm = buildPm(request, response, safeOutput, label || "script", capture, group);
     const api = {
       log: (msg: any) => safeOutput.push({ type: "log", text: String(msg), label: label || "script" }),
       setHeader: (key: string, value: string) => {
@@ -2974,13 +2759,14 @@ function App() {
         type: "error",
         text: `Script Error: ${err.message}`,
         label: label || "script",
+        group,
         errorType: err.name,
         stack: err.stack
       });
     }
   }
 
-  function buildPm(request: any, response: any, output: any[], label: string) {
+  function buildPm(request: any, response: any, output: any[], label: string, capture?: { vizSpec?: any }, group?: string) {
     const env = environments.find((entry) => entry.id === activeEnvId) || null;
     const collection = collections.find((entry) => entry.id === activeCollectionId) || null;
 
@@ -3021,6 +2807,8 @@ function App() {
         };
       }));
     };
+
+    const harness = createTestHarness(output, label, undefined, group);
 
     const pm = {
       request: {
@@ -3070,20 +2858,11 @@ function App() {
         unset: (key: string) => unsetCollectionVar(key),
         toObject: () => ({ ...(collection?.variables || {}) })
       },
-      test: (name: string, fn: () => void) => {
-        try {
-          fn();
-          output.push({ type: "pass", text: name, label });
-        } catch (err: any) {
-          output.push({
-            type: "fail",
-            text: name,
-            label,
-            errorType: err.name,
-            errorMessage: err.message
-          });
-        }
+      visualizer: {
+        set: (spec: any) => { if (capture) capture.vizSpec = spec; }
       },
+      describe: (name: string, fn: () => any) => harness.describe(name, fn),
+      test: (name: string, fn: () => any) => harness.test(name, fn),
       expect: (value: any) => ({
         to: {
           equal: (expected: any) => {
@@ -3391,13 +3170,17 @@ function App() {
                   setBodyRows={setBodyRows}
                   testsInputText={testsInputText}
                   setTestsInputText={setTestsInputText}
-                  testsPreText={testsPreText}
-                  setTestsPreText={setTestsPreText}
-                  testsPostText={testsPostText}
-                  setTestsPostText={setTestsPostText}
+                  testsPreSteps={testsPreSteps}
+                  setTestsPreSteps={setTestsPreSteps}
+                  testsPostSteps={testsPostSteps}
+                  setTestsPostSteps={setTestsPostSteps}
+                  vizScriptText={vizScriptText}
+                  setVizScriptText={setVizScriptText}
+                  runVizScript={runVizScript}
                   testsOutput={testsOutput}
                   handleCancelSend={handleCancelHttpSend}
                   theme={theme}
+                  onCurlPaste={handleCurlPaste}
                 />
               )}
               {protocol === "graphql" && (
@@ -3513,6 +3296,8 @@ function App() {
                 isSending={isSending}
                 onClearWebSocketMessages={() => setWsClearSignal((prev) => prev + 1)}
                 theme={theme}
+                vizSpec={vizSpec}
+                vizError={vizError}
               />
             </>
           )}
@@ -3799,48 +3584,82 @@ function App() {
         )
       }
 
-      {showSnippetModal && (
+      {showSnippetModal && (() => {
+        const snippetCode = generateSnippet();
+        const activeLang = SNIPPET_LANGS.find(l => l.id === snippetLanguage) || SNIPPET_LANGS[0];
+        const lineCount = snippetCode ? snippetCode.split("\n").length : 0;
+        return (
         <div className="modal-backdrop" onClick={() => setShowSnippetModal(false)}>
-          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} style={{ width: '800px', maxWidth: '90vw' }}>
-            <div className="modal-title">
-              <div>Export Code Snippet</div>
+          <div className="modal snippet-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="snippet-head">
+              <div className="snippet-head-title">
+                <span className="snippet-glyph">{SNIPPET_ICON_CODE}</span>
+                Export code snippet
+              </div>
               <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
-              <SnippetLanguageSelector
-                value={snippetLanguage}
-                onChange={(val: any) => setSnippetLanguage(val)}
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                <input
-                  type="checkbox"
-                  checked={snippetInterpolate}
-                  onChange={(e) => setSnippetInterpolate(e.target.checked)}
-                />
-                Replace values with placeholders
-              </label>
-            </div>
+            <div className="snippet-body">
+              <div className="snippet-rail">
+                <div className="snippet-rail-eyebrow">Target</div>
+                {SNIPPET_LANGS.map((l) => (
+                  <div
+                    key={l.id}
+                    className={`snippet-lang${l.id === snippetLanguage ? " active" : ""}`}
+                    onClick={() => setSnippetLanguage(l.id)}
+                  >
+                    <span className="snippet-lang-icon">{l.icon}</span>
+                    <span className="snippet-lang-meta">
+                      <span className="snippet-lang-name">{l.name}</span>
+                      <span className="snippet-lang-desc">{l.desc}</span>
+                    </span>
+                    <span className="snippet-lang-check">{SNIPPET_ICON_CHECK}</span>
+                  </div>
+                ))}
+                <label className="snippet-rail-foot snippet-toggle">
+                  <span className={`snippet-switch${snippetInterpolate ? " on" : ""}`} />
+                  <input
+                    type="checkbox"
+                    style={{ display: "none" }}
+                    checked={snippetInterpolate}
+                    onChange={(e) => setSnippetInterpolate(e.target.checked)}
+                  />
+                  <span className="snippet-toggle-text">
+                    <span className="snippet-toggle-label">{"Use {{variables}}"}</span>
+                    <span className="snippet-toggle-sub">Keep placeholders unresolved</span>
+                  </span>
+                </label>
+              </div>
 
-            <textarea
-              className="textarea"
-              readOnly
-              value={generateSnippet()}
-              style={{ minHeight: '350px', whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px', background: 'var(--panel)' }}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-              <button className="ghost" onClick={() => setShowSnippetModal(false)}>Close</button>
-              <button
-                className="primary"
-                onClick={() => navigator.clipboard.writeText(generateSnippet())}
-              >
-                Copy to Clipboard
-              </button>
+              <div className="snippet-main">
+                <div className="snippet-codehead">
+                  <span className="snippet-file">
+                    <span className="snippet-file-icon">{activeLang.icon}</span>
+                    {activeLang.file}
+                  </span>
+                  <span className="snippet-codehead-right">
+                    <span className="snippet-lines">{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
+                    <button className={`snippet-copy${snippetCopied ? " copied" : ""}`} onClick={copySnippet}>
+                      {snippetCopied ? SNIPPET_ICON_CHECK : SNIPPET_ICON_COPY}
+                      {snippetCopied ? "Copied" : "Copy"}
+                    </button>
+                  </span>
+                </div>
+                <div className="snippet-code">
+                  <CodeMirror
+                    value={snippetCode}
+                    readOnly
+                    theme={cmTheme(theme)}
+                    basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+                    style={{ height: "100%", fontSize: "13px" }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showImportCollisionModal && (
         <div className="modal-backdrop" onClick={() => { setShowImportCollisionModal(false); setImportCollisionData(null); }}>
@@ -3914,6 +3733,15 @@ function App() {
           </div>
         )
       }
+
+      {pendingCurl && (
+        <CurlImportModal
+          parsed={pendingCurl}
+          envVars={envVars}
+          onConfirm={handleCurlConfirm}
+          onCancel={() => setPendingCurl(null)}
+        />
+      )}
 
       {
         showImportApiModal && (
