@@ -14,6 +14,7 @@ import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
+import { parseCurl, inferRequestNameFromUrl } from "./services/curlParser";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
@@ -1223,279 +1224,6 @@ function App() {
     setImportCollisionData(null);
   }
 
-  function tokenizeShellCommand(command: string): string[] {
-    const input = String(command || "").replace(new RegExp("\\\\\r?\\n", "g"), " ").trim();
-    const tokens = [];
-    let current = "";
-    let quote = null;
-    let escaping = false;
-
-    for (let i = 0; i < input.length; i += 1) {
-      const char = input[i];
-      if (escaping) {
-        current += char;
-        escaping = false;
-        continue;
-      }
-      if (char === "\\" && quote !== "'") {
-        escaping = true;
-        continue;
-      }
-      if (quote) {
-        if (char === quote) {
-          quote = null;
-        } else {
-          current += char;
-        }
-        continue;
-      }
-      if (char === "\"" || char === "'") {
-        quote = char;
-        continue;
-      }
-      if (/\s/.test(char)) {
-        if (current) {
-          tokens.push(current);
-          current = "";
-        }
-        continue;
-      }
-      current += char;
-    }
-
-    if (current) tokens.push(current);
-    return tokens;
-  }
-
-  function inferRequestNameFromUrl(value: string) {
-    try {
-      const parsed = new URL(value);
-      const segments = parsed.pathname.split("/").filter(Boolean);
-      return segments.length ? segments[segments.length - 1] : parsed.hostname;
-    } catch {
-      return "Imported cURL Request";
-    }
-  }
-
-  function parseCurlCommand(command: string) {
-    const tokens = tokenizeShellCommand(command);
-    if (tokens.length === 0 || tokens[0] !== "curl") {
-      throw new Error("Command must start with curl");
-    }
-
-    let method = "";
-    let urlValue = "";
-    let explicitMethod = false;
-    let useQueryString = false;
-    const headers: Record<string, string> = {};
-    const dataParts: string[] = [];
-    const formParts: string[] = [];
-
-    const readValue = (index: number, label: string): string => {
-      const value = tokens[index + 1];
-      if (value == null) throw new Error(`Missing value for ${label}`);
-      return value;
-    };
-
-    for (let i = 1; i < tokens.length; i += 1) {
-      const token = tokens[i];
-      const nextValue = () => {
-        const value = readValue(i, token);
-        i += 1;
-        return value;
-      };
-
-      if (token === "-X" || token === "--request") {
-        method = nextValue().toUpperCase();
-        explicitMethod = true;
-        continue;
-      }
-      if (token.startsWith("--request=")) {
-        method = token.split("=", 2)[1].toUpperCase();
-        explicitMethod = true;
-        continue;
-      }
-      if (token === "-H" || token === "--header") {
-        const header = nextValue();
-        const idx = header.indexOf(":");
-        if (idx !== -1) {
-          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
-        }
-        continue;
-      }
-      if (token.startsWith("--header=")) {
-        const header = token.split("=", 2)[1];
-        const idx = header.indexOf(":");
-        if (idx !== -1) {
-          headers[header.slice(0, idx).trim()] = header.slice(idx + 1).trim();
-        }
-        continue;
-      }
-      if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
-        dataParts.push(nextValue());
-        continue;
-      }
-      if (token.startsWith("--data=") || token.startsWith("--data-raw=") || token.startsWith("--data-binary=") || token.startsWith("--data-ascii=") || token.startsWith("--data-urlencode=")) {
-        dataParts.push(token.split("=", 2)[1]);
-        continue;
-      }
-      if (token === "-F" || token === "--form" || token === "--form-string") {
-        formParts.push(nextValue());
-        continue;
-      }
-      if (token.startsWith("--form=") || token.startsWith("--form-string=")) {
-        formParts.push(token.split("=", 2)[1]);
-        continue;
-      }
-      if (token === "-G" || token === "--get") {
-        useQueryString = true;
-        continue;
-      }
-      if (token === "--url") {
-        urlValue = nextValue();
-        continue;
-      }
-      if (token.startsWith("--url=")) {
-        urlValue = token.split("=", 2)[1];
-        continue;
-      }
-      if (token === "-u" || token === "--user") {
-        const creds = nextValue();
-        headers["Authorization"] = `Basic ${btoa(creds)}`;
-        continue;
-      }
-      if (!token.startsWith("-") && !urlValue) {
-        urlValue = token;
-      }
-    }
-
-    if (!urlValue) {
-      throw new Error("cURL command does not contain a URL");
-    }
-
-    const normalizedMethod = explicitMethod
-      ? method
-      : (formParts.length > 0 || dataParts.length > 0) && !useQueryString
-        ? "POST"
-        : "GET";
-
-    let finalUrl = urlValue;
-    let bodyType = "none";
-    let bodyTextValue = "";
-    let bodyRowsValue: RequestRow[] = [{ key: "", value: "", enabled: true, comment: "" }];
-
-    if (useQueryString && dataParts.length > 0) {
-      const urlObject = new URL(finalUrl);
-      dataParts.forEach((part) => {
-        const [key, value = ""] = part.split("=", 2);
-        urlObject.searchParams.append(key, value);
-      });
-      finalUrl = urlObject.toString();
-    } else if (formParts.length > 0) {
-      bodyType = "multipart";
-      bodyRowsValue = formParts.map((part) => {
-        const [key, rawValue = ""] = part.split("=", 2);
-        if (rawValue.startsWith("@")) {
-          const filePath = rawValue.slice(1);
-          const fileName = filePath.split(/[\/]/).pop() || "upload.bin";
-          return {
-            key,
-            value: "",
-            enabled: true,
-            kind: "file",
-            fileName,
-            fileBase64: "",
-            mimeType: "application/octet-stream",
-            sourcePath: filePath,
-            comment: ""
-          };
-        }
-        return { key, value: rawValue, enabled: true, kind: "text", comment: "" };
-      });
-    } else if (dataParts.length > 0 && !useQueryString) {
-      const joined = dataParts.join("&");
-      const contentType = Object.keys(headers as Record<string, string>).find((key) => key.toLowerCase() === "content-type");
-      const contentTypeValue = contentType ? (headers as Record<string, string>)[contentType].toLowerCase() : "";
-      if (contentTypeValue.includes("application/json") || /^[\[{]/.test(joined.trim())) {
-        bodyType = "json";
-        bodyTextValue = joined;
-      } else if (contentTypeValue.includes("application/x-www-form-urlencoded") || dataParts.every((part) => part.includes("="))) {
-        bodyType = "form";
-        bodyRowsValue = dataParts.map((part) => {
-          const [key, value = ""] = part.split("=", 2);
-          return { key, value, enabled: true, comment: "" };
-        });
-      } else {
-        bodyType = "raw";
-        bodyTextValue = joined;
-      }
-    }
-
-    let paramsRowsValue: RequestRow[] = [{ key: "", value: "", enabled: true, comment: "" }];
-    try {
-      const urlObject = new URL(finalUrl);
-      const paramRows = Array.from(urlObject.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true, comment: "" }));
-      paramsRowsValue = paramRows.length > 0 ? paramRows : paramsRowsValue;
-      urlObject.search = "";
-      finalUrl = urlObject.toString();
-    } catch {
-      // ignore URL parsing failure
-    }
-
-    const headersRowsValue: RequestRow[] = Object.keys(headers).length > 0 ? objectToRows(headers) : [{ key: "", value: "", enabled: true, comment: "" }];
-    const requestName = inferRequestNameFromUrl(finalUrl);
-
-    const DEFAULT_WS_CONFIG: WsConfig = {
-      headersText: "{\n}",
-      headersRows: [{ key: "", value: "", comment: "", enabled: true }],
-      headersMode: "table",
-      protocolsText: "",
-      protocolRows: [{ key: "", value: "", comment: "", enabled: true }],
-      autoReconnect: false,
-      reconnectInterval: 3000,
-      connectTimeout: 10000,
-      messageType: "text",
-      messages: [] as any[]
-    };
-
-    const httpNewReq: RequestItem = {
-      type: "request",
-      id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: requestName,
-      description: "",
-      tags: [],
-      protocol: "http", // Added protocol here
-      method: normalizedMethod,
-      url: finalUrl,
-      headersText: JSON.stringify(headers, null, 2),
-      bodyText: bodyTextValue,
-      testsPreSteps: [],
-      testsPostSteps: [],
-      vizScriptText: "",
-      testsInputText: '{\n  "status": 200,\n  "body": {"ok": true}\n}',
-      httpVersion: "auto",
-      requestTimeoutMs: 30000,
-      bodyType,
-      paramsRows: paramsRowsValue as RequestRow[],
-      headersRows: headersRowsValue as RequestRow[],
-      authRows: [{ key: "Authorization", value: "Bearer <token>", comment: "", enabled: false }],
-      authType: "none",
-      authConfig: {
-        bearer: { token: "" },
-        basic: { username: "", password: "" },
-        api_key: { key: "", value: "", add_to: "header" }
-      },
-      bodyRows: bodyRowsValue as RequestRow[],
-      graphqlConfig: {
-        query: "",
-        variables: "{}",
-        operationName: "",
-        headers: {}
-      },
-      wsConfig: DEFAULT_WS_CONFIG
-    };
-  }
-
   function importCollection() {
     const input = document.createElement("input");
     input.type = "file";
@@ -1553,11 +1281,22 @@ function App() {
   function handleImportCurlSubmit() {
     if (!importCurlDraft.trim()) return;
     try {
-      const parsedReq = parseCurlCommand(importCurlDraft);
+      const parsed = parseCurl(importCurlDraft);
       const createdReq = addRequestToCollection(null, (req) => {
-        Object.assign(req, parsedReq);
+        Object.assign(req, {
+          method: parsed.method,
+          url: parsed.url,
+          headersRows: parsed.headersRows,
+          paramsRows: parsed.paramsRows,
+          bodyType: parsed.bodyType,
+          bodyText: parsed.bodyText,
+          bodyRows: parsed.bodyRows,
+          authType: parsed.authType,
+          authConfig: parsed.authConfig,
+        });
         req.type = "request";
         req.id = req.id || "req_" + Date.now();
+        req.name = req.name || inferRequestNameFromUrl(parsed.url);
         req.description = req.description || "";
         req.tags = req.tags || [];
         return req;
