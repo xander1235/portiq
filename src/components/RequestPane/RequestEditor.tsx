@@ -81,6 +81,7 @@ interface RequestEditorProps {
     testsOutput: any;
     handleCancelSend: () => void;
     theme: Theme;
+    onCurlPaste?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
 }
 
 export function RequestEditor({
@@ -148,7 +149,8 @@ export function RequestEditor({
     runVizScript,
     testsOutput,
     handleCancelSend,
-    theme
+    theme,
+    onCurlPaste
 }: RequestEditorProps) {
     const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
 
@@ -208,6 +210,7 @@ export function RequestEditor({
                             setUrl(val);
                             if (currentRequestId) updateRequestState(currentRequestId, "url", val);
                         }}
+                        onPaste={onCurlPaste}
                         envVars={getEnvVars()}
                         onUpdateEnvVar={handleUpdateEnvVar}
                         placeholder="https://api.example.com/v1/users/{{id}}"

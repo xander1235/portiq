@@ -14,7 +14,13 @@ import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
 import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
-import { parseCurl, inferRequestNameFromUrl } from "./services/curlParser";
+import {
+  parseCurl,
+  inferRequestNameFromUrl,
+  looksLikeCurl,
+  parameterizeParsedCurl,
+  type ParsedCurl,
+} from "./services/curlParser";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
@@ -28,6 +34,7 @@ import { get, set } from "idb-keyval";
 
 import { TableEditor } from "./components/TableEditor";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
+import { CurlImportModal } from "./components/Modals/CurlImportModal";
 import { ExportModal } from "./components/Modals/ExportModal";
 import { GitHubSyncModal } from "./components/Modals/GitHubSyncModal";
 import { SettingsModal } from "./components/Modals/SettingsModal";
@@ -480,6 +487,7 @@ function App() {
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
   const [showImportCurlModal, setShowImportCurlModal] = useState(false);
+  const [pendingCurl, setPendingCurl] = useState<ParsedCurl | null>(null);
   const [showImportCollisionModal, setShowImportCollisionModal] = useState(false);
   const [importCollisionData, setImportCollisionData] = useState<any>(null);
   const [importCollisionNameDraft, setImportCollisionNameDraft] = useState("");
@@ -1309,6 +1317,62 @@ function App() {
     } catch (err: any) {
       alert("Failed to parse the provided cURL command. Error: " + err.message);
     }
+  }
+
+  function handleCurlPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text");
+    if (!looksLikeCurl(text)) return; // normal paste
+    try {
+      const parsed = parseCurl(text);
+      e.preventDefault(); // keep the raw curl out of the URL field
+      setPendingCurl(parsed);
+    } catch {
+      // not parseable as curl — let it paste normally
+    }
+  }
+
+  function applyParsedCurlToCurrent(parsed: ParsedCurl) {
+    const headersText = JSON.stringify(rowsToObject(parsed.headersRows), null, 2);
+    setMethod(parsed.method);
+    setUrl(parsed.url);
+    setParamsRows(parsed.paramsRows);
+    setHeadersRows(parsed.headersRows);
+    setHeadersText(headersText);
+    setBodyType(parsed.bodyType);
+    setBodyText(parsed.bodyText);
+    setBodyRows(parsed.bodyRows);
+    setAuthType(parsed.authType);
+    setAuthConfig(parsed.authConfig);
+    if (currentRequestId) {
+      updateRequestById(currentRequestId as string, {
+        method: parsed.method,
+        url: parsed.url,
+        paramsRows: parsed.paramsRows,
+        headersRows: parsed.headersRows,
+        headersText,
+        bodyType: parsed.bodyType,
+        bodyText: parsed.bodyText,
+        bodyRows: parsed.bodyRows,
+        authType: parsed.authType,
+        authConfig: parsed.authConfig,
+      });
+    }
+    setPendingCurl(null);
+  }
+
+  function handleCurlConfirm(result: { fills: Record<string, string>; parameterize: string[] }) {
+    if (!pendingCurl) return;
+    let parsed = pendingCurl;
+    // 1. Swap chosen literals for {{var}} references first.
+    for (const name of result.parameterize) {
+      const value = envVars[name];
+      if (value) parsed = parameterizeParsedCurl(parsed, value, name);
+    }
+    // 2. Persist any newly-filled variable values into the active environment.
+    for (const [name, value] of Object.entries(result.fills)) {
+      if (value) handleUpdateEnvVar(name, value);
+    }
+    applyParsedCurlToCurrent(parsed);
   }
 
   function handleImportApiSubmit() {
@@ -3116,6 +3180,7 @@ function App() {
                   testsOutput={testsOutput}
                   handleCancelSend={handleCancelHttpSend}
                   theme={theme}
+                  onCurlPaste={handleCurlPaste}
                 />
               )}
               {protocol === "graphql" && (
@@ -3668,6 +3733,15 @@ function App() {
           </div>
         )
       }
+
+      {pendingCurl && (
+        <CurlImportModal
+          parsed={pendingCurl}
+          envVars={envVars}
+          onConfirm={handleCurlConfirm}
+          onCancel={() => setPendingCurl(null)}
+        />
+      )}
 
       {
         showImportApiModal && (
