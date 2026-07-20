@@ -19,6 +19,7 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
 import { xmlLinter } from "./utils/codemirror/xmlExtensions";
 import { customJsonLinter } from "./utils/codemirror/jsonExtensions";
+import { cmTheme } from "./theme/codemirrorTheme";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
@@ -133,88 +134,20 @@ function getValueByPath(root: any, path: string): any {
   return current;
 }
 
-const SnippetLanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+// Shared icons + target metadata for the Export code snippet modal.
+const SNIPPET_ICON_CODE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>;
+const SNIPPET_ICON_CHECK = <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
+const SNIPPET_ICON_COPY = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const options = [
-    { id: "curl", name: "cURL", desc: "Command line utility", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg> },
-    { id: "raw", name: "Raw HTTP", desc: "Plain HTTP text", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
-    { id: "python", name: "Python", desc: "Requests library", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4-4 4"></path><path d="M10 16h4"></path><circle cx="12" cy="12" r="10"></circle></svg> },
-    { id: "node", name: "Node.js", desc: "Native fetch API", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> },
-    { id: "go", name: "Go", desc: "net/http package", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> },
-    { id: "c", name: "C", desc: "libcurl binding", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 16V8l6 8V8"></path></svg> },
-    { id: "csharp", name: "C#", desc: "HttpClient", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path></svg> },
-  ];
-
-  const selected = options.find(o => o.id === value) || options[0];
-
-  return (
-    <div ref={dropdownRef} style={{ position: 'relative', minWidth: '240px', zIndex: 10 }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '10px 14px', background: 'var(--panel)', border: '1px solid var(--border)',
-          borderRadius: '8px', cursor: 'pointer', userSelect: 'none', transition: 'box-shadow 0.2s, border-color 0.2s',
-          ...(isOpen ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px var(--accent-alpha, rgba(var(--accent-rgb), 0.2))' } : {})
-        }}
-      >
-        <span style={{ color: 'var(--accent)', display: 'flex', background: 'var(--bg)', padding: '6px', borderRadius: '6px', border: '1px solid var(--border)' }}>{selected.icon}</span>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)', lineHeight: 1 }}>{selected.name}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1 }}>{selected.desc}</span>
-        </div>
-        <svg style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-      </div>
-
-      {isOpen && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-          background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '8px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden', padding: '6px', zIndex: 100
-        }}>
-          {options.map((opt) => (
-            <div
-              key={opt.id}
-              onClick={() => { onChange(opt.id); setIsOpen(false); }}
-              onMouseOver={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = 'var(--bg)'; }}
-              onMouseOut={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = opt.id === value ? 'var(--bg)' : 'transparent'; }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', transition: 'background 0.1s',
-                background: opt.id === value ? 'var(--bg)' : 'transparent',
-                border: '1px solid transparent',
-                ...(opt.id === value ? { borderColor: 'var(--border)' } : {})
-              }}
-            >
-              <span style={{ color: opt.id === value ? 'var(--accent)' : 'var(--text-muted)', display: 'flex' }}>{opt.icon}</span>
-              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: opt.id === value ? 'var(--text)' : 'var(--text-muted)', lineHeight: 1 }}>{opt.name}</span>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1 }}>{opt.desc}</span>
-              </div>
-              {opt.id === value && (
-                <span style={{ color: 'var(--accent)' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+const SNIPPET_LANGS = [
+  { id: "curl", name: "cURL", desc: "Command line utility", file: "request.sh", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg> },
+  { id: "raw", name: "Raw HTTP", desc: "Plain HTTP text", file: "request.http", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
+  { id: "python", name: "Python", desc: "Requests library", file: "request.py", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4-4 4"></path><path d="M10 16h4"></path><circle cx="12" cy="12" r="10"></circle></svg> },
+  { id: "node", name: "Node.js", desc: "Native fetch API", file: "request.mjs", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> },
+  { id: "go", name: "Go", desc: "net/http package", file: "main.go", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> },
+  { id: "c", name: "C", desc: "libcurl binding", file: "request.c", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 16V8l6 8V8"></path></svg> },
+  { id: "csharp", name: "C#", desc: "HttpClient", file: "Request.cs", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path></svg> },
+];
 
 function App() {
   const {
@@ -558,6 +491,14 @@ function App() {
   const [showSnippetModal, setShowSnippetModal] = useState(false);
   const [snippetLanguage, setSnippetLanguage] = useState("curl");
   const [snippetInterpolate, setSnippetInterpolate] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
+  const snippetCopyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copySnippet = () => {
+    navigator.clipboard.writeText(generateSnippet());
+    setSnippetCopied(true);
+    if (snippetCopyTimer.current) clearTimeout(snippetCopyTimer.current);
+    snippetCopyTimer.current = setTimeout(() => setSnippetCopied(false), 1500);
+  };
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showGitHubSyncModal, setShowGitHubSyncModal] = useState(false);
@@ -3839,48 +3780,82 @@ function App() {
         )
       }
 
-      {showSnippetModal && (
+      {showSnippetModal && (() => {
+        const snippetCode = generateSnippet();
+        const activeLang = SNIPPET_LANGS.find(l => l.id === snippetLanguage) || SNIPPET_LANGS[0];
+        const lineCount = snippetCode ? snippetCode.split("\n").length : 0;
+        return (
         <div className="modal-backdrop" onClick={() => setShowSnippetModal(false)}>
-          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} style={{ width: '800px', maxWidth: '90vw' }}>
-            <div className="modal-title">
-              <div>Export Code Snippet</div>
+          <div className="modal snippet-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="snippet-head">
+              <div className="snippet-head-title">
+                <span className="snippet-glyph">{SNIPPET_ICON_CODE}</span>
+                Export code snippet
+              </div>
               <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
-              <SnippetLanguageSelector
-                value={snippetLanguage}
-                onChange={(val: any) => setSnippetLanguage(val)}
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                <input
-                  type="checkbox"
-                  checked={snippetInterpolate}
-                  onChange={(e) => setSnippetInterpolate(e.target.checked)}
-                />
-                Replace values with placeholders
-              </label>
-            </div>
+            <div className="snippet-body">
+              <div className="snippet-rail">
+                <div className="snippet-rail-eyebrow">Target</div>
+                {SNIPPET_LANGS.map((l) => (
+                  <div
+                    key={l.id}
+                    className={`snippet-lang${l.id === snippetLanguage ? " active" : ""}`}
+                    onClick={() => setSnippetLanguage(l.id)}
+                  >
+                    <span className="snippet-lang-icon">{l.icon}</span>
+                    <span className="snippet-lang-meta">
+                      <span className="snippet-lang-name">{l.name}</span>
+                      <span className="snippet-lang-desc">{l.desc}</span>
+                    </span>
+                    <span className="snippet-lang-check">{SNIPPET_ICON_CHECK}</span>
+                  </div>
+                ))}
+                <label className="snippet-rail-foot snippet-toggle">
+                  <span className={`snippet-switch${snippetInterpolate ? " on" : ""}`} />
+                  <input
+                    type="checkbox"
+                    style={{ display: "none" }}
+                    checked={snippetInterpolate}
+                    onChange={(e) => setSnippetInterpolate(e.target.checked)}
+                  />
+                  <span className="snippet-toggle-text">
+                    <span className="snippet-toggle-label">{"Use {{variables}}"}</span>
+                    <span className="snippet-toggle-sub">Keep placeholders unresolved</span>
+                  </span>
+                </label>
+              </div>
 
-            <textarea
-              className="textarea"
-              readOnly
-              value={generateSnippet()}
-              style={{ minHeight: '350px', whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px', background: 'var(--panel)' }}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-              <button className="ghost" onClick={() => setShowSnippetModal(false)}>Close</button>
-              <button
-                className="primary"
-                onClick={() => navigator.clipboard.writeText(generateSnippet())}
-              >
-                Copy to Clipboard
-              </button>
+              <div className="snippet-main">
+                <div className="snippet-codehead">
+                  <span className="snippet-file">
+                    <span className="snippet-file-icon">{activeLang.icon}</span>
+                    {activeLang.file}
+                  </span>
+                  <span className="snippet-codehead-right">
+                    <span className="snippet-lines">{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
+                    <button className={`snippet-copy${snippetCopied ? " copied" : ""}`} onClick={copySnippet}>
+                      {snippetCopied ? SNIPPET_ICON_CHECK : SNIPPET_ICON_COPY}
+                      {snippetCopied ? "Copied" : "Copy"}
+                    </button>
+                  </span>
+                </div>
+                <div className="snippet-code">
+                  <CodeMirror
+                    value={snippetCode}
+                    readOnly
+                    theme={cmTheme(theme)}
+                    basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+                    style={{ height: "100%", fontSize: "13px" }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showImportCollisionModal && (
         <div className="modal-backdrop" onClick={() => { setShowImportCollisionModal(false); setImportCollisionData(null); }}>
