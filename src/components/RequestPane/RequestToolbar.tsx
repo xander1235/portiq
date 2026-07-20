@@ -16,8 +16,8 @@ export function RequestToolbar(props: {
         <div className={styles.urlSeg}>{urlField}</div>
       </div>
       {sending
-        ? <Button variant="danger" onClick={onCancel}>Cancel</Button>
-        : <Button variant="primary" onClick={onSend}>Send</Button>}
+        ? <Button variant="danger" className={styles.sendBtn} onClick={onCancel}>Cancel</Button>
+        : <Button variant="primary" className={styles.sendBtn} onClick={onSend}>Send</Button>}
     </div>
   );
 }

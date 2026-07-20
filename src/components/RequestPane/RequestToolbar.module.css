@@ -8,3 +8,6 @@
    inner frame so it doesn't render a box inside the pill. */
 .urlSeg :global(.input) { border: none; background: transparent; box-shadow: none;
   border-radius: 0; padding: 0; height: 34px; }
+/* Match the Send/Cancel button height to the pill (34px inner + 2px border = 36px)
+   so the two toolbar items line up flush. */
+.sendBtn { height: 36px; padding: 0 18px; }
