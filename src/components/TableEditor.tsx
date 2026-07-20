@@ -12,9 +12,10 @@ interface EnvInputProps {
     envVars?: Record<string, string>;
     onUpdateEnvVar?: (key: string, val: string) => void;
     maskLiterals?: boolean;
+    onPaste?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
 }
 
-export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar, maskLiterals }: EnvInputProps) {
+export function EnvInput({ value, onChange, placeholder, className, style, envVars, onUpdateEnvVar, maskLiterals, onPaste }: EnvInputProps) {
     const containerStyle: React.CSSProperties = { position: "relative", display: "flex", alignItems: "center", flex: 1, ...style };
     const inputRef = React.useRef<HTMLInputElement>(null);
     const textRef = React.useRef<HTMLDivElement>(null);
@@ -345,6 +346,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                     onKeyDown={handleInputKeyDown}
                     onClick={handleInputClick}
                     onScroll={handleScroll}
+                    onPaste={onPaste}
                     spellCheck={false}
                     style={{
                         flex: 1,
