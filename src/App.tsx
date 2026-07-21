@@ -637,6 +637,16 @@ function App() {
     setActiveCollectionId(id);
   }
 
+  function applyPaneLayout(req: { paneLayout?: { topHeight?: number; rightWidth?: number } } | null) {
+    const resolved = resolvePaneLayout(
+      req?.paneLayout,
+      readGlobalPaneDefaults(),
+      { width: window.innerWidth, height: window.innerHeight }
+    );
+    setTopHeight(resolved.topHeight);
+    setRightWidth(resolved.rightWidth);
+  }
+
   function handleRequestClick(req: any) {
     // Save current response to cache before switching
     if (currentRequestId) {
@@ -646,6 +656,7 @@ function App() {
     }
     syncDraftToCollection();
     loadRequest(req);
+    applyPaneLayout(req);
     // Restore cached response for the target request
     if (req?.id) {
       if (responseCacheRef.current.has(req.id)) {
@@ -701,6 +712,7 @@ function App() {
         const req = located?.request;
         if (req) {
           loadRequest(req);
+          applyPaneLayout(req);
           // Restore cached response
           if (responseCacheRef.current.has(req.id)) {
             restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
@@ -731,12 +743,14 @@ function App() {
           }
         } else {
           loadRequest(null);
+          applyPaneLayout(null);
           clearActiveResponse();
         }
       }
     } else {
       if (currentRequestId) {
         loadRequest(null);
+        applyPaneLayout(null);
         clearActiveResponse();
       }
     }
