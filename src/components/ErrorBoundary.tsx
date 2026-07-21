@@ -103,7 +103,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               borderRadius: "8px",
               border: "1px solid var(--border, #333)",
               background: "var(--accent, #6366f1)",
-              color: "#fff",
+              color: "#1a0f0a",
               cursor: "pointer",
               fontSize: "0.85rem",
               fontWeight: 600,

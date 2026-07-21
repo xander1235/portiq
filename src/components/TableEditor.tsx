@@ -341,6 +341,7 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                 <input
                     ref={inputRef}
                     type={maskLiterals ? "password" : "text"}
+                    aria-label={placeholder}
                     value={String(value || "")}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}

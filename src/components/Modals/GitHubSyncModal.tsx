@@ -268,7 +268,7 @@ export function GitHubSyncModal({ isOpen, onClose, onSyncStateChange, onPulledSt
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                                         <span style={{ color: 'var(--accent)', fontWeight: 500, flexShrink: 0 }}>{v.key || "UNNAMED"}</span>
                                                         <span style={{ color: 'var(--muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                            {v.value || ""}
+                                                            {isMasked ? "••••••••" : (v.value || "")}
                                                         </span>
                                                     </div>
                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0 }}>
