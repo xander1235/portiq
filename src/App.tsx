@@ -23,6 +23,7 @@ import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
 import { resolvePaneLayout, clampTopHeight, clampRightWidth, type PaneDefaults } from "./utils/paneLayout";
+import { buildSearchEntities, searchEntities, type SearchEntity, type RevealTarget } from "./utils/searchIndex";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -42,6 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { Sidebar } from "./components/Sidebar/Sidebar";
+import SearchSuggestions from "./components/Search/SearchSuggestions";
 import { RequestEditor } from "./components/RequestPane/RequestEditor";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer";
 import { useRequestState, RequestItem, RequestRow, FolderItem } from "./hooks/useRequestState";
@@ -510,6 +512,22 @@ function App() {
   const [importCurlDraft, setImportCurlDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchHighlight, setSearchHighlight] = useState(0);
+  const [revealTarget, setRevealTarget] = useState<RevealTarget | null>(null);
+  const revealNonceRef = useRef(0);
+
+  const searchIndexEntities = useMemo(
+    () => buildSearchEntities(collections, environments),
+    [collections, environments]
+  );
+  const searchResults = useMemo(
+    () => searchEntities(searchIndexEntities, topSearch, 8),
+    [searchIndexEntities, topSearch]
+  );
+  useEffect(() => {
+    setSearchHighlight(0);
+  }, [topSearch]);
 
   const [showSnippetModal, setShowSnippetModal] = useState(false);
   const [snippetLanguage, setSnippetLanguage] = useState("curl");
@@ -756,6 +774,17 @@ function App() {
     }
     setError("");
   }, [activeCollectionId]);
+
+  // Open a request selected from the top-search dropdown. Runs after the
+  // collection-switch effect so a cross-collection open wins over last-active.
+  useEffect(() => {
+    if (!revealTarget || revealTarget.type !== "request") return;
+    const col =
+      collections.find((c) => c.id === revealTarget.collectionId) || getActiveCollection();
+    const located = col ? findRequestInItems(col.items || [], revealTarget.id) : null;
+    if (located?.request) handleRequestClick(located.request);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTarget?.nonce]);
 
   const parsedJson = useMemo(() => {
     if (response?.json) return response.json;
@@ -2951,6 +2980,48 @@ function App() {
     }
   }
 
+  function handleSearchSelect(entity: SearchEntity) {
+    setSearchOpen(false);
+    setTopSearch("");
+    if (entity.type === "environment") {
+      setActiveEnvId(entity.id);
+      return;
+    }
+    if (entity.type === "collection") {
+      handleCollectionSwitch(entity.id);
+      return;
+    }
+    // request or folder → switch collection if needed, then reveal (and open, for requests)
+    if (entity.collectionId && entity.collectionId !== activeCollectionId) {
+      handleCollectionSwitch(entity.collectionId);
+    }
+    setRevealTarget({
+      type: entity.type,
+      id: entity.id,
+      collectionId: entity.collectionId ?? "",
+      nonce: ++revealNonceRef.current,
+    });
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      setSearchOpen(false);
+      return;
+    }
+    if (!searchOpen || searchResults.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSearchHighlight((h) => Math.min(h + 1, searchResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSearchHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const sel = searchResults[searchHighlight] || searchResults[0];
+      if (sel) handleSearchSelect(sel);
+    }
+  }
+
   return (
     <div className={styles.app}>
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
@@ -3028,12 +3099,28 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Input
-            className="w-[240px] h-8 bg-panel-2 border-border text-sm"
-            placeholder="Search collections, tags, history"
-            value={topSearch}
-            onChange={(e) => setTopSearch(e.target.value)}
-          />
+          <div style={{ position: "relative" }}>
+            <Input
+              className="w-[240px] h-8 bg-panel-2 border-border text-sm"
+              placeholder="Search requests, folders, collections, environments"
+              value={topSearch}
+              onChange={(e) => {
+                setTopSearch(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 120)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            {searchOpen && topSearch.trim() && (
+              <SearchSuggestions
+                results={searchResults}
+                highlightedIndex={searchHighlight}
+                onHover={setSearchHighlight}
+                onSelect={handleSearchSelect}
+              />
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setShowWorkspace(true)}>Workspace: Default</Button>
           <Button
             variant="ghost"
@@ -3078,7 +3165,7 @@ function App() {
       >
         <Sidebar
           activeSidebar={activeSidebar}
-          topSearch={topSearch}
+          revealTarget={revealTarget}
           history={history}
           setShowCollectionModal={setShowCollectionModal}
           setShowImportMenu={setShowImportMenu}
