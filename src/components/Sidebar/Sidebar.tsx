@@ -9,6 +9,7 @@ import {
 import styles from "./Sidebar.module.css";
 import { ProtocolPicker } from "../ProtocolPicker";
 import { StatusPill } from "../ui/StatusPill";
+import { findAncestorFolderIds, type RevealTarget } from "../../utils/searchIndex";
 
 function countRequests(items: (RequestItem | FolderItem)[] | undefined): number {
     if (!Array.isArray(items)) return 0;
@@ -56,7 +57,7 @@ interface HistoryItem {
 
 interface SidebarProps {
     activeSidebar: string;
-    topSearch: string;
+    revealTarget?: RevealTarget | null;
     history: HistoryItem[];
     setShowCollectionModal: (show: boolean) => void;
     setShowImportMenu: (show: boolean) => void;
@@ -92,7 +93,7 @@ interface SidebarProps {
 
 export function Sidebar({
     activeSidebar,
-    topSearch,
+    revealTarget,
     history,
     setShowCollectionModal,
     setShowImportMenu,
@@ -139,6 +140,35 @@ export function Sidebar({
     useEffect(() => {
         localStorage.setItem("vaaya_collapsedFolders", JSON.stringify(Array.from(collapsedFolders)));
     }, [collapsedFolders]);
+
+    const [treeFilter, setTreeFilter] = useState("");
+    const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!revealTarget) return;
+        const col =
+            (collections || []).find((c: any) => c.id === revealTarget.collectionId) || getActiveCollection();
+        const items = col?.items || [];
+        const ancestors = findAncestorFolderIds(items, revealTarget.id) || [];
+        if (ancestors.length) {
+            setCollapsedFolders(prev => {
+                const next = new Set(prev);
+                ancestors.forEach((id) => next.delete(id));
+                return next;
+            });
+        }
+        setHighlightedNodeId(revealTarget.id);
+        const raf = requestAnimationFrame(() => {
+            const el = document.querySelector('[data-node-id="' + CSS.escape(revealTarget.id) + '"]');
+            el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+        const timer = setTimeout(() => setHighlightedNodeId(null), 1500);
+        return () => {
+            cancelAnimationFrame(raf);
+            clearTimeout(timer);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealTarget?.nonce]);
 
     const [editingFolderId, setEditingFolderId] = useState("");
     const [folderNameDraft, setFolderNameDraft] = useState("");
@@ -190,7 +220,7 @@ export function Sidebar({
 
     function renderCollectionItems(items: (RequestItem | FolderItem)[], depth = 0) {
         if (!Array.isArray(items)) return null;
-        const filtered = items.filter((item) => matchesQuery(item, topSearch));
+        const filtered = items.filter((item) => matchesQuery(item, treeFilter));
 
         const folders = filtered.filter((item): item is FolderItem => item.type === "folder");
         const requests = filtered.filter((item): item is RequestItem => item.type === "request");
@@ -203,6 +233,8 @@ export function Sidebar({
                         <div key={item.id} className={styles.folderWrapper}>
                             <div
                                 className={`${styles.treeFolder} ${dragOverItemId === item.id ? styles.dragOver : ""}`}
+                                data-node-id={item.id}
+                                style={highlightedNodeId === item.id ? { outline: "2px solid var(--accent-2)", outlineOffset: -2, borderRadius: 6 } : undefined}
                                 onClick={() => {
                                     setCollapsedFolders(prev => {
                                         const next = new Set(prev);
@@ -309,6 +341,8 @@ export function Sidebar({
                     <div
                         className={`${styles.treeRequest} ${activeRequestId === item.id ? styles.active : ""} ${dragOverItemId === item.id ? styles.dragOver : ""}`}
                         key={item.id}
+                        data-node-id={item.id}
+                        style={highlightedNodeId === item.id ? { outline: "2px solid var(--accent-2)", outlineOffset: -2, borderRadius: 6 } : undefined}
                         draggable
                         onDragStart={(e) => {
                             e.stopPropagation();
@@ -574,6 +608,14 @@ export function Sidebar({
                                     </DropdownMenu>
                                 </div>
                             </div>
+                            <input
+                                className="input"
+                                value={treeFilter}
+                                onChange={(e) => setTreeFilter(e.target.value)}
+                                placeholder="Filter this collection"
+                                aria-label="Filter collection tree"
+                                style={{ width: "100%", marginBottom: 8, height: 28, fontSize: "0.8rem" }}
+                            />
                             <div
                                 className={`${styles.panelList} ${dragOverItemId === 'root' ? styles.dragOver : ''}`}
                                 onDragOver={(e) => {

@@ -182,30 +182,6 @@ export function SettingsModal({
                   onChange={(e) => setAiSemanticSearchEnabled(e.target.checked)}
                 />
               </label>
-
-              <label className="settings-toggle-row">
-                <div>
-                  <span>Enable AI request generation</span>
-                  <small>Allow prompt-based request creation in the main editor.</small>
-                </div>
-                <input type="checkbox" defaultChecked />
-              </label>
-
-              <label className="settings-toggle-row">
-                <div>
-                  <span>Enable response summaries</span>
-                  <small>Generate condensed response analysis after requests complete.</small>
-                </div>
-                <input type="checkbox" defaultChecked />
-              </label>
-
-              <label className="settings-toggle-row">
-                <div>
-                  <span>Redact secrets before AI</span>
-                  <small>Strip sensitive tokens before sending data to external AI services.</small>
-                </div>
-                <input type="checkbox" />
-              </label>
             </div>
 
             <div className="settings-field-grid compact">

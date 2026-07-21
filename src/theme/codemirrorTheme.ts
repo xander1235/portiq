@@ -16,10 +16,13 @@ const DARK: Palette = {
   gutterBg: "#0a0c10", gutterText: "#5a6478", border: "#222839",
   key: "#2ed3c6", str: "#8fe3a1", num: "#ff9d73", bool: "#b79cff", nul: "#b79cff", punct: "#5f6a80",
 };
+// Syntax/gutter colors darkened to meet WCAG AA (>=4.5:1) on the white bg —
+// the previous values (key 3.97, str 4.33, num 4.03, punct 2.57, gutter 1.88)
+// were too faint to read in the light theme.
 const LIGHT: Palette = {
   bg: "#ffffff", text: "#2b3240", caret: "#d15a2c", selection: "#dbeafe",
-  gutterBg: "#fafbfc", gutterText: "#b3bac6", border: "#eceef2",
-  key: "#0e8f86", str: "#2f8a4a", num: "#d15a2c", bool: "#6b4fd0", nul: "#6b4fd0", punct: "#9aa2b0",
+  gutterBg: "#fafbfc", gutterText: "#6b7280", border: "#eceef2",
+  key: "#0a6b64", str: "#1f6b38", num: "#a8410f", bool: "#6b4fd0", nul: "#6b4fd0", punct: "#5c6472",
 };
 
 function build(p: Palette, dark: boolean): Extension {

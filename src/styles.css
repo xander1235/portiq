@@ -98,6 +98,18 @@
   --viz-series-5: #d95926;
   --viz-series-6: #9085e9;
   --viz-series-7: #e66767;
+
+  /* Semantic aliases — used across components but previously undefined, which
+     silently dropped status colors (green/red), hover states and secondary text.
+     Defined via other tokens so they resolve correctly in both themes. */
+  --success: var(--accent-green);
+  --error: var(--accent-red);
+  --panel-1: var(--panel);
+  --bg-hover: var(--panel-2);
+  --bg-dark: var(--panel);
+  --sidebar-bg: var(--panel);
+  --text-secondary: var(--muted);
+  --border-color: var(--border);
 }
 
 :root[data-theme="light"] {
@@ -121,15 +133,16 @@
   --success: var(--accent-green);
   --error: var(--accent-red);
 
-  --syn-key: #0e8f86;
-  --syn-str: #2f8a4a;
-  --syn-num: #d15a2c;
+  /* Darkened to meet WCAG AA (>=4.5:1) on the white light-theme surface */
+  --syn-key: #0a6b64;
+  --syn-str: #1f6b38;
+  --syn-num: #a8410f;
   --syn-bool: #6b4fd0;
   --syn-null: #6b4fd0;
-  --syn-punct: #9aa2b0;
+  --syn-punct: #5c6472;
 
-  --method-get: #0e8f86;
-  --method-post: #b7791f;
+  --method-get: #0a6b64;
+  --method-post: #8a5a12;
   --method-put: #2563eb;
   --method-patch: #6b4fd0;
   --method-delete: #d64545;
@@ -2132,9 +2145,9 @@ tfoot td:last-child {
   appearance: none;
   width: 14px;
   height: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--panel-3);
   cursor: pointer;
   position: relative;
   transition: all 0.2s;
@@ -2332,10 +2345,10 @@ tfoot td:last-child {
   border: 1px solid transparent;
 }
 .manage-modal .mc-collection-item:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--panel-2);
 }
 .manage-modal .mc-collection-item.active {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--panel-2);
   border-color: var(--border);
 }
 
@@ -2344,9 +2357,9 @@ tfoot td:last-child {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--panel-3);
   cursor: pointer;
   position: relative;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -2543,4 +2556,53 @@ tfoot td:last-child {
 }
 .manage-modal .export-row:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* ==========================================================================
+   Accessibility & light-theme fixes
+   ========================================================================== */
+
+/* Keyboard focus visibility. Hand-rolled controls previously had no visible
+   focus state, so keyboard users could not tell which control was active.
+   Shown only for keyboard focus (:focus-visible), not mouse clicks. */
+.primary:focus-visible,
+.ghost:focus-visible,
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="option"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect the OS "reduce motion" accessibility setting. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Settings modal hard-coded a dark navy background/section fills, so in the
+   light theme it rendered as dark-on-dark. Follow the theme tokens instead. */
+:root[data-theme="light"] .settings-modal {
+  background: var(--panel);
+}
+:root[data-theme="light"] .settings-section {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+:root[data-theme="light"] .settings-modal-header {
+  border-bottom-color: var(--border);
 }

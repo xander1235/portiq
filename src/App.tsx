@@ -22,6 +22,8 @@ import { cmTheme } from "./theme/codemirrorTheme";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
+import { resolvePaneLayout, clampTopHeight, clampRightWidth, type PaneDefaults } from "./utils/paneLayout";
+import { buildSearchEntities, searchEntities, type SearchEntity, type RevealTarget } from "./utils/searchIndex";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -41,6 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { Sidebar } from "./components/Sidebar/Sidebar";
+import SearchSuggestions from "./components/Search/SearchSuggestions";
 import { RequestEditor } from "./components/RequestPane/RequestEditor";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer";
 import { useRequestState, RequestItem, RequestRow, FolderItem } from "./hooks/useRequestState";
@@ -132,6 +135,35 @@ function getValueByPath(root: any, path: string): any {
 
   if (current.length === 1) return current[0];
   return current;
+}
+
+const PANE_TOP_KEY = "ui_topHeight";
+const PANE_RIGHT_KEY = "ui_rightWidth";
+
+function readGlobalPaneDefaults(): PaneDefaults {
+  const read = (key: string, fallback: number): number => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return fallback;
+      const n = JSON.parse(raw);
+      return typeof n === "number" && Number.isFinite(n) ? n : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  return {
+    topHeight: read(PANE_TOP_KEY, window.innerHeight / 2),
+    rightWidth: read(PANE_RIGHT_KEY, 260),
+  };
+}
+
+function persistGlobalPaneDefaults(next: PaneDefaults): void {
+  try {
+    localStorage.setItem(PANE_TOP_KEY, JSON.stringify(next.topHeight));
+    localStorage.setItem(PANE_RIGHT_KEY, JSON.stringify(next.rightWidth));
+  } catch {
+    /* ignore quota/serialization errors */
+  }
 }
 
 // Shared icons + target metadata for the Export code snippet modal.
@@ -489,6 +521,26 @@ function App() {
   const [importCurlDraft, setImportCurlDraft] = useState("");
   const [editingMainRequestName, setEditingMainRequestName] = useState(false);
   const [topSearch, setTopSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchHighlight, setSearchHighlight] = useState(0);
+  const [revealTarget, setRevealTarget] = useState<RevealTarget | null>(null);
+  const revealNonceRef = useRef(0);
+  // Set (only) when a search-selected request is pending reveal, so the
+  // collection-switch effect doesn't waste work loading collection B's
+  // last-active request before the reveal effect opens the real target.
+  const pendingRevealRequestRef = useRef<string | null>(null);
+
+  const searchIndexEntities = useMemo(
+    () => buildSearchEntities(collections, environments),
+    [collections, environments]
+  );
+  const searchResults = useMemo(
+    () => searchEntities(searchIndexEntities, topSearch, 8),
+    [searchIndexEntities, topSearch]
+  );
+  useEffect(() => {
+    setSearchHighlight(0);
+  }, [topSearch]);
 
   const [showSnippetModal, setShowSnippetModal] = useState(false);
   const [snippetLanguage, setSnippetLanguage] = useState("curl");
@@ -519,8 +571,8 @@ function App() {
   const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set<string>());
 
   const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 232);
-  const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
-  const [topHeight, setTopHeight] = useLocalStorage("ui_topHeight", window.innerHeight / 2);
+  const [rightWidth, setRightWidth] = useState<number>(() => readGlobalPaneDefaults().rightWidth);
+  const [topHeight, setTopHeight] = useState<number>(() => readGlobalPaneDefaults().topHeight);
   const [draggingLeft, setDraggingLeft] = useState(false);
   const [draggingRight, setDraggingRight] = useState(false);
   const [draggingMain, setDraggingMain] = useState(false);
@@ -529,6 +581,11 @@ function App() {
   useEffect(() => {
     draggingRef.current = { left: draggingLeft, right: draggingRight, main: draggingMain };
   }, [draggingLeft, draggingRight, draggingMain]);
+
+  const paneSizeRef = useRef<PaneDefaults>({ topHeight, rightWidth });
+  useEffect(() => {
+    paneSizeRef.current = { topHeight, rightWidth };
+  }, [topHeight, rightWidth]);
 
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [itemToMove, setItemToMove] = useState<any>(null);
@@ -611,6 +668,16 @@ function App() {
     setActiveCollectionId(id);
   }
 
+  function applyPaneLayout(req: { paneLayout?: { topHeight?: number; rightWidth?: number } } | null) {
+    const resolved = resolvePaneLayout(
+      req?.paneLayout,
+      readGlobalPaneDefaults(),
+      { width: window.innerWidth, height: window.innerHeight }
+    );
+    setTopHeight(resolved.topHeight);
+    setRightWidth(resolved.rightWidth);
+  }
+
   function handleRequestClick(req: any) {
     // Save current response to cache before switching
     if (currentRequestId) {
@@ -620,6 +687,7 @@ function App() {
     }
     syncDraftToCollection();
     loadRequest(req);
+    applyPaneLayout(req);
     // Restore cached response for the target request
     if (req?.id) {
       if (responseCacheRef.current.has(req.id)) {
@@ -668,6 +736,7 @@ function App() {
       setVizSpec(null);
       setVizError(null);
     }
+    if (pendingRevealRequestRef.current) { setError(""); return; }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
         const col = getActiveCollection();
@@ -675,6 +744,7 @@ function App() {
         const req = located?.request;
         if (req) {
           loadRequest(req);
+          applyPaneLayout(req);
           // Restore cached response
           if (responseCacheRef.current.has(req.id)) {
             restoreResponseForRequest(req, responseCacheRef.current.get(req.id));
@@ -705,17 +775,33 @@ function App() {
           }
         } else {
           loadRequest(null);
+          applyPaneLayout(null);
           clearActiveResponse();
         }
       }
     } else {
       if (currentRequestId) {
         loadRequest(null);
+        applyPaneLayout(null);
         clearActiveResponse();
       }
     }
     setError("");
   }, [activeCollectionId]);
+
+  // Open a request selected from the top-search dropdown. Runs after the
+  // collection-switch effect so a cross-collection open wins over last-active.
+  useEffect(() => {
+    if (!revealTarget || revealTarget.type !== "request") return;
+    const col =
+      collections.find((c) => c.id === revealTarget.collectionId) || getActiveCollection();
+    const located = col ? findRequestInItems(col.items || [], revealTarget.id) : null;
+    if (located?.request) handleRequestClick(located.request);
+    // Reveal is resolved (found or not) — clear so a stale flag can't wedge
+    // a later, normal collection switch.
+    pendingRevealRequestRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTarget?.nonce]);
 
   const parsedJson = useMemo(() => {
     if (response?.json) return response.json;
@@ -794,16 +880,35 @@ function App() {
       if (draggingRef.current.left) {
         setLeftWidth(Math.max(150, Math.min(e.clientX, window.innerWidth / 2)));
       } else if (draggingRef.current.right) {
-        setRightWidth(Math.max(150, Math.min(window.innerWidth - e.clientX, window.innerWidth / 2)));
+        const w = clampRightWidth(window.innerWidth - e.clientX, window.innerWidth);
+        setRightWidth(w);
+        paneSizeRef.current.rightWidth = w;
       } else if (draggingRef.current.main) {
-        setTopHeight(Math.max(100, Math.min(e.clientY - 60, window.innerHeight - 150)));
+        const h = clampTopHeight(e.clientY - 60, window.innerHeight);
+        setTopHeight(h);
+        paneSizeRef.current.topHeight = h;
       }
     };
 
     const handleMouseUp = () => {
+      const wasMain = draggingRef.current.main;
+      const wasRight = draggingRef.current.right;
       setDraggingLeft(false);
       setDraggingRight(false);
       setDraggingMain(false);
+      if (wasMain || wasRight) {
+        const sizes = paneSizeRef.current;
+        if (currentRequestId) {
+          // Per-request: rides along in the appState blob + export/sync.
+          updateRequestState(currentRequestId, "paneLayout", {
+            topHeight: sizes.topHeight,
+            rightWidth: sizes.rightWidth,
+          });
+        } else {
+          // No active request (blank New Request) → update the global default.
+          persistGlobalPaneDefaults(sizes);
+        }
+      }
     };
 
     if (draggingLeft || draggingRight || draggingMain) {
@@ -2088,6 +2193,7 @@ function App() {
 
     // Restore the workspace
     loadRequest(mockReq);
+    applyPaneLayout(null);
 
     // Restore the response
     if (res) {
@@ -2934,6 +3040,52 @@ function App() {
     }
   }
 
+  function handleSearchSelect(entity: SearchEntity) {
+    setSearchOpen(false);
+    setTopSearch("");
+    if (entity.type === "environment") {
+      setActiveEnvId(entity.id);
+      return;
+    }
+    if (entity.type === "collection") {
+      handleCollectionSwitch(entity.id);
+      return;
+    }
+    // request or folder → switch collection if needed, then reveal (and open, for requests)
+    if (entity.type === "request") {
+      pendingRevealRequestRef.current = entity.id;
+    }
+    if (entity.collectionId && entity.collectionId !== activeCollectionId) {
+      handleCollectionSwitch(entity.collectionId);
+    }
+    setRevealTarget({
+      type: entity.type,
+      id: entity.id,
+      collectionId: entity.collectionId ?? "",
+      nonce: ++revealNonceRef.current,
+    });
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      setSearchOpen(false);
+      setSearchHighlight(0);
+      return;
+    }
+    if (!searchOpen || searchResults.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSearchHighlight((h) => Math.min(h + 1, searchResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSearchHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const sel = searchResults[searchHighlight] || searchResults[0];
+      if (sel) handleSearchSelect(sel);
+    }
+  }
+
   return (
     <div className={styles.app}>
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
@@ -3011,12 +3163,37 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Input
-            className="w-[240px] h-8 bg-panel-2 border-border text-sm"
-            placeholder="Search collections, tags, history"
-            value={topSearch}
-            onChange={(e) => setTopSearch(e.target.value)}
-          />
+          <div style={{ position: "relative" }}>
+            <Input
+              className="w-[240px] h-8 bg-panel-2 border-border text-sm"
+              placeholder="Search requests, folders, collections, environments"
+              value={topSearch}
+              onChange={(e) => {
+                setTopSearch(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 120)}
+              onKeyDown={handleSearchKeyDown}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="search-suggestions-listbox"
+              aria-expanded={searchOpen && !!topSearch.trim()}
+              aria-activedescendant={
+                searchOpen && searchResults[searchHighlight]
+                  ? `search-opt-${searchResults[searchHighlight].type}-${searchResults[searchHighlight].id}`
+                  : undefined
+              }
+            />
+            {searchOpen && topSearch.trim() && (
+              <SearchSuggestions
+                results={searchResults}
+                highlightedIndex={searchHighlight}
+                onHover={setSearchHighlight}
+                onSelect={handleSearchSelect}
+              />
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setShowWorkspace(true)}>Workspace: Default</Button>
           <Button
             variant="ghost"
@@ -3073,7 +3250,7 @@ function App() {
       >
         <Sidebar
           activeSidebar={activeSidebar}
-          topSearch={topSearch}
+          revealTarget={revealTarget}
           history={history}
           setShowCollectionModal={setShowCollectionModal}
           setShowImportMenu={setShowImportMenu}
