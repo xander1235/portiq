@@ -6,8 +6,6 @@ function graph(partial: Partial<DagGraph>): DagGraph {
   return { version: 2, nodes: [], edges: [], positions: {}, ...partial };
 }
 
-const okSend = vi.fn(async (p: any) => ({ status: 200, statusText: "OK", headers: {}, data: { echoedUrl: p.url }, time: 5 }));
-
 describe("topoSort", () => {
   it("orders by dependency", () => {
     const g = graph({

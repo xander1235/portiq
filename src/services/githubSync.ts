@@ -568,7 +568,7 @@ function buildItemsFromFiles(prefix: string, fileMap: Record<string, any>): any[
     });
 
     return Array.from(directChildren.values())
-        .map(({ segment, path }: any) => {
+        .map(({ path }: any) => {
             if (path.endsWith(".request.json") && fileMap[path]) {
                 return fileMap[path];
             }

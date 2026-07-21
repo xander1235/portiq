@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { DagGraph } from "../components/ProtocolPanes/dag/types";
 import { ScriptStep, toSteps } from "../services/scriptSteps";
@@ -221,7 +220,7 @@ export function useRequestState() {
         );
     }
 
-    function addRequestToCollection(folderId: string | null = null, setupNewRequest = (req: RequestItem) => { }): RequestItem | null {
+    function addRequestToCollection(folderId: string | null = null, setupNewRequest: (req: RequestItem) => void = () => { }): RequestItem | null {
         const col = getActiveCollection();
         if (!col) return null;
         const id = genId("req");
@@ -317,10 +316,6 @@ export function useRequestState() {
             setRequestTimeoutMs(30000);
             setBodyType("json");
             setBodyRows([{ key: "", value: "", comment: "", enabled: true }]);
-            const setQuery = (v: string) => setGraphqlConfig((prev: GraphqlConfig) => ({ ...prev, query: v }));
-            const setVariables = (v: string) => setGraphqlConfig((prev: GraphqlConfig) => ({ ...prev, variables: v }));
-            const setOperationName = (v: string) => setGraphqlConfig((prev: GraphqlConfig) => ({ ...prev, operationName: v }));
-            const setHeaders = (v: Record<string, string>) => setGraphqlConfig((prev: GraphqlConfig) => ({ ...prev, headers: v }));
             setGraphqlConfig({
                 query: "",
                 variables: "{}",
@@ -543,7 +538,7 @@ export function useRequestState() {
         );
     }
 
-    function addFolderToCollection(parentFolderId: string | null = null, setupNewFolder = (id: string) => { }): string | null {
+    function addFolderToCollection(parentFolderId: string | null = null, setupNewFolder: (id: string) => void = () => { }): string | null {
         const col = getActiveCollection();
         if (!col) return null;
         const id = genId("fld");
@@ -822,7 +817,7 @@ export function useRequestState() {
                             parsedReq.headersRows = parsedReq.headersRows!.filter(
                                 h => h.key?.toLowerCase() !== "authorization"
                             );
-                        } catch (e) {
+                        } catch {
                             // If decoding fails, keep as custom auth header
                         }
                     }

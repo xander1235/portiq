@@ -27,7 +27,6 @@ function stringify(value: unknown): string {
 /** Evaluate a `{{= ... }}` JS expression against the resolve context. */
 function evalExpression(expr: string, ctx: ResolveContext): unknown {
   try {
-    // eslint-disable-next-line no-new-func
     const fn = new Function("steps", "env", `"use strict"; return (${expr});`);
     return fn(ctx.steps, ctx.env);
   } catch {

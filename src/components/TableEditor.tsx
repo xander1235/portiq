@@ -211,12 +211,12 @@ export function EnvInput({ value, onChange, placeholder, className, style, envVa
                             setHoveredData(null);
                         }}
                         style={{
-                            position: "relative" as "relative",
+                            position: "relative" as const,
                             color: exists ? "var(--accent-2)" : "#ff5555",
                             backgroundColor: exists ? "rgba(46, 211, 198, 0.15)" : "rgba(255, 85, 85, 0.15)",
                             borderRadius: "3px",
                             cursor: onUpdateEnvVar ? "text" : "default",
-                            pointerEvents: "auto" as "auto"
+                            pointerEvents: "auto" as const
                         }}
                     >
                         {part}

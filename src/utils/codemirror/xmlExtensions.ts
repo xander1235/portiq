@@ -13,7 +13,8 @@ export const xmlLinter = linter((view: any) => {
     const parseError = doc.querySelector("parsererror");
 
     if (parseError) {
-        let line = 1, col = 1, msg = parseError.textContent || "Invalid XML";
+        let line = 1, col = 1;
+        const msg = parseError.textContent || "Invalid XML";
         const chromeMatch = msg.match(/line (\d+) at column (\d+)/);
         if (chromeMatch) {
             line = parseInt(chromeMatch[1], 10);
@@ -24,7 +25,7 @@ export const xmlLinter = linter((view: any) => {
             if (line <= view.state.doc.lines) {
                 pos = view.state.doc.line(line).from + Math.max(0, col - 1);
             }
-        } catch (e) { }
+        } catch { /* ignore */ }
 
         diagnostics.push({
             from: pos,

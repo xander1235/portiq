@@ -3,7 +3,6 @@ import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { xml as xmlLang } from '@codemirror/lang-xml';
 import { search as searchExtension } from '@codemirror/search';
-import { keymap } from '@codemirror/view';
 import { createCustomSearchPanel, customSearchKeymap } from "../../utils/codemirror/customSearchPanel";
 import { FullScreenModal } from "../Modals/FullScreenModal";
 import { StatusPill } from "../ui/StatusPill";
@@ -126,16 +125,12 @@ export function ResponseViewer({
     handleXmlToJson,
     search,
     setSearch,
-    searchKey,
-    setSearchKey,
     computedRows,
     selectedTablePath,
     setSelectedTablePath,
     tableCandidates,
     sortKey,
-    setSortKey,
     sortDirection,
-    setSortDirection,
     downloadText,
     csv,
     tableRows,

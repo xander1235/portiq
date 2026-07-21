@@ -43,7 +43,7 @@ export function prettifyXml(xml: string): string {
     let indent = 0;
     if (node.match(/^<\//)) {
       pad -= 1;
-    } else if (node.match(/^<[^>]*[^\/]>$/) && !node.match(/^<\?/)) {
+    } else if (node.match(/^<[^>]*[^/]>$/) && !node.match(/^<\?/)) {
       indent = 1;
     }
 
@@ -121,6 +121,6 @@ function escapeXml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 }

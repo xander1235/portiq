@@ -1,8 +1,7 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useState } from "react";
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rightRailStyles from "./Layout/RightRail.module.css";
-import styles from "../App.module.css";
 import { Copy, Check } from 'lucide-react';
 
 // CSS for highlight.js can be imported in styles.css later if needed, 
@@ -135,7 +134,6 @@ function formatModelName(model: string | undefined): string | undefined {
  * Extracted from App.jsx to reduce monolith size.
  */
 export function AIChatPanel({
-  showRightRail,
   setShowRightRail,
   responseSummary,
   setResponseSummary,
@@ -264,11 +262,11 @@ export function AIChatPanel({
                       rehypePlugins={[rehypeHighlight]}
                       components={{
                         code: CodeBlockWithCopy,
-                        pre: ({node, ...props}) => <>{props.children}</>,
-                        p: ({node, ...props}) => <div style={{ margin: '0 0 8px 0', whiteSpace: 'pre-wrap' }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: '4px' }} {...props} />
+                        pre: ({...props}) => <>{props.children}</>,
+                        p: ({...props}) => <div style={{ margin: '0 0 8px 0', whiteSpace: 'pre-wrap' }} {...props} />,
+                        ul: ({...props}) => <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
+                        ol: ({...props}) => <ol style={{ margin: '0 0 8px 0', paddingLeft: '20px' }} {...props} />,
+                        li: ({...props}) => <li style={{ marginBottom: '4px' }} {...props} />
                       }}
                     >
                       {msg.text}

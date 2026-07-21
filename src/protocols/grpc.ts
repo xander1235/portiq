@@ -85,7 +85,7 @@ export const GrpcProtocol: ProtocolHandler & {
         if (typeof config.requestBody === "string" && config.requestBody.trim()) {
           JSON.parse(config.requestBody);
         }
-      } catch (e) {
+      } catch {
         errors.push("Request body must be valid JSON");
       }
     }
@@ -102,7 +102,7 @@ export const GrpcProtocol: ProtocolHandler & {
         body = typeof config.requestBody === "string"
           ? JSON.parse(config.requestBody)
           : config.requestBody;
-      } catch (e) {
+      } catch {
         body = {};
       }
     }
