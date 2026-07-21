@@ -19,6 +19,7 @@ export function SearchSuggestions({ results, highlightedIndex, onHover, onSelect
   return (
     <div
       role="listbox"
+      id="search-suggestions-listbox"
       style={{
         position: "absolute",
         top: "calc(100% + 4px)",
@@ -40,6 +41,7 @@ export function SearchSuggestions({ results, highlightedIndex, onHover, onSelect
         results.map((entity, i) => (
           <div
             key={`${entity.type}-${entity.id}`}
+            id={`search-opt-${entity.type}-${entity.id}`}
             role="option"
             aria-selected={i === highlightedIndex}
             onMouseDown={(e) => {

@@ -516,6 +516,10 @@ function App() {
   const [searchHighlight, setSearchHighlight] = useState(0);
   const [revealTarget, setRevealTarget] = useState<RevealTarget | null>(null);
   const revealNonceRef = useRef(0);
+  // Set (only) when a search-selected request is pending reveal, so the
+  // collection-switch effect doesn't waste work loading collection B's
+  // last-active request before the reveal effect opens the real target.
+  const pendingRevealRequestRef = useRef<string | null>(null);
 
   const searchIndexEntities = useMemo(
     () => buildSearchEntities(collections, environments),
@@ -723,6 +727,7 @@ function App() {
       setVizSpec(null);
       setVizError(null);
     }
+    if (pendingRevealRequestRef.current) { setError(""); return; }
     if (lastRequestId) {
       if (currentRequestId !== lastRequestId) {
         const col = getActiveCollection();
@@ -783,6 +788,9 @@ function App() {
       collections.find((c) => c.id === revealTarget.collectionId) || getActiveCollection();
     const located = col ? findRequestInItems(col.items || [], revealTarget.id) : null;
     if (located?.request) handleRequestClick(located.request);
+    // Reveal is resolved (found or not) — clear so a stale flag can't wedge
+    // a later, normal collection switch.
+    pendingRevealRequestRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTarget?.nonce]);
 
@@ -2134,6 +2142,7 @@ function App() {
 
     // Restore the workspace
     loadRequest(mockReq);
+    applyPaneLayout(null);
 
     // Restore the response
     if (res) {
@@ -2992,6 +3001,9 @@ function App() {
       return;
     }
     // request or folder → switch collection if needed, then reveal (and open, for requests)
+    if (entity.type === "request") {
+      pendingRevealRequestRef.current = entity.id;
+    }
     if (entity.collectionId && entity.collectionId !== activeCollectionId) {
       handleCollectionSwitch(entity.collectionId);
     }
@@ -3006,6 +3018,7 @@ function App() {
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       setSearchOpen(false);
+      setSearchHighlight(0);
       return;
     }
     if (!searchOpen || searchResults.length === 0) return;
@@ -3111,6 +3124,15 @@ function App() {
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setTimeout(() => setSearchOpen(false), 120)}
               onKeyDown={handleSearchKeyDown}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="search-suggestions-listbox"
+              aria-expanded={searchOpen && !!topSearch.trim()}
+              aria-activedescendant={
+                searchOpen && searchResults[searchHighlight]
+                  ? `search-opt-${searchResults[searchHighlight].type}-${searchResults[searchHighlight].id}`
+                  : undefined
+              }
             />
             {searchOpen && topSearch.trim() && (
               <SearchSuggestions

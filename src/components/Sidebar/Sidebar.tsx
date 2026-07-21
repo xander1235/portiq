@@ -159,7 +159,7 @@ export function Sidebar({
         }
         setHighlightedNodeId(revealTarget.id);
         const raf = requestAnimationFrame(() => {
-            const el = document.querySelector(`[data-node-id="${revealTarget.id}"]`);
+            const el = document.querySelector('[data-node-id="' + CSS.escape(revealTarget.id) + '"]');
             el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
         });
         const timer = setTimeout(() => setHighlightedNodeId(null), 1500);
