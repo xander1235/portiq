@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @import "tailwindcss";
 
@@ -50,8 +50,8 @@
   --muted: #a2a9b8;
   --text-muted: var(--muted);
   --border: #2a3042;
-  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "Fira Code", "IBM Plex Mono", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", monospace;
   --danger: #ef4444;
   /* Semantic status tokens (used by tests/console/timing panes) */
   --success: var(--accent-green);
@@ -266,7 +266,7 @@ select {
 .textarea {
   min-height: 140px;
   resize: none;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   overflow: auto;
 }
 
@@ -432,7 +432,7 @@ select {
   border-radius: 5px !important;
   color: var(--text) !important;
   padding: 3px 8px !important;
-  font-family: "IBM Plex Mono", monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 0.75rem !important;
   outline: none !important;
   transition: border-color 0.15s, box-shadow 0.15s !important;
@@ -610,7 +610,7 @@ select {
 
 .code {
   margin: 0;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   white-space: pre-wrap;
 }
@@ -1109,7 +1109,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 thead {
@@ -1262,7 +1262,7 @@ tbody tr:nth-child(even):hover {
   color: var(--text);
   padding: 3px 6px;
   border-radius: 4px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   outline: none;
   transition: border-color 0.15s;
@@ -1708,7 +1708,7 @@ tfoot td:last-child {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text);
   min-width: 0;
@@ -2062,7 +2062,7 @@ tfoot td:last-child {
   display: flex;
   gap: 6px;
   align-items: baseline;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text);
 }
@@ -2477,7 +2477,7 @@ tfoot td:last-child {
   color: var(--muted);
 }
 .manage-modal .mc-hint code {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--text);
   background: var(--panel-3);

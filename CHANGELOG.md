@@ -1,5 +1,23 @@
 # Portiq
 
+## 0.6.2
+
+### Minor Changes
+
+- Refreshed the app typography: the UI now uses **Inter** (replacing Plus Jakarta Sans) and code/values use **JetBrains Mono** (replacing Fira Code), tuned for legibility at the app's dense 11–13px scale. All monospace usage was consolidated onto the `--font-mono` token, so the CodeMirror editors, response viewer, and websocket panes render consistently.
+- Added a dedicated request search: a top-search suggestions dropdown with type-dispatch navigation, plus a sidebar filter that expands, scrolls to, and highlights matching requests across collections.
+- Per-request pane layout — request/response and tools pane sizes are now saved per request and restored (clamped) when switching requests, instead of sharing one global default.
+- Added a system-following theme option and auto/hidden request headers.
+
+### Patch Changes
+
+- Accessibility and light-theme contrast fixes, including visibility of the Manage Collections and Export checkboxes in light mode.
+- Hardened cross-collection search-open and the reveal selector, with additional pane and accessibility polish.
+
+### Other
+
+- Cleared the remaining non-react-hooks ESLint warnings across the repo.
+
 ## 0.6.1
 
 ### Patch Changes

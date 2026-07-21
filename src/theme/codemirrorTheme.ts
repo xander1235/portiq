@@ -29,7 +29,7 @@ function build(p: Palette, dark: boolean): Extension {
   const view = EditorView.theme(
     {
       "&": { color: p.text, backgroundColor: p.bg, fontSize: "13px" },
-      ".cm-content": { fontFamily: '"Fira Code", monospace', lineHeight: "1.5", caretColor: p.caret },
+      ".cm-content": { fontFamily: "var(--font-mono)", lineHeight: "1.5", caretColor: p.caret },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: p.caret },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
         backgroundColor: p.selection,
