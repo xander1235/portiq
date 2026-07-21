@@ -408,7 +408,7 @@ export function ResponseViewer({
                                     {msg.size !== undefined && <span>{msg.size}B</span>}
                                     {msg.encoding === "base64" && <span>binary/base64</span>}
                                 </div>
-                                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "IBM Plex Mono, monospace", fontSize: "0.8rem", color: "var(--text)" }}>
+                                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "var(--text)" }}>
                                     {msg.parsed?.type === "json"
                                         ? JSON.stringify(msg.parsed.data, null, 2)
                                         : (msg.data || msg.raw || "")}

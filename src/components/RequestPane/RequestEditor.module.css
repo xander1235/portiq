@@ -82,7 +82,7 @@
 .textarea {
     min-height: 140px;
     resize: none;
-    font-family: "IBM Plex Mono", monospace;
+    font-family: var(--font-mono);
     overflow: auto;
 }
 

@@ -717,7 +717,7 @@ export function WebSocketPane({
                       border: "none",
                       borderRadius: "4px",
                       background: "transparent",
-                      fontFamily: wsConfig.messageType === "text" ? "inherit" : "IBM Plex Mono, monospace",
+                      fontFamily: wsConfig.messageType === "text" ? "inherit" : "var(--font-mono)",
                       fontSize: "0.85rem"
                     }}
                   />
