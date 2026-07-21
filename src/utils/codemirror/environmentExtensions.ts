@@ -45,7 +45,7 @@ export const createEnvAutoComplete = (getEnvVars: () => Record<string, any>) => 
 };
 
 export const createEnvHoverTooltip = (getEnvVars: () => Record<string, any>, setCmEnvEdit: (data: { key: string, value: string }) => void) => {
-    return hoverTooltip((view: any, pos: number, side: any) => {
+    return hoverTooltip((view: any, pos: number) => {
         const text = view.state.doc.toString();
         const regex = /\{\{([^}]+)\}\}/g;
         let match;

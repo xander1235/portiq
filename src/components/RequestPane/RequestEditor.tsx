@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import React from "react";
 
 import { EnvInput } from "../TableEditor";
 import styles from "./RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequestToolbar } from "./RequestToolbar";
 import { RequestTabs } from "./RequestTabs";
@@ -152,8 +151,6 @@ export function RequestEditor({
     theme,
     onCurlPaste
 }: RequestEditorProps) {
-    const [showBodyTypeDropdown, setShowBodyTypeDropdown] = useState(false);
-
     return (
         <section className={styles.request}>
             <div className={styles.requestTitle} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

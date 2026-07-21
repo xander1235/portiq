@@ -112,7 +112,7 @@ export const GraphQLProtocol: ProtocolHandler & {
         if (typeof config.variables === "string" && config.variables.trim()) {
           JSON.parse(config.variables);
         }
-      } catch (e) {
+      } catch {
         errors.push("Variables must be valid JSON");
       }
     }
@@ -126,7 +126,7 @@ export const GraphQLProtocol: ProtocolHandler & {
         variables = typeof config.variables === "string"
           ? JSON.parse(config.variables)
           : config.variables;
-      } catch (e) {
+      } catch {
         variables = null;
       }
     }

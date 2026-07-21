@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
@@ -27,15 +27,13 @@ export function GraphQLPane({
   config,
   setConfig,
   onSend,
-  isSending,
-  response
+  isSending
 }: GraphQLPaneProps) {
   const { query, variables, operationName, headers } = config || { query: "", variables: "{}", headers: {} };
 
   const setQuery = (v: string) => setConfig((prev: any) => ({ ...prev, query: v }));
   const setVariables = (v: string) => setConfig((prev: any) => ({ ...prev, variables: v }));
   const setOperationName = (v: string) => setConfig((prev: any) => ({ ...prev, operationName: v }));
-  const setHeaders = (v: any) => setConfig((prev: any) => ({ ...prev, headers: v }));
 
   const [activeTab, setActiveTab] = useState("query"); // query | variables | headers | schema
   const [schema, setSchema] = useState<any>(null);

@@ -43,7 +43,6 @@ export function topoSort(graph: DagGraph): string[] {
 function evalCondition(expr: string, ctx: ResolveContext): boolean {
   if (!expr || !expr.trim()) return true;
   try {
-    // eslint-disable-next-line no-new-func
     const fn = new Function("steps", "env", `"use strict"; return (${expr});`);
     return !!fn(ctx.steps, ctx.env);
   } catch { return false; }
@@ -125,7 +124,6 @@ export async function runFlow(graph: DagGraph, deps: RunDeps, options: RunOption
       const emissions: unknown[] = [];
       const emit = (d: unknown) => emissions.push(d);
       try {
-        // eslint-disable-next-line no-new-func
         const fn = new Function("steps", "env", "emit", `"use strict"; ${script}`);
         fn(steps, deps.env, emit);
         const data = emissions.length <= 1 ? emissions[0] : emissions;

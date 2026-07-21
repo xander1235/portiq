@@ -82,7 +82,7 @@ function parseLLMJson(text: string) {
   const firstBrace = cleanText.indexOf('{');
   const firstBracket = cleanText.indexOf('[');
   
-  let startIdx = -1;
+  let startIdx;
   if (firstBrace !== -1 && firstBracket !== -1) {
     startIdx = Math.min(firstBrace, firstBracket);
   } else {
@@ -326,7 +326,7 @@ export async function generateRequestFromPrompt(
         // Regular JSON minification (removes all excess whitespace/newlines)
         bodyStr = JSON.stringify(parsed);
       }
-    } catch (e) {
+    } catch {
       // Not JSON or parsing failed, leave as is
     }
 

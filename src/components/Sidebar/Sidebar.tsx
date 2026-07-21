@@ -5,10 +5,9 @@ import {
     DropdownMenuTrigger,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import styles from "./Sidebar.module.css";
-import { ProtocolPicker, PROTOCOLS } from "../ProtocolPicker";
+import { ProtocolPicker } from "../ProtocolPicker";
 import { StatusPill } from "../ui/StatusPill";
 
 function countRequests(items: (RequestItem | FolderItem)[] | undefined): number {
@@ -120,9 +119,6 @@ export function Sidebar({
     deleteRequest,
     updateRequestName,
     loadRequest,
-    setItemToMove,
-    setMoveTargetId,
-    setShowMoveModal,
     loadHistoryItem,
     activeRequestId
 }: SidebarProps) {
@@ -135,7 +131,7 @@ export function Sidebar({
         try {
             const saved = localStorage.getItem("vaaya_collapsedFolders");
             return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
-        } catch (e) {
+        } catch {
             return new Set<string>();
         }
     });
@@ -161,7 +157,7 @@ export function Sidebar({
         try {
             const saved = localStorage.getItem("vaaya_collapsedHistoryDates");
             return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
-        } catch (e) {
+        } catch {
             return new Set<string>();
         }
     });

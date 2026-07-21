@@ -131,7 +131,7 @@ export function WebSocketPane({
     try {
       const parsed = value.trim() ? JSON.parse(value) : {};
       patch.headersRows = objectToRows(parsed);
-    } catch (err: any) {
+    } catch {
       // keep text while typing invalid JSON
     }
     updateWsConfig(patch);
@@ -154,7 +154,7 @@ export function WebSocketPane({
     if ((!wsConfig.headersRows || wsConfig.headersRows.length === 0) && wsConfig.headersText) {
       try {
         updateWsConfig({ headersRows: objectToRows(JSON.parse(wsConfig.headersText)) });
-      } catch (err: any) {
+      } catch {
         // ignore invalid persisted JSON
       }
     }
@@ -249,7 +249,7 @@ export function WebSocketPane({
       } else if (existing.status !== "connected") {
         setConnectionTime(null);
       }
-    }).catch((err: any) => {
+    }).catch(() => {
       if (!cancelled) {
         setMessages([]);
         setStatus("disconnected");
@@ -394,7 +394,7 @@ export function WebSocketPane({
         const withoutComments = String(messageInput)
           .replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
         payload = JSON.parse(interpolate(withoutComments));
-      } catch (err: any) {
+      } catch {
         setError("Invalid JSON");
         return;
       }

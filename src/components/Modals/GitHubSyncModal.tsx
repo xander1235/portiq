@@ -66,7 +66,7 @@ export function GitHubSyncModal({ isOpen, onClose, onSyncStateChange, onPulledSt
             setUser(verifiedUser);
             setStatusText(`Connected as ${verifiedUser.login}`);
             setAuthStep("connected");
-        } catch (e: any) {
+        } catch {
             setUser(null);
             setStatusText("Failed to authenticate. Please login again.");
             setGitHubToken(""); // clear invalid token

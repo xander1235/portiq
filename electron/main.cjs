@@ -100,10 +100,10 @@ function validateHeaders(headers) {
 }
 
 function buildHttpResult({ status, statusText, headers, body, duration, httpVersion }) {
-  let json = null;
+  let json;
   try {
     json = JSON.parse(body);
-  } catch (err) {
+  } catch {
     json = null;
   }
 
@@ -313,7 +313,7 @@ function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) 
       settled = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (requestId) pendingHttpRequests.delete(requestId);
-      try { session.close(); } catch (err) { /* ignore */ }
+      try { session.close(); } catch { /* ignore */ }
       resolve(result);
     };
 
@@ -383,7 +383,7 @@ function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) 
     if (timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
         abortReason = "timeout";
-        try { stream.close(); } catch (err) { /* ignore */ }
+        try { stream.close(); } catch { /* ignore */ }
         finish(buildAbortResult("timeout"));
       }, timeoutMs);
     }
@@ -392,7 +392,7 @@ function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) 
       pendingHttpRequests.set(requestId, {
         cancel: () => {
           abortReason = "cancelled";
-          try { stream.close(); } catch (err) { /* ignore */ }
+          try { stream.close(); } catch { /* ignore */ }
           finish(buildAbortResult("cancelled"));
         }
       });
@@ -528,7 +528,7 @@ ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
   if (typeof variables === "string" && variables.trim()) {
     try {
       parsedVariables = JSON.parse(variables);
-    } catch (err) {
+    } catch {
       return { error: "GraphQL variables must be valid JSON" };
     }
   }
@@ -557,7 +557,7 @@ ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
     let json = null;
     try {
       json = JSON.parse(text);
-    } catch (err) {
+    } catch {
       json = null;
     }
 
@@ -585,7 +585,7 @@ ipcMain.handle("ws:connect", async (_event, payload) => {
 
   // Close existing connection with same ID
   if (wsConnections.has(id)) {
-    try { wsConnections.get(id).close(); } catch (e) { /* ignore */ }
+    try { wsConnections.get(id).close(); } catch { /* ignore */ }
     wsConnections.delete(id);
   }
 
@@ -732,7 +732,7 @@ ipcMain.handle("mock:start", async (_event, payload) => {
 
   // Stop existing server with same ID
   if (mockServers.has(id)) {
-    try { mockServers.get(id).server.close(); } catch (e) { /* ignore */ }
+    try { mockServers.get(id).server.close(); } catch { /* ignore */ }
     mockServers.delete(id);
   }
 

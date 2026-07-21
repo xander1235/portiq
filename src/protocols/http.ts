@@ -47,7 +47,7 @@ export const HttpProtocol: ProtocolHandler = {
     if (config.bodyType === "json" && config.body) {
       try {
         JSON.parse(config.body);
-      } catch (e) {
+      } catch {
         // May have comments, don't fail hard
       }
     }

@@ -136,7 +136,7 @@ export function BodyTab({
                             } else if (bodyType === "xml") {
                                 setBodyText(prettifyXml(bodyText));
                             }
-                        } catch (e) {
+                        } catch {
                             // Ignored if invalid
                         }
                     }}
@@ -182,7 +182,7 @@ export function BodyTab({
                             } else if (bodyType === "xml") {
                                 setBodyText(prettifyXml(bodyText));
                             }
-                        } catch (e) {
+                        } catch {
                             // Ignored if invalid
                         }
                     }}

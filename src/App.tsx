@@ -1,17 +1,11 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import ReactDOM from "react-dom";
 import styles from "./App.module.css";
 import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
-import { json, jsonParseLinter } from '@codemirror/lang-json';
-import { xml as xmlLang } from '@codemirror/lang-xml';
-import { linter, lintGutter } from '@codemirror/lint';
-import { autocompletion } from '@codemirror/autocomplete';
-import { EditorView, Decoration, ViewPlugin, MatchDecorator, hoverTooltip } from '@codemirror/view';
-import { generateRequestFromPrompt, generateTestsFromResponse, summarizeResponse, fetchModels } from "./services/ai";
+import { generateRequestFromPrompt, summarizeResponse, fetchModels } from "./services/ai";
 import { createTestHarness } from "./services/testRunner";
 import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
-import { jsonToCsv, jsonToXml, xmlToJson, prettifyXml } from "./services/format";
+import { jsonToCsv, jsonToXml, xmlToJson } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
 import {
@@ -24,15 +18,11 @@ import {
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
-import { xmlLinter } from "./utils/codemirror/xmlExtensions";
-import { customJsonLinter } from "./utils/codemirror/jsonExtensions";
 import { cmTheme } from "./theme/codemirrorTheme";
-import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "./utils/codemirror/environmentExtensions";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
 
-import { TableEditor } from "./components/TableEditor";
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
 import { ExportModal } from "./components/Modals/ExportModal";
@@ -53,9 +43,8 @@ import {
 import { Sidebar } from "./components/Sidebar/Sidebar";
 import { RequestEditor } from "./components/RequestPane/RequestEditor";
 import { ResponseViewer } from "./components/ResponsePane/ResponseViewer";
-import { useRequestState, RequestItem, RequestRow, Collection, FolderItem, WsConfig } from "./hooks/useRequestState";
+import { useRequestState, RequestItem, RequestRow, FolderItem } from "./hooks/useRequestState";
 import layoutStyles from "./components/Layout/Layout.module.css";
-import rightRailStyles from "./components/Layout/RightRail.module.css";
 
 import { GraphQLPane } from "./components/ProtocolPanes/GraphQLPane";
 import { WebSocketPane } from "./components/ProtocolPanes/WebSocketPane";
@@ -66,7 +55,7 @@ import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
 import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
 import type { DagGraph } from "./components/ProtocolPanes/dag/types";
-import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
+import { GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 import { useTheme } from "./theme/useTheme";
 
@@ -203,8 +192,7 @@ function App() {
     getAllFolders,
     parseImportData,
     syncDraftToCollection,
-    collectionActiveRequestIds,
-    setCollectionActiveRequestIds
+    collectionActiveRequestIds
   } = useRequestState();
 
   const [activeRequestTab, setActiveRequestTab] = useLocalStorage("ui_activeRequestTab", "Body");
@@ -424,7 +412,6 @@ function App() {
   const [activeSidebar, setActiveSidebar] = useLocalStorage("ui_activeSidebar", "Collections");
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage("ui_sidebarCollapsed", false);
   const [isSending, setIsSending] = useState(false);
   const [activeHttpRequestId, setActiveHttpRequestId] = useState<string | null>(null);
   const [graphqlResponse, setGraphqlResponse] = useState<any>(null);
@@ -445,9 +432,6 @@ function App() {
     environments, setEnvironments,
     activeEnvId, setActiveEnvId,
     showEnvModal, setShowEnvModal,
-    selectedEnvIds, setSelectedEnvIds,
-    editingEnvKey, setEditingEnvKey,
-    editingEnvDraft, setEditingEnvDraft,
     cmEnvEdit, setCmEnvEdit,
     getActiveEnv,
     getEnvVars,
@@ -482,7 +466,7 @@ function App() {
   const [selectedTablePath, setSelectedTablePath] = useState("$");
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([]);
-  const [showCollectionMenu, setShowCollectionMenu] = useState(false);
+  const [, setShowCollectionMenu] = useState(false);
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [showImportTextModal, setShowImportTextModal] = useState(false);
   const [showImportApiModal, setShowImportApiModal] = useState(false);
@@ -524,7 +508,6 @@ function App() {
   // Manage Collections Tree State
   const [manageItemSelections, setManageItemSelections] = useState(new Set<string>());
   const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set<string>());
-  const [showEnvDropdown, setShowEnvDropdown] = useState(false);
 
   const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 232);
   const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
@@ -730,7 +713,7 @@ function App() {
     if (response?.body) {
       try {
         return JSON.parse(response.body);
-      } catch (err: any) {
+      } catch {
         return null;
       }
     }
@@ -834,7 +817,7 @@ function App() {
       if (window.api?.loadState) {
         return await window.api.loadState("appState");
       }
-    } catch (err: any) {
+    } catch {
       // fall through to localStorage
     }
     return localStorage.getItem("appState");
@@ -889,7 +872,7 @@ function App() {
       if (Array.isArray(historyValue)) {
         setHistory(historyValue);
       }
-    } catch (err: any) {
+    } catch {
       // ignore corrupt state
     }
   }, [
@@ -951,7 +934,7 @@ function App() {
           const state = JSON.parse(value);
           applyPersistedState(state);
         }
-      } catch (err: any) {
+      } catch {
         // ignore corrupt state
       } finally {
         // Mark hydration complete whether or not persisted state existed or
@@ -1173,7 +1156,7 @@ function App() {
   ]);
 
   function parseHeaders() {
-    let parsed = {};
+    let parsed;
     try {
       if (headersText && headersText.trim().length > 0) {
         parsed = JSON.parse(headersText);
@@ -1182,7 +1165,7 @@ function App() {
           .filter((row) => row.key && row.enabled !== false)
           .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
       }
-    } catch (err: any) {
+    } catch {
       // If JSON is invalid, fall back to table rows if they exist, otherwise empty
       parsed = (headersRows || [])
         .filter((row) => row.key && row.enabled !== false)
@@ -1407,7 +1390,7 @@ function App() {
     const coll = getActiveCollection();
     if (!coll) return;
 
-    let rootNode = null;
+    let rootNode;
     if (coll.id === collectionOrFolderId) {
       rootNode = coll;
     } else {
@@ -1493,7 +1476,7 @@ function App() {
             urlObject.host = pmReqUrl.split('.');
             urlObject.query = pmParams;
           }
-        } catch (e: any) { /* ignore parse errors, keep raw */ }
+        } catch { /* ignore parse errors, keep raw */ }
 
         let bodyMode = "raw";
         let bodyOptions = {};
@@ -1820,7 +1803,7 @@ function App() {
       headerObj[k] = v;
     });
 
-    let reqBody: any = bodyText;
+    let reqBody: any;
     let isMultipart = false;
     if (bodyType === "json") {
       reqBody = stripJsonComments(val(bodyText));
@@ -1934,7 +1917,7 @@ function App() {
         js += `  },\n`;
       }
       if (reqBody && reqMethod !== "GET") {
-        let jsBody = ``;
+        let jsBody;
         if (bodyType === 'json') {
           jsBody = `JSON.stringify(${reqBody.includes('{{') ? `JSON.parse(\`${reqBody.replace(/\{\{(.*?)\}\}/g, '${$1}')}\`)` : (reqBody || "{}")})`;
         } else {
@@ -2018,10 +2001,6 @@ function App() {
       return go;
     }
     return "";
-  }
-
-  function buildTemplatePrompt() {
-    return aiPrompt || "";
   }
 
   async function handleLoadHistory(item: any) {
@@ -2379,40 +2358,13 @@ function App() {
     }
   }
 
-  async function handleGenerateRequest() {
-    const finalPrompt = buildTemplatePrompt();
-    if (!finalPrompt.trim()) return;
-    const aiSettings = {
-      provider: aiProvider,
-      model: activeModel,
-      keys: {
-        openai: aiApiKeyOpenAI,
-        anthropic: aiApiKeyAnthropic,
-        gemini: aiApiKeyGemini
-      },
-      semanticSearchEnabled: aiSemanticSearchEnabled
-    };
-    const draft = await generateRequestFromPrompt(
-      finalPrompt,
-      { method, url, headersText, bodyText, bodyType },
-      collections,
-      aiSettings,
-      activeAiSessionId,
-      aiChatSessions
-    );
-    setMethod(draft.method);
-    setUrl(draft.url);
-    setHeadersText(JSON.stringify(draft.headers, null, 2));
-    setBodyText(draft.body || "");
-  }
-
   function handleHeadersTextChange(value: string) {
     setHeadersText(value);
     try {
       const parsed = value.trim() ? JSON.parse(value) : {};
       const rows = objectToRows(parsed);
       setHeadersRows(rows as RequestRow[]);
-    } catch (err: any) {
+    } catch {
       // Keep text as-is; user may still be typing
     }
   }
@@ -2422,21 +2374,6 @@ function App() {
     const newText = JSON.stringify(rowsToObject(next), null, 2);
     setHeadersText(newText);
     if (currentRequestId)      updateRequestById(currentRequestId as string, { headersText: newText });
-  }
-
-  async function handleGenerateTests() {
-    const aiSettings = {
-      provider: aiProvider,
-      model: activeModel,
-      keys: {
-        openai: aiApiKeyOpenAI,
-        anthropic: aiApiKeyAnthropic,
-        gemini: aiApiKeyGemini
-      }
-    };
-    const tests = await generateTestsFromResponse({ method, url }, response, aiSettings);
-    setActiveRequestTab("Tests");
-    setTestsPostSteps((prev) => [...(prev || []), { ...emptyStep("AI Generated"), script: tests.join("\n") }]);
   }
 
   async function handleAiChatSubmit(overridePrompt?: any) {
@@ -2555,7 +2492,7 @@ function App() {
                 try {
                   const parsed = JSON.parse(op.payload.headersText);
                   newHeadersRows = objectToRows(parsed);
-                } catch (e: any) {
+                } catch {
                   try {
                     const headerObj: Record<string, any> = {};
                     op.payload.headersText.split('\n').forEach((line: string) => {
@@ -2567,7 +2504,7 @@ function App() {
                     if (Object.keys(headerObj).length > 0) {
                       newHeadersRows = objectToRows(headerObj);
                     }
-                  } catch (e2: any) { }
+                  } catch { /* ignore */ }
                 }
               }
 
@@ -2677,10 +2614,10 @@ function App() {
 
   async function runTests() {
     setTestsOutput([]);
-    let input = null;
+    let input;
     try {
       input = JSON.parse(testsInputText);
-    } catch (err: any) {
+    } catch {
       setTestsOutput([{ type: "error", text: "Invalid test input JSON.", label: testsMode }]);
       setShowTestOutput(true);
       return;
@@ -2825,7 +2762,7 @@ function App() {
           if (response?.body) {
             try {
               return JSON.parse(response.body);
-            } catch (err: any) {
+            } catch {
               return null;
             }
           }
@@ -2941,7 +2878,7 @@ function App() {
     try {
       const json = xmlToJson(response.body);
       setResponse((prev) => prev ? { ...prev, json } : null);
-    } catch (err: any) {
+    } catch {
       setError("Unable to parse XML.");
     }
   }

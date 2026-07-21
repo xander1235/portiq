@@ -10,7 +10,7 @@ export const customJsonLinter = linter((view: any) => {
         const masked = noComments.replace(/\{\{[^}]+\}\}/g, (m: string) => '"' + 'x'.repeat(Math.max(0, m.length - 2)) + '"');
         JSON.parse(masked);
         return [];
-    } catch (e) {
+    } catch {
         const diagnostics = jsonParseLinter()(view);
         const interpolations: any[] = [];
         const regex = /\{\{[^}]+\}\}/g;

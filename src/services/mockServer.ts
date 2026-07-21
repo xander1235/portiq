@@ -142,7 +142,7 @@ export const MockServerService = {
               delay: 0,
               description: `Mock for: ${item.name}`
             });
-          } catch (e) {
+          } catch {
             // Skip invalid URLs
           }
         }
