@@ -71,8 +71,9 @@ Pane sizes are currently three **global** values in `localStorage`
 (`ui_topHeight`, `ui_rightWidth`, `ui_leftWidth`, set in `App.tsx:512-514`).
 Make the **request/response split** and the **tools pane** width remember their
 size **per request**, so switching requests restores that request's layout. The
-left sidebar stays global. Layout **travels with the request** (included in
-export and GitHub sync).
+left sidebar stays global. Layout **travels with the request** via local
+persistence and GitHub sync; the Postman-format export intentionally omits
+this Portiq-internal field.
 
 ### Current mechanism
 
@@ -95,8 +96,10 @@ paneLayout?: { topHeight?: number; rightWidth?: number };
 
 Because `RequestItem` is nested in the `collections` tree that is serialized into
 the single `appState` blob (persisted via `savePersisted`, `App.tsx:918`) and
-included in export / GitHub sync, storing layout here makes it travel with the
-request automatically — no separate persistence path needed. `leftWidth` is
+included in GitHub sync, storing layout here makes it travel with the request
+automatically for local persistence and sync — no separate persistence path
+needed. The Postman-format export intentionally omits Portiq-internal fields
+like `paneLayout`, so it does not appear in exported JSON. `leftWidth` is
 **not** part of `paneLayout`; it stays a global `useLocalStorage` value.
 
 ### Save
@@ -142,9 +145,10 @@ collection-switch effect (`App.tsx:654`):
 
 - Resize request/response split and tools width on request A; switch to request
   B (different sizes), then back to A → A's sizes restored. New request uses
-  defaults. Export a request and re-import (or GitHub-sync) → `paneLayout`
-  present. A layout saved wide then loaded on a narrow window is clamped, not
-  broken.
+  defaults. Reload the app (local persistence) or GitHub-sync a request with a
+  saved layout → `paneLayout` present in the stored/synced JSON. A Postman-format
+  export of the same request intentionally omits `paneLayout`. A layout saved
+  wide then loaded on a narrow window is clamped, not broken.
 
 ### Testing
 

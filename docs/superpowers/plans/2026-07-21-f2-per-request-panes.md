@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The request/response split height (`topHeight`) and tools-pane width (`rightWidth`) remember their size per request, saved on the request object (so they travel with export/GitHub sync); the left sidebar width stays global.
+**Goal:** The request/response split height (`topHeight`) and tools-pane width (`rightWidth`) remember their size per request, saved on the request object (so they persist via local storage and travel with GitHub sync — the Postman-format export intentionally omits this Portiq-internal field); the left sidebar width stays global.
 
 **Architecture:** Add a `paneLayout` field to `RequestItem`. Keep `topHeight`/`rightWidth` as live React state driving the CSS grid, initialized from a global-default stored in `localStorage`. On drag-end, write the sizes to the active request's `paneLayout` (or to the global default when no request is active). On request switch, resolve the incoming request's layout (clamped to the current window) or fall back to the global default.
 
@@ -346,7 +346,8 @@ In `src/App.tsx`, replace the resizing effect body (the `handleMouseMove` + `han
       if (wasMain || wasRight) {
         const sizes = paneSizeRef.current;
         if (currentRequestId) {
-          // Per-request: rides along in the appState blob + export/sync.
+          // Per-request: rides along in the appState blob (local persistence +
+          // GitHub sync); the Postman-format export intentionally omits it.
           updateRequestState(currentRequestId, "paneLayout", {
             topHeight: sizes.topHeight,
             rightWidth: sizes.rightWidth,
@@ -452,7 +453,7 @@ Run the app. In collection with ≥2 requests:
 2. Open request B — its layout differs (or defaults). Resize B differently.
 3. Return to A → A's sizes are restored; return to B → B's sizes are restored.
 4. Create a New Request (no id) → sizes fall back to the global default; resizing it updates that default.
-5. Export a request that has a saved layout and inspect the JSON → `paneLayout` present. (Sync path rides the same blob.)
+5. Reload the app (local persistence) or GitHub-sync a request that has a saved layout and inspect the stored JSON → `paneLayout` present. A Postman-format export of the same request intentionally omits `paneLayout` (Portiq-internal field, not part of the Postman schema).
 6. Shrink the window very small, then switch to a request whose layout was saved wide → panes are clamped, not broken.
 
 - [ ] **Step 7: Commit**
@@ -466,6 +467,6 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Self-Review
 
-- **Spec coverage:** data model (`paneLayout` on `RequestItem`) → Task 2; travels-with-request (rides `collections`→`appState` blob + export/sync, and `syncDraftToCollection` preserves it via `{...item, ...draft}` since `draft` omits `paneLayout`) → Tasks 2+4; save on drag-end → Task 4; restore-with-clamp at both seams → Tasks 1+5; global default fallback + no-active-request write → Tasks 3+4; `leftWidth` stays global → Task 3 constraint; DAG single-row untouched → Global Constraints. Covered.
+- **Spec coverage:** data model (`paneLayout` on `RequestItem`) → Task 2; travels-with-request (rides `collections`→`appState` blob for local persistence + GitHub sync — the Postman-format export intentionally omits `paneLayout` — and `syncDraftToCollection` preserves it via `{...item, ...draft}` since `draft` omits `paneLayout`) → Tasks 2+4; save on drag-end → Task 4; restore-with-clamp at both seams → Tasks 1+5; global default fallback + no-active-request write → Tasks 3+4; `leftWidth` stays global → Task 3 constraint; DAG single-row untouched → Global Constraints. Covered.
 - **Placeholder scan:** none.
 - **Type consistency:** `PaneDefaults`/`PaneLayout`/`WindowSize` and `resolvePaneLayout`/`clampTopHeight`/`clampRightWidth` used identically across Tasks 1/3/4/5. `updateRequestState(id, field, value)` matches the signature at `useRequestState.ts:449`. `applyPaneLayout` defined once (Task 5 Step 1) and reused.
