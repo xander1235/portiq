@@ -2888,7 +2888,7 @@ function App() {
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
         <div className="flex items-center gap-2">
           <img src={logo} alt="Portiq Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
-          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>portiq</div>
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, var(--text), var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>portiq</div>
           <Button
             variant={activeSidebar === "Collections" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}
