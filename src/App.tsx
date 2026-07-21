@@ -22,6 +22,7 @@ import { cmTheme } from "./theme/codemirrorTheme";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
+import { resolvePaneLayout, type PaneDefaults } from "./utils/paneLayout";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -129,6 +130,35 @@ function getValueByPath(root: any, path: string): any {
 
   if (current.length === 1) return current[0];
   return current;
+}
+
+const PANE_TOP_KEY = "ui_topHeight";
+const PANE_RIGHT_KEY = "ui_rightWidth";
+
+function readGlobalPaneDefaults(): PaneDefaults {
+  const read = (key: string, fallback: number): number => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return fallback;
+      const n = JSON.parse(raw);
+      return typeof n === "number" && Number.isFinite(n) ? n : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  return {
+    topHeight: read(PANE_TOP_KEY, window.innerHeight / 2),
+    rightWidth: read(PANE_RIGHT_KEY, 260),
+  };
+}
+
+function persistGlobalPaneDefaults(next: PaneDefaults): void {
+  try {
+    localStorage.setItem(PANE_TOP_KEY, JSON.stringify(next.topHeight));
+    localStorage.setItem(PANE_RIGHT_KEY, JSON.stringify(next.rightWidth));
+  } catch {
+    /* ignore quota/serialization errors */
+  }
 }
 
 // Shared icons + target metadata for the Export code snippet modal.
@@ -510,8 +540,8 @@ function App() {
   const [manageCollapsedFolders, setManageCollapsedFolders] = useState(new Set<string>());
 
   const [leftWidth, setLeftWidth] = useLocalStorage("ui_leftWidth", 232);
-  const [rightWidth, setRightWidth] = useLocalStorage("ui_rightWidth", 260);
-  const [topHeight, setTopHeight] = useLocalStorage("ui_topHeight", window.innerHeight / 2);
+  const [rightWidth, setRightWidth] = useState<number>(() => readGlobalPaneDefaults().rightWidth);
+  const [topHeight, setTopHeight] = useState<number>(() => readGlobalPaneDefaults().topHeight);
   const [draggingLeft, setDraggingLeft] = useState(false);
   const [draggingRight, setDraggingRight] = useState(false);
   const [draggingMain, setDraggingMain] = useState(false);
@@ -520,6 +550,11 @@ function App() {
   useEffect(() => {
     draggingRef.current = { left: draggingLeft, right: draggingRight, main: draggingMain };
   }, [draggingLeft, draggingRight, draggingMain]);
+
+  const paneSizeRef = useRef<PaneDefaults>({ topHeight, rightWidth });
+  useEffect(() => {
+    paneSizeRef.current = { topHeight, rightWidth };
+  }, [topHeight, rightWidth]);
 
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [itemToMove, setItemToMove] = useState<any>(null);
