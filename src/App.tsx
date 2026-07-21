@@ -22,7 +22,7 @@ import { cmTheme } from "./theme/codemirrorTheme";
 import { SemanticSearch } from "./utils/semanticSearch";
 import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
-import { resolvePaneLayout, type PaneDefaults } from "./utils/paneLayout";
+import { resolvePaneLayout, clampTopHeight, clampRightWidth, type PaneDefaults } from "./utils/paneLayout";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -820,16 +820,35 @@ function App() {
       if (draggingRef.current.left) {
         setLeftWidth(Math.max(150, Math.min(e.clientX, window.innerWidth / 2)));
       } else if (draggingRef.current.right) {
-        setRightWidth(Math.max(150, Math.min(window.innerWidth - e.clientX, window.innerWidth / 2)));
+        const w = clampRightWidth(window.innerWidth - e.clientX, window.innerWidth);
+        setRightWidth(w);
+        paneSizeRef.current.rightWidth = w;
       } else if (draggingRef.current.main) {
-        setTopHeight(Math.max(100, Math.min(e.clientY - 60, window.innerHeight - 150)));
+        const h = clampTopHeight(e.clientY - 60, window.innerHeight);
+        setTopHeight(h);
+        paneSizeRef.current.topHeight = h;
       }
     };
 
     const handleMouseUp = () => {
+      const wasMain = draggingRef.current.main;
+      const wasRight = draggingRef.current.right;
       setDraggingLeft(false);
       setDraggingRight(false);
       setDraggingMain(false);
+      if (wasMain || wasRight) {
+        const sizes = paneSizeRef.current;
+        if (currentRequestId) {
+          // Per-request: rides along in the appState blob + export/sync.
+          updateRequestState(currentRequestId, "paneLayout", {
+            topHeight: sizes.topHeight,
+            rightWidth: sizes.rightWidth,
+          });
+        } else {
+          // No active request (blank New Request) → update the global default.
+          persistGlobalPaneDefaults(sizes);
+        }
+      }
     };
 
     if (draggingLeft || draggingRight || draggingMain) {
