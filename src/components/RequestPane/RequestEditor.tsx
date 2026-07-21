@@ -13,6 +13,7 @@ import { ParamsTab } from "./tabs/ParamsTab";
 import { HeadersTab } from "./tabs/HeadersTab";
 import { TestsTab } from "./tabs/TestsTab";
 import type { Theme } from "../../theme/theme";
+import type { AutoHeader } from "../../utils/autoHeaders";
 import { ScriptStep } from "../../services/scriptSteps";
 
 interface RequestEditorProps {
@@ -56,6 +57,7 @@ interface RequestEditorProps {
     handleHeadersRowsChange: (rows: any[]) => void;
     headersText: string;
     handleHeadersTextChange: (text: string) => void;
+    autoHeaders: AutoHeader[];
     authType: string;
     setAuthType: (type: string) => void;
     authConfig: any;
@@ -125,6 +127,7 @@ export function RequestEditor({
     handleHeadersRowsChange,
     headersText,
     handleHeadersTextChange,
+    autoHeaders,
     authType,
     setAuthType,
     authConfig,
@@ -272,6 +275,7 @@ export function RequestEditor({
                         handleHeadersRowsChange={handleHeadersRowsChange}
                         headersText={headersText}
                         handleHeadersTextChange={handleHeadersTextChange}
+                        autoHeaders={autoHeaders}
                         getEnvVars={getEnvVars}
                         theme={theme}
                     />

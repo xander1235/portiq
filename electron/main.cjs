@@ -408,6 +408,38 @@ function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) 
 
 ipcMain.handle("app:ping", async () => "pong");
 
+ipcMain.handle("app:getVersion", async () => {
+  try { return app.getVersion(); } catch { return ""; }
+});
+
+const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
+
+function hasHeader(headers, name) {
+  const lower = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lower);
+}
+
+/**
+ * Adds the client's auto-generated headers when the caller has not set them.
+ * Host and Connection are left to Node's http/http2 stack. Accept-Encoding is
+ * intentionally NOT added because responses are read without decompression.
+ */
+function applyAutoHeaders(headers, { method, body, hasMultipart }) {
+  if (!hasHeader(headers, "user-agent")) {
+    let version = "";
+    try { version = app.getVersion(); } catch { version = ""; }
+    headers["User-Agent"] = `Portiq/${version || "dev"}`;
+  }
+  if (!hasHeader(headers, "accept")) {
+    headers["Accept"] = "*/*";
+  }
+  const carriesBody = !METHODS_WITHOUT_BODY.has(method) && !hasMultipart && typeof body === "string" && body.length > 0;
+  if (carriesBody && !hasHeader(headers, "content-length")) {
+    headers["Content-Length"] = String(Buffer.byteLength(body));
+  }
+  return headers;
+}
+
 ipcMain.handle("http:sendRequest", async (_event, payload) => {
   const { requestId, method, url, headers, body, timeoutMs, httpVersion, multipartParts } = payload || {};
 
@@ -439,12 +471,15 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
     const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30000;
     const normalizedVersion = httpVersion || "auto";
     let requestBody = body;
-    if (Array.isArray(multipartParts) && multipartParts.length > 0) {
+    const hasMultipart = Array.isArray(multipartParts) && multipartParts.length > 0;
+    if (hasMultipart) {
       const multipart = buildMultipartBody(multipartParts);
       sanitizedHeaders["Content-Type"] = `multipart/form-data; boundary=${multipart.boundary}`;
       sanitizedHeaders["Content-Length"] = String(multipart.body.length);
       requestBody = multipart.body;
     }
+
+    applyAutoHeaders(sanitizedHeaders, { method: upperMethod, body: requestBody, hasMultipart });
 
     if (normalizedVersion === "1.1") {
       return await sendHttp1Request({

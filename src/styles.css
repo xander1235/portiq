@@ -14,8 +14,9 @@
   --color-card-foreground: var(--text);
   --color-popover: var(--panel);
   --color-popover-foreground: var(--text);
-  --color-primary: var(--accent-2);
-  --color-primary-foreground: #000000;
+  /* Primary = coral accent, matching the app's rendered .primary CTAs */
+  --color-primary: var(--accent);
+  --color-primary-foreground: #1a0f0a;
   --color-secondary: var(--panel-2);
   --color-secondary-foreground: var(--text);
   --color-muted: var(--panel-2);
@@ -52,6 +53,9 @@
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Fira Code", "IBM Plex Mono", monospace;
   --danger: #ef4444;
+  /* Semantic status tokens (used by tests/console/timing panes) */
+  --success: var(--accent-green);
+  --error: var(--accent-red);
 
   /* Type scale */
   --text-xs: 11px;
@@ -113,6 +117,9 @@
   --text-muted: var(--muted);
   --border: #e3e6ec;
   --danger: #d64545;
+  /* Semantic status tokens (used by tests/console/timing panes) */
+  --success: var(--accent-green);
+  --error: var(--accent-red);
 
   --syn-key: #0e8f86;
   --syn-str: #2f8a4a;

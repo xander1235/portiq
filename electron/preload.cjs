@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
   ping: () => ipcRenderer.invoke("app:ping"),
+  getAppVersion: () => ipcRenderer.invoke("app:getVersion"),
 
   // ── HTTP ──
   sendRequest: (payload) => ipcRenderer.invoke("http:sendRequest", payload),

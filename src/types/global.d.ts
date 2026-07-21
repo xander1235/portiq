@@ -36,6 +36,7 @@ declare global {
     __cm_show_replace?: boolean;
     api: {
       ping: () => Promise<string>;
+      getAppVersion: () => Promise<string>;
 
       // HTTP
       sendRequest: (payload: RequestConfig) => Promise<RequestResponse>;

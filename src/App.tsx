@@ -69,6 +69,9 @@ import type { DagGraph } from "./components/ProtocolPanes/dag/types";
 import { ProtocolRegistry, GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 import { useTheme } from "./theme/useTheme";
+import { Sun, Moon, Monitor } from "lucide-react";
+import { applyBodyContentType } from "./utils/headers";
+import { computeAutoHeaders, type AutoHeader } from "./utils/autoHeaders";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -456,7 +459,13 @@ function App() {
     redactSecrets
   } = useEnvironmentState();
 
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { theme, preference: themePreference, cycle: cycleTheme } = useTheme();
+  const [appVersion, setAppVersion] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    window.api?.getAppVersion?.().then((v: string) => { if (!cancelled) setAppVersion(v); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Stable identities for props handed down to panes (e.g. DagFlowPane): both
   // flattenCollections(collections) and getEnvVars() previously allocated a brand-new
@@ -1752,26 +1761,68 @@ function App() {
   }
 
   function setContentType(type: string) {
-    const map: Record<string, string> = {
-      json: "application/json",
-      xml: "application/xml",
-      form: "application/x-www-form-urlencoded",
-      multipart: "multipart/form-data",
-      raw: "text/plain"
-    };
-    const next = headersRows.map((row) => {
-      if (row.key.toLowerCase() === "content-type") {
-        return { ...row, value: map[type] || row.value, enabled: true, comment: row.comment || "" };
-      }
-      return row;
-    });
-    if (!next.find((row) => row.key.toLowerCase() === "content-type")) {
-      const typeMap: Record<string, string> = { json: "application/json", xml: "application/xml", form: "application/x-www-form-urlencoded", multipart: "multipart/form-data", raw: "text/plain" };
-      next.push({ key: "Content-Type", value: typeMap[type] || "application/json", enabled: true, comment: "" });
-    }
+    // Reconcile the auto-managed Content-Type header with the selected body
+    // type. Selecting "None" removes it entirely.
+    const next = applyBodyContentType(headersRows, type);
     setHeadersRows(next);
     setHeadersText(JSON.stringify(rowsToObject(next), null, 2));
   }
+
+  // Headers the client adds automatically ("hidden" headers), for the Headers
+  // tab preview. Mirrors what electron/main.cjs actually sends.
+  const autoHeaders: AutoHeader[] = useMemo(() => {
+    const userHeaderKeys = new Set<string>();
+    (headersRows || []).forEach((row: any) => {
+      if (row.key && row.enabled !== false) userHeaderKeys.add(String(row.key).toLowerCase());
+    });
+    if (headersText && headersText.trim()) {
+      try {
+        Object.keys(JSON.parse(headersText)).forEach((k) => userHeaderKeys.add(k.toLowerCase()));
+      } catch {
+        /* invalid JSON — rely on table rows */
+      }
+    }
+
+    let previewBody: string | undefined;
+    let multipartCount: number | undefined;
+    if (bodyType === "form") {
+      previewBody = new URLSearchParams(rowsToObject(bodyRows)).toString();
+    } else if (bodyType === "multipart") {
+      multipartCount = (bodyRows || []).filter((r: any) => r.key && r.enabled !== false).length;
+    } else if (bodyType === "json") {
+      // Match handleSend: comments stripped and re-serialized (minified).
+      const stripped = stripJsonComments(interpolate(bodyText));
+      if (stripped.trim()) {
+        try {
+          previewBody = JSON.stringify(JSON.parse(stripped));
+        } catch {
+          previewBody = interpolate(bodyText);
+        }
+      } else {
+        previewBody = "";
+      }
+    } else if (bodyType !== "none") {
+      previewBody = interpolate(bodyText);
+    }
+
+    let previewUrl = url;
+    try {
+      previewUrl = buildUrlWithParams();
+    } catch {
+      /* keep raw url if params cannot be built */
+    }
+
+    return computeAutoHeaders({
+      method,
+      url: previewUrl,
+      bodyType,
+      body: previewBody,
+      multipartCount,
+      appVersion,
+      userHeaderKeys,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [method, bodyType, bodyText, bodyRows, headersText, headersRows, url, paramsRows, appVersion]);
 
   function stripJsonComments(text: string) {
     return text
@@ -2951,7 +3002,7 @@ function App() {
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
         <div className="flex items-center gap-2">
           <img src={logo} alt="Portiq Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
-          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #fff, var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>portiq</div>
+          <div className={styles.brand} style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, var(--text), var(--muted))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '700', marginRight: '10px' }}>portiq</div>
           <Button
             variant={activeSidebar === "Collections" ? "secondary" : "ghost"}
             onClick={() => setActiveSidebar("Collections")}
@@ -3057,8 +3108,20 @@ function App() {
             )}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>Settings</Button>
-          <button className="ghost" onClick={toggleTheme} aria-label="Toggle theme" title="Toggle light/dark">
-            {theme === "dark" ? "☀" : "☾"}
+          <button
+            className="ghost icon-button"
+            onClick={cycleTheme}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            aria-label={`Theme: ${themePreference} (click to change)`}
+            title={
+              themePreference === "system"
+                ? `Theme: System (currently ${theme}) — click for Light`
+                : themePreference === "light"
+                  ? "Theme: Light — click for Dark"
+                  : "Theme: Dark — click for System"
+            }
+          >
+            {themePreference === "system" ? <Monitor size={16} /> : themePreference === "light" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
       </header>
@@ -3155,6 +3218,7 @@ function App() {
                   handleHeadersRowsChange={handleHeadersRowsChange}
                   headersText={headersText}
                   handleHeadersTextChange={handleHeadersTextChange}
+                  autoHeaders={autoHeaders}
                   authType={authType}
                   setAuthType={setAuthType}
                   authConfig={authConfig}
@@ -3447,7 +3511,7 @@ function App() {
             <div className="modal modal-wide manage-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-title">
                 <div>Manage Collections</div>
-                <button className="ghost icon-button" onClick={() => setShowCollectionModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+                <button className="ghost icon-button" onClick={() => setShowCollectionModal(false)} style={{ margin: "-8px", padding: "8px" }} aria-label="Close">✕</button>
               </div>
               <div className="mc-layout">
                 <aside className="mc-aside">
@@ -3596,7 +3660,7 @@ function App() {
                 <span className="snippet-glyph">{SNIPPET_ICON_CODE}</span>
                 Export code snippet
               </div>
-              <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }}>✕</button>
+              <button className="ghost icon-button" onClick={() => setShowSnippetModal(false)} style={{ margin: "-8px", padding: "8px" }} aria-label="Close">✕</button>
             </div>
 
             <div className="snippet-body">

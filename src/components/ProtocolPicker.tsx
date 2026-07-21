@@ -1,48 +1,59 @@
 import React from "react";
+import {
+  Globe,
+  Share2,
+  ArrowLeftRight,
+  Zap,
+  Rss,
+  Plug,
+  Workflow,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 interface Protocol {
   id: string;
   label: string;
   color: string;
   desc: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 const PROTOCOLS: Protocol[] = [
   {
     id: "http", label: "HTTP", color: "#22c55e",
     desc: "REST API requests with full method, header, body and auth support",
-    icon: "↗",
+    icon: Globe,
   },
   {
     id: "graphql", label: "GraphQL", color: "#e535ab",
     desc: "Write queries & mutations with variables and introspection",
-    icon: "◈",
+    icon: Share2,
   },
   {
     id: "websocket", label: "WebSocket", color: "#f59e0b",
     desc: "Persistent bi-directional real-time connections",
-    icon: "⇄",
+    icon: ArrowLeftRight,
   },
   {
     id: "grpc", label: "gRPC", color: "#00bcd4",
     desc: "Protocol-buffer based service calls with streaming",
-    icon: "⚡",
+    icon: Zap,
   },
   {
     id: "sse", label: "SSE / Socket", color: "#a78bfa",
     desc: "Server-Sent Events and raw socket streams",
-    icon: "▼",
+    icon: Rss,
   },
   {
     id: "mcp", label: "MCP", color: "#f472b6",
     desc: "Model Context Protocol for AI tool & resource access",
-    icon: "🔗",
+    icon: Plug,
   },
   {
     id: "dag", label: "DAG Flow", color: "#fb923c",
     desc: "Chain multiple requests in a directed graph workflow",
-    icon: "⬡",
+    icon: Workflow,
   },
 ];
 
@@ -88,10 +99,10 @@ export function ProtocolPicker({ onSelect, onClose, currentProtocol }: ProtocolP
         <button
           className="ghost icon-button"
           onClick={onClose}
-          style={{ fontSize: "1.1rem", padding: "4px 8px", color: "var(--text-muted)" }}
+          style={{ padding: "4px 8px", color: "var(--text-muted)", display: "flex", alignItems: "center" }}
           aria-label="Close"
         >
-          ✕
+          <X size={18} />
         </button>
       </div>
 
@@ -104,6 +115,7 @@ export function ProtocolPicker({ onSelect, onClose, currentProtocol }: ProtocolP
       }}>
         {PROTOCOLS.map((proto) => {
           const isActive = currentProtocol === proto.id;
+          const Icon = proto.icon;
           return (
             <button
               key={proto.id}
@@ -141,9 +153,9 @@ export function ProtocolPicker({ onSelect, onClose, currentProtocol }: ProtocolP
                   width: "28px", height: "28px", borderRadius: "8px",
                   background: `${proto.color}20`,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "0.95rem", flexShrink: 0,
+                  flexShrink: 0,
                 }}>
-                  {proto.icon}
+                  <Icon size={16} color={proto.color} strokeWidth={2} aria-hidden="true" />
                 </span>
                 <span style={{
                   fontSize: "0.9rem", fontWeight: 700, color: proto.color,
