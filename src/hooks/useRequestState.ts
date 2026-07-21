@@ -74,6 +74,7 @@ export interface RequestItem {
     graphqlConfig?: GraphqlConfig;
     wsConfig?: WsConfig;
     dagGraph?: DagGraph;
+    paneLayout?: { topHeight?: number; rightWidth?: number };
 }
 
 export interface FolderItem {
