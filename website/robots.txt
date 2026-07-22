@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://portiq.rathodveerender25.workers.dev/sitemap.xml
