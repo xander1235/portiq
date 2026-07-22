@@ -7,6 +7,19 @@
   <title>Portiq | Desktop API Client</title>
   <meta name="description"
     content="Portiq is a modern desktop API client for HTTP, GraphQL, WebSocket, mocks, flows, and AI-assisted workflows." />
+  <!-- Social / Open Graph. og:url and a <link rel="canonical"> should be added once the public deploy URL is known. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Portiq | Desktop API Client" />
+  <meta property="og:description"
+    content="A modern desktop API client for HTTP, GraphQL, WebSocket, mocks, flows, and AI-assisted workflows." />
+  <meta property="og:image"
+    content="https://raw.githubusercontent.com/xander1235/portiq/main/website/screenshots/portiq-workspace.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Portiq | Desktop API Client" />
+  <meta name="twitter:description"
+    content="A modern desktop API client for HTTP, GraphQL, WebSocket, mocks, flows, and AI-assisted workflows." />
+  <meta name="twitter:image"
+    content="https://raw.githubusercontent.com/xander1235/portiq/main/website/screenshots/portiq-workspace.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -284,8 +297,39 @@
         <ol class="changelog-list">
           <li class="changelog-entry">
             <div class="changelog-meta">
-              <span class="changelog-version">v0.6.0</span>
+              <span class="changelog-version">v0.6.2</span>
               <span class="changelog-tag">Latest</span>
+              <time class="changelog-date">Jul 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>Typography refresh, fast search &amp; per-request panes</h3>
+              <ul>
+                <li>New app typography — <strong>Inter</strong> for the UI and <strong>JetBrains Mono</strong> for code and values, tuned for the app's dense 11–13px scale.</li>
+                <li>Dedicated request search: a top-bar suggestions dropdown, plus a sidebar filter that expands, scrolls to, and highlights matching requests across collections.</li>
+                <li>Per-request pane layout — request/response and tools pane sizes are saved per request and restored when you switch back.</li>
+                <li>System-following theme option, with accessibility and light-theme contrast fixes.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.6.1</span>
+              <time class="changelog-date">Jul 2026</time>
+            </div>
+            <div class="changelog-body">
+              <h3>macOS launch fix and AGPL-3.0</h3>
+              <ul>
+                <li>macOS builds are now ad-hoc signed (hardened runtime + entitlements) so arm64 downloads launch instead of showing a "damaged" error. Builds are not notarized, so the first launch is via right-click → Open.</li>
+                <li>Relicensed the project from MIT to <strong>AGPL-3.0</strong>.</li>
+                <li>Bumped release GitHub Actions to v5 for the Node 24 runtime.</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.6.0</span>
               <time class="changelog-date">Jul 2026</time>
             </div>
             <div class="changelog-body">
@@ -364,7 +408,7 @@
             <p class="eyebrow">Download</p>
             <h2>Download the packaged release directly.</h2>
             <p class="section-copy">
-              Grab the build for your platform. Each download links straight to the latest signed GitHub release (<strong>v0.6.0</strong>) — clicking starts it immediately.
+              Grab the build for your platform. Each download links straight to the latest signed GitHub release (<strong>v0.6.2</strong>) — clicking starts it immediately.
             </p>
           </div>
 
@@ -375,7 +419,7 @@
                 <p>Direct DMG download for <code>arm64</code> builds.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-mac-arm64.dmg"
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.2/Portiq-0.6.2-mac-arm64.dmg"
                 download>
                 Download for Mac
               </a>
@@ -387,7 +431,7 @@
                 <p>Direct installer download for the Windows packaged build.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-win-x64.exe" download>
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.2/Portiq-0.6.2-win-x64.exe" download>
                 Download for Windows
               </a>
             </article>
@@ -398,7 +442,7 @@
                 <p>Direct AppImage download for Linux users who want a portable build.</p>
               </div>
               <a class="button button-primary"
-                href="https://github.com/xander1235/portiq/releases/download/v0.6.0/Portiq-0.6.0-linux-x86_64.AppImage"
+                href="https://github.com/xander1235/portiq/releases/download/v0.6.2/Portiq-0.6.2-linux-x86_64.AppImage"
                 download>
                 Download for Linux
               </a>
@@ -408,6 +452,19 @@
         </div>
       </section>
     </main>
+
+    <footer class="site-footer">
+      <a class="site-footer__brand" href="#top" aria-label="Portiq home">
+        <img src="./assets/portiq-logo.png" alt="Portiq logo" />
+        <span>Portiq</span>
+      </a>
+      <nav class="site-footer__links" aria-label="Footer">
+        <a href="https://github.com/xander1235/portiq">GitHub</a>
+        <a href="https://github.com/xander1235/portiq/releases">Releases</a>
+        <a href="https://github.com/xander1235/portiq/blob/main/LICENSE">License (AGPL-3.0)</a>
+      </nav>
+      <p class="site-footer__legal">© 2026 Portiq · Licensed under AGPL-3.0-only.</p>
+    </footer>
   </div>
 
   <script>
