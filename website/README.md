@@ -30,8 +30,8 @@ npx serve website
 
 The download buttons in `index.html` should point to the exact GitHub release asset URLs, for example:
 
-- `https://github.com/<owner>/<repo>/releases/download/v0.6.0/Portiq-0.6.0-mac-arm64.dmg`
-- `https://github.com/<owner>/<repo>/releases/download/v0.6.0/Portiq-0.6.0-win-x64.exe`
-- `https://github.com/<owner>/<repo>/releases/download/v0.6.0/Portiq-0.6.0-linux-x86_64.AppImage`
+- `https://github.com/<owner>/<repo>/releases/download/v0.6.2/Portiq-0.6.2-mac-arm64.dmg`
+- `https://github.com/<owner>/<repo>/releases/download/v0.6.2/Portiq-0.6.2-win-x64.exe`
+- `https://github.com/<owner>/<repo>/releases/download/v0.6.2/Portiq-0.6.2-linux-x86_64.AppImage`
 
 Replace those placeholders with the real repository path and exact packaged artifact names from your release output.
