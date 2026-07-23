@@ -1,0 +1,14 @@
+{
+  // Cloudflare Worker config for the standalone marketing site (`website/`).
+  // The site is plain static HTML/CSS/JS — there is no build step. This config
+  // makes `wrangler versions upload` / `wrangler deploy` serve `website/` as
+  // static assets (no Worker script needed).
+  //
+  // NOTE: set the Cloudflare project's Build command to empty in the dashboard —
+  // `npm run build` builds the Electron app (dist/), which this deploy does not use.
+  "name": "portiq",
+  "compatibility_date": "2026-07-23",
+  "assets": {
+    "directory": "./website"
+  }
+}
