@@ -23,6 +23,7 @@ The goal is **full parity** with the desktop app over time, delivered in phases.
 | MCP default scope | **Read + execute freely, guarded writes** — browsing/running/tests are ungated; library mutations are opt-in |
 | Architecture | **A: Shared `@portiq/core`** headless library used by app, CLI, and MCP |
 | Phase order | Core → **MCP** → CLI → parity fill → hardening |
+| Parallelization | **Contract-first, then fan out** — freeze core's public API (Phase 0a), then build core internals, MCP, CLI, Electron rewire, and each parity module as independent tracks in disjoint packages/dirs that club together with minimal merge effort |
 
 ## Current architecture (as-is)
 
@@ -153,11 +154,54 @@ Host config drop-in (Claude Code/Desktop): `{ "command": "portiq-mcp" }` or `{ "
 
 ## Phased roadmap
 
-- **Phase 0 — Core extraction & data contract.** Set up npm workspaces; build `@portiq/core` with `store/` (`resolveDataDir` + WAL + optimistic writes + portable import/export), `model/`, `protocols/` + senders (HTTP/GraphQL/WS), `exec/`, **and `scripting/`** (needed because MCP's `run_collection` returns test results). Rewire `electron/main.cjs` to call core. **Pin the app name.** Golden parity test proving the desktop app behaves identically. *Unblocks everything.*
+- **Phase 0 — Core extraction & data contract.** Begins with **Phase 0a** (freeze core's public API + `model/` types + module registry + workspaces scaffold — see *Parallelization & integration strategy*), which unlocks the parallel tracks. Then build `@portiq/core` with `store/` (`resolveDataDir` + WAL + optimistic writes + portable import/export), `model/`, `protocols/` + senders (HTTP/GraphQL/WS), `exec/`, **and `scripting/`** (needed because MCP's `run_collection` returns test results). Rewire `electron/main.cjs` to call core. **Pin the app name.** Golden parity test proving the desktop app behaves identically. *Unblocks everything.*
 - **Phase 1 — MCP server (stdio).** Resources + read/execute tools + guarded writes (opt-in). Host config snippets for Claude Code/Desktop.
 - **Phase 2 — CLI.** `ls/get/search/run/exec/import/export/where/config`, env + vars, reporters (pretty/json/junit), exit codes.
 - **Phase 3 — Parity fill.** DAG flows executor, mock server command, gRPC, git sync (push/pull/status), AI-assisted tools. Both CLI and MCP gain these as the core modules land.
 - **Phase 4 — Hardening & packaging.** Desktop live-reload on external DB change; bundle the `portiq` / `portiq-mcp` binaries with the installed desktop app (drop on PATH) + npm publish; docs and examples; optional schema normalization for fine-grained concurrency.
+
+## Parallelization & integration strategy
+
+**Decision:** After a small **contract-first** step, the bulk of the work splits into independent tracks that can be built concurrently (separate branches/worktrees) and **clubbed together with minimal merge effort**, because each track lives in its own package/directory and integrates only through core's public API — not by editing shared files.
+
+### The one true serialization: freeze the contract first (Phase 0a)
+
+Before fanning out, land a small **Phase 0a** that everything else depends on:
+
+- `model/` — domain TypeScript types (the explicit `appState` shape).
+- **Public API signatures** of `store/`, `exec/`, and `protocols/` (real types, stub/throw implementations are fine).
+- The **module registry** pattern (how `flows`/`mock`/`sync`/`grpc`/`ai` self-register), mirroring the existing `ProtocolRegistry`.
+- npm workspaces scaffold (`packages/{core,cli,mcp}`).
+
+Once Phase 0a is merged, downstream tracks compile and test against the frozen interface (mocking core where needed), so they don't block on each other's implementations.
+
+### Parallel tracks (all branch off the merged Phase 0a commit)
+
+| Track | Owns (disjoint files) | Depends on | Can start | Merge-conflict risk |
+|---|---|---|---|---|
+| **T1 — Core internals** | `packages/core/{store,exec,protocols}` impl | Phase 0a contract | after 0a | Low (own files) |
+| **T2 — MCP server** | `packages/mcp/**` | core public API (mockable) | after 0a | None (own package) |
+| **T3 — CLI** | `packages/cli/**` | core public API (mockable) | after 0a | None (own package) |
+| **T4 — Electron rewire** | `electron/main.cjs`, `preload.cjs` | core public API | after 0a | Low (isolated file) |
+| **T5 — Parity modules** | `packages/core/{flows,mock,sync,grpc,ai}` — one sub-track each | registry + `exec` | after 0a | Low (each its own dir) |
+| **T6 — Cross-cutting** | `resolveDataDir` + app-name pin, CLI reporters, docs, host config snippets, CI matrix | nothing / contract only | immediately | None |
+
+### Why clubbing stays cheap
+
+- **Package boundaries.** CLI and MCP live in separate packages (`packages/cli`, `packages/mcp`) and both consume `@portiq/core` read-only. Their branches touch **disjoint file sets**, so merging is near-conflict-free and order-independent.
+- **Additive registry, not edited switchboards.** Each parity module (`flows`, `mock`, `sync`, `grpc`, `ai`) is a self-registering directory; integrating one is "import + register," never editing a shared dispatcher. Sub-tracks within T5 don't collide.
+- **Mockable core API.** T2/T3 develop and unit-test against the frozen `@portiq/core` interface with stubs, so they need not wait for T1 to be implementation-complete.
+- **Isolated Electron seam.** T4 only replaces bodies inside `electron/main.cjs` with core calls; it doesn't touch `packages/*`.
+
+### What is genuinely sequential
+
+- **Phase 0a → everything** (the only hard upfront gate).
+- **End-to-end verification** of a surface needs T1 done: T2/T3 can be *written* in parallel, but the golden parity test and real request execution require core internals complete. Ship-order still follows the roadmap (MCP first), but development order is flexible.
+- Branch each track off the **merged Phase 0a commit on the integration branch** (not stacked on top of each other), so worktrees see a consistent base and merges remain independent.
+
+### Mapping tracks to phases
+
+Phase 0a (contract) is the prerequisite. T1 + T6 complete **Phase 0**. **Phase 1** delivers T2 (MCP). **Phase 2** delivers T3 (CLI) — though T3 may be built alongside T2 and simply *shipped* second. **Phase 3** is the T5 sub-tracks landing incrementally. **Phase 4** is hardening/packaging (partly T6). T4 lands within Phase 0 to keep the desktop app on core.
 
 ## Testing strategy
 
