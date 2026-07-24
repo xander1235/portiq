@@ -25,6 +25,7 @@ let httpTransport = null;
 
 const wsManager = new core.WsManager();
 const mockManager = new core.MockServerManager();
+const grpcTransport = new core.GrpcTransport();
 
 // Forward WsManager events to every renderer window, mirroring the
 // `BrowserWindow.webContents.send` push the old inline WS code performed.
@@ -126,6 +127,33 @@ ipcMain.handle("http:cancelRequest", async (_event, payload) => {
 // ── GraphQL request handler (HTTP POST with GraphQL payload) ──
 ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
   return core.sendGraphQL(payload);
+});
+
+// ── gRPC request handler (native transport via @grpc/grpc-js) ──
+ipcMain.handle("grpc:sendRequest", async (_event, payload) => {
+  try {
+    return await grpcTransport.send(payload);
+  } catch (err) {
+    return {
+      statusCode: 2,
+      statusMessage: "UNKNOWN",
+      duration: 0,
+      metadata: {},
+      trailers: {},
+      body: "",
+      json: null,
+      error: err && err.message ? err.message : String(err),
+      messages: []
+    };
+  }
+});
+
+ipcMain.handle("grpc:cancelRequest", async (_event, payload) => {
+  try {
+    return grpcTransport.cancel(payload && payload.requestId);
+  } catch (err) {
+    return { error: err && err.message ? err.message : String(err) };
+  }
 });
 
 // ── WebSocket connection manager ──

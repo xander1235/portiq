@@ -46,6 +46,10 @@ declare global {
       // GraphQL
       sendGraphQL: (payload: any) => Promise<any>;
 
+      // gRPC
+      sendGrpc: (payload: any) => Promise<any>;
+      cancelGrpc: (payload: any) => Promise<any>;
+
       // WebSocket
       wsConnect: (payload: any) => Promise<any>;
       wsSend: (payload: any) => Promise<any>;

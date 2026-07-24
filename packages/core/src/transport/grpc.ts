@@ -65,8 +65,13 @@ function buildMetadata(entries: Record<string, string> | undefined): grpc.Metada
   return md;
 }
 
-/** Resolve a client method by exact name or camelCase alias (grpc-js registers both). */
-function resolveMethod(client: grpc.Client, method: string): ((...args: any[]) => grpc.ClientUnaryCall) | null {
+/**
+ * Resolve a client method by exact name or camelCase alias (grpc-js registers both).
+ * Return type is deliberately `any` — the same method lookup feeds both the unary
+ * (`grpc.ClientUnaryCall`) and server-streaming (`grpc.ClientReadableStream`) call
+ * paths, and grpc-js selects the concrete call type dynamically based on the method.
+ */
+function resolveMethod(client: grpc.Client, method: string): ((...args: any[]) => any) | null {
   const camel = method.charAt(0).toLowerCase() + method.slice(1);
   const fn = (client as any)[method] ?? (client as any)[camel];
   return typeof fn === "function" ? fn : null;
@@ -92,7 +97,7 @@ export class GrpcTransport {
     }
 
     let client: grpc.Client;
-    let fn: ((...args: any[]) => grpc.ClientUnaryCall) | null;
+    let fn: ((...args: any[]) => any) | null;
     try {
       const pkg = loadProto({ protoPath: payload.protoPath, protoContent: payload.protoContent });
       const ClientCtor = findService(pkg, service);
