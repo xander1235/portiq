@@ -1,9 +1,19 @@
 import { AIProviderRegistry, type ProviderContext, type FetchLike } from "./providerRegistry";
-import { resolveAiConfig, requireApiKey, AiConfigError, type AiConfig, type AiConfigOptions } from "./config";
+import { requireApiKey, AiConfigError, type AiConfig, type AiConfigOptions } from "./config";
 import { searchRequestsContext, flattenCollections, buildResponseContext, buildCollectionContext } from "./context";
 import { buildAssistSystemPrompt, buildTestsSystemPrompt, buildTestsUserMessage, type AssistPromptContext } from "./prompts";
 
 const defaultFetch: FetchLike = (url, init) => (globalThis.fetch as any)(url, init);
+
+/** Desktop callers inject a pre-resolved `config`; CLI/MCP pass only
+ *  `configOptions`, so the Node-only file/kv resolver is imported lazily. This
+ *  keeps assist.ts renderer-eval-safe — ./configStore pulls node:fs and
+ *  better-sqlite3, which would crash the browser bundle at module init. */
+async function resolveConfig(deps: AssistDeps): Promise<AiConfig> {
+  if (deps.config) return deps.config;
+  const { resolveAiConfig } = await import("./configStore");
+  return resolveAiConfig(deps.configOptions);
+}
 
 export interface AssistInput {
   prompt: string;
@@ -44,7 +54,7 @@ function providerCtx(config: AiConfig, deps: AssistDeps): { chat: (req: any) => 
 }
 
 export async function assist(input: AssistInput, deps: AssistDeps = {}): Promise<AssistResult> {
-  const config = deps.config ?? resolveAiConfig(deps.configOptions);
+  const config = await resolveConfig(deps);
   const { chat } = providerCtx(config, deps);
 
   let relevant = searchRequestsContext(input.prompt, input.collections);
@@ -99,7 +109,7 @@ export async function assist(input: AssistInput, deps: AssistDeps = {}): Promise
 }
 
 export async function generateTests(request: any, response: any, deps: AssistDeps = {}): Promise<string[]> {
-  const config = deps.config ?? resolveAiConfig(deps.configOptions);
+  const config = await resolveConfig(deps);
   if (config.provider && config.apiKey) {
     try {
       const { chat } = providerCtx(config, deps);
@@ -122,7 +132,7 @@ export async function generateTests(request: any, response: any, deps: AssistDep
 }
 
 export async function listModels(deps: AssistDeps = {}): Promise<string[]> {
-  const config = deps.config ?? resolveAiConfig(deps.configOptions);
+  const config = await resolveConfig(deps);
   const { listModels: list } = providerCtx(config, deps);
   return list();
 }

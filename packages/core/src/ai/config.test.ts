@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveAiConfig, requireApiKey, saveAiConfig, redactKey, AiConfigError, AI_CONFIG_FILE } from "./config";
+import { requireApiKey, redactKey, AiConfigError, AI_CONFIG_FILE } from "./config";
+import { resolveAiConfig, saveAiConfig } from "./configStore";
 
 const dirs: string[] = [];
 function tempDir(): string {
