@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createAiMcpTools } from "./mcp";
-import { AIProviderRegistry, type AIProvider } from "../providerRegistry";
+import type { AIProvider } from "../providerRegistry";
 import type { AiConfig } from "../config";
 
 const config = (over: Partial<AiConfig> = {}): AiConfig => ({ provider: "anthropic", model: null, apiKey: "k", keys: {}, semanticSearchEnabled: false, source: "flag", ...over });

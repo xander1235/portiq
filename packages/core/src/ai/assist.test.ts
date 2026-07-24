@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { assist, generateTests, listModels } from "./assist";
-import { AIProviderRegistry, type AIProvider } from "./providerRegistry";
+import type { AIProvider } from "./providerRegistry";
 import type { AiConfig } from "./config";
 
 const config = (over: Partial<AiConfig> = {}): AiConfig => ({
