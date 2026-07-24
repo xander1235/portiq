@@ -56,8 +56,8 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
-import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
-import type { DagGraph } from "./components/ProtocolPanes/dag/types";
+import { migrateV1 } from "@portiq/core/flows";
+import type { DagGraph } from "@portiq/core/flows";
 import { GrpcProtocol } from "./protocols/index"; // register all built-in protocols
 import { GraphQLProtocol } from "./protocols/graphql";
 import { useTheme } from "./theme/useTheme";

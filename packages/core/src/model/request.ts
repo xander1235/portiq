@@ -1,13 +1,5 @@
 import type { ScriptStep } from "./script";
-
-// Placeholder for DagGraph types (re-pointed in Task 12 to packages/core/src/flows/types.ts)
-export type DagGraph = {
-  version: 2;
-  nodes: unknown[];
-  edges: unknown[];
-  positions: Record<string, unknown>;
-  lastRun?: unknown;
-};
+import type { DagGraph } from "../flows/types";
 
 export interface RequestRow {
   key: string;

@@ -1,5 +1,5 @@
 import type React from "react";
-import { splitTemplate } from "./tokenize";
+import { splitTemplate } from "@portiq/core/flows";
 
 export function TokenField({ value, onChange, rows = 2, placeholder }: {
   value: string; onChange: (v: string) => void; rows?: number; placeholder?: string;

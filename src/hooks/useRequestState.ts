@@ -1,5 +1,5 @@
 import { useLocalStorage } from "./useLocalStorage";
-import type { DagGraph } from "../components/ProtocolPanes/dag/types";
+import type { DagGraph } from "@portiq/core/flows";
 import { ScriptStep, toSteps } from "../services/scriptSteps";
 
 export interface RequestRow {
