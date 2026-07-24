@@ -182,7 +182,7 @@ export function parseCurl(command: string): ParsedCurl {
       continue;
     }
     if (token === "-u" || token === "--user") {
-      headers["Authorization"] = `Basic ${btoa(nextValue())}`;
+      headers["Authorization"] = `Basic ${btoa(unescape(encodeURIComponent(nextValue())))}`;
       continue;
     }
     if (!token.startsWith("-") && !urlValue) {
@@ -275,7 +275,7 @@ export function parseCurl(command: string): ParsedCurl {
       delete headers[authKey];
     } else if (authValue.toLowerCase().startsWith("basic ")) {
       try {
-        const decoded = atob(authValue.slice(6));
+        const decoded = decodeURIComponent(escape(atob(authValue.slice(6))));
         const [username, ...rest] = decoded.split(":");
         authType = "basic";
         authConfig.basic = { username, password: rest.join(":") };

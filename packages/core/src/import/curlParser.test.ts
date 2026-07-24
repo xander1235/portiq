@@ -85,6 +85,22 @@ describe("parseCurl", () => {
     expect(r.headersRows.find((h) => h.key.toLowerCase() === "authorization")).toBeUndefined();
   });
 
+  it("base64-encodes a non-ASCII -u credential as UTF-8 instead of throwing", () => {
+    // With the old bare `btoa(nextValue())`, a code point > 255 (密) would throw
+    // "Invalid character" here, so simply not throwing already proves the fix.
+    const credential = "user:pass密";
+    let r: ReturnType<typeof parseCurl> | undefined;
+    expect(() => {
+      r = parseCurl(`curl https://x.com -u '${credential}'`);
+    }).not.toThrow();
+    expect(r!.authType).toBe("basic");
+    // parseCurl immediately decodes the Authorization header it just built into
+    // authConfig.basic using the same UTF-8-safe idiom on both ends, so it should
+    // recover the original credential directly, with no workaround needed.
+    expect(r!.authConfig.basic.username).toBe("user");
+    expect(r!.authConfig.basic.password).toBe("pass密");
+  });
+
   it("extracts Bearer auth from an Authorization header", () => {
     const r = parseCurl(`curl https://x.com -H 'Authorization: Bearer tok123'`);
     expect(r.authType).toBe("bearer");
