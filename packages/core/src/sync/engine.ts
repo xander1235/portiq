@@ -1,7 +1,7 @@
 import { WORKSPACE_ROOT, WORKSPACE_MANAGED_PREFIXES, HISTORY_PREFIX } from "./constants";
 import { buildWorkspaceFiles, buildHistoryFiles } from "./serialize";
 import { mergePulledState } from "./deserialize";
-import type { SyncRemote, SyncStatus, SyncFileDiff } from "./types";
+import type { SyncRemote, SyncStatus, SyncFileDiff, FetchWorkspaceResult } from "./types";
 import type { AppState, HistoryEntry } from "../model";
 import { openAppStateStore, type AppStateStore } from "../store/appStateStore";
 import { ConflictError } from "../store/kvStore";
@@ -66,7 +66,7 @@ export async function syncPullToStore(
 export async function syncStatus(remote: SyncRemote, localState: AppState): Promise<SyncStatus> {
   const info = await remote.ensureRepo();
   const identity = await remote.getIdentity().catch(() => ({ login: info.owner }));
-  const workspace = await remote.fetchWorkspace().catch((e) => {
+  const workspace = await remote.fetchWorkspace().catch((e): FetchWorkspaceResult => {
     if (/No synced workspace/i.test(String(e?.message))) return { fileMap: {} };
     throw e;
   });
