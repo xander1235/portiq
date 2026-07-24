@@ -100,3 +100,50 @@ describe("GrpcTransport unary", () => {
     expect(r.error).toBeTruthy();
   });
 });
+
+describe("GrpcTransport deadline & cancel", () => {
+  it("returns DEADLINE_EXCEEDED when the server is slower than the deadline", async () => {
+    const target = await startEchoServer({
+      Unary: (call: any, cb: any) => {
+        setTimeout(() => cb(null, { message: "late " + call.request.message }), 300);
+      },
+    });
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "Unary",
+      body: { message: "x" },
+      deadline: 100,
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(grpc.status.DEADLINE_EXCEEDED);
+    expect(r.error).toBeTruthy();
+  });
+
+  it("returns CANCELLED when cancel(requestId) is called mid-flight", async () => {
+    const target = await startEchoServer({
+      Unary: (call: any, cb: any) => {
+        setTimeout(() => cb(null, { message: "slow " + call.request.message }), 500);
+      },
+    });
+    const t = new GrpcTransport();
+    const promise = t.send({
+      requestId: "rq-1",
+      url: target,
+      service: "echo.EchoService",
+      method: "Unary",
+      body: { message: "x" },
+      deadline: 5000,
+      protoPath: FIXTURE,
+    });
+    setTimeout(() => t.cancel("rq-1"), 50);
+    const r = await promise;
+    expect(r.statusCode).toBe(grpc.status.CANCELLED);
+  });
+
+  it("cancel with no requestId returns an error object", () => {
+    const t = new GrpcTransport();
+    expect(t.cancel("")).toEqual({ error: "Missing request ID" });
+  });
+});
