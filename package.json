@@ -13,6 +13,7 @@
     "dev:nix": "env -u ELECTRON_RUN_AS_NODE concurrently \"vite\" \"electron .\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "build:core": "npm --workspace @portiq/core run build",
+    "build:mcp": "npm run build:core && npm --workspace @portiq/mcp run build",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
