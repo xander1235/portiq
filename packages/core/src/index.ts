@@ -9,3 +9,5 @@ export * from "./exec/interpolate";
 export * from "./exec/headers";
 export * from "./exec/autoHeaders";
 export * from "./exec/multipart";
+export * from "./transport/http";
+export * from "./transport/httpResult";
