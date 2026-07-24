@@ -22,11 +22,15 @@
       "import": "./src/transport/grpc.ts",
       "require": "./dist/transport/grpc.js"
     },
-    "./sync": "./src/sync/index.ts",
+    "./sync": {
+      "types": "./src/sync/index.ts",
+      "require": "./dist/sync/index.cjs",
+      "import": "./src/sync/index.ts"
+    },
     "./sync/browser": "./src/sync/browser.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
+    "build": "tsc -p tsconfig.build.json && esbuild src/sync/index.ts --bundle --platform=node --format=cjs --outfile=dist/sync/index.cjs --external:better-sqlite3 --external:@grpc/grpc-js --external:@grpc/proto-loader --external:ws --external:dagre --external:fuse.js && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.6",
@@ -38,6 +42,7 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "@types/dagre": "^0.7.54"
+    "@types/dagre": "^0.7.54",
+    "esbuild": "^0.28.1"
   }
 }
