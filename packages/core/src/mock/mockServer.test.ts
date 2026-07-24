@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { MockServerManager, matchPath } from "./mock";
+import { MockServerManager, matchPath } from "./mockServer";
 
 let mgr: MockServerManager | null = null;
 afterEach(() => {
