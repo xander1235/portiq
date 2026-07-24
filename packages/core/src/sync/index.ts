@@ -5,3 +5,5 @@ export * from "./constants";
 export * from "./secrets";
 export * from "./serialize";
 export * from "./deserialize";
+export * from "./types";
+export * from "./registry";
