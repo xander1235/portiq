@@ -6,3 +6,6 @@ export * from "./store/kvStore";
 export * from "./store/appStateStore";
 export * from "./store/portable";
 export * from "./exec/interpolate";
+export * from "./exec/headers";
+export * from "./exec/autoHeaders";
+export * from "./exec/multipart";
