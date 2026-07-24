@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as grpc from "@grpc/grpc-js";
@@ -97,6 +97,58 @@ describe("GrpcTransport unary", () => {
       protoPath: FIXTURE,
     });
     expect(r.statusCode).toBe(grpc.status.UNIMPLEMENTED);
+    expect(r.error).toBeTruthy();
+  });
+
+  it("closes the channel when the method is unknown (no leaked channel)", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    const closeSpy = vi.spyOn(grpc.Client.prototype, "close");
+    try {
+      await t.send({
+        url: target,
+        service: "echo.EchoService",
+        method: "DoesNotExist",
+        protoPath: FIXTURE,
+      });
+      expect(closeSpy).toHaveBeenCalled();
+    } finally {
+      closeSpy.mockRestore();
+    }
+  });
+});
+
+describe("GrpcTransport callType validation", () => {
+  it("resolves INVALID_ARGUMENT when callType doesn't match the method's real streaming shape", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    // ServerStream is actually SERVER_STREAM (responseStream: true); declaring UNARY must be rejected
+    // rather than silently dropping every streamed message and resolving OK with an empty body.
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "ServerStream",
+      body: { message: "go" },
+      callType: "UNARY",
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(grpc.status.INVALID_ARGUMENT);
+    expect(r.error).toBeTruthy();
+    expect(r.messages).toEqual([]);
+  });
+
+  it("resolves INVALID_ARGUMENT when a unary method is called as SERVER_STREAM", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "Unary",
+      body: { message: "go" },
+      callType: "SERVER_STREAM",
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(grpc.status.INVALID_ARGUMENT);
     expect(r.error).toBeTruthy();
   });
 });

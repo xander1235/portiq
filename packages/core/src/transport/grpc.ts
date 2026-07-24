@@ -77,6 +77,29 @@ function resolveMethod(client: grpc.Client, method: string): ((...args: any[]) =
   return typeof fn === "function" ? fn : null;
 }
 
+/** Real streaming shape declared by the .proto for a resolved method, or null if unknown. */
+function resolveMethodDef(
+  ClientCtor: grpc.ServiceClientConstructor,
+  method: string
+): { requestStream: boolean; responseStream: boolean } | null {
+  const service = (ClientCtor as any)?.service as Record<string, any> | undefined;
+  if (!service) return null;
+  if (service[method]) return service[method];
+  const camel = method.charAt(0).toLowerCase() + method.slice(1);
+  const key = Object.keys(service).find(
+    (k) => k === method || k.charAt(0).toLowerCase() + k.slice(1) === camel
+  );
+  return key ? service[key] : null;
+}
+
+/** Map a method's real requestStream/responseStream flags to our callType union. */
+function callTypeForMethodDef(def: { requestStream: boolean; responseStream: boolean }): GrpcSendPayload["callType"] {
+  if (def.requestStream && def.responseStream) return "BIDI_STREAM";
+  if (def.responseStream) return "SERVER_STREAM";
+  if (def.requestStream) return "CLIENT_STREAM";
+  return "UNARY";
+}
+
 export class GrpcTransport {
   private pending = new Map<string, { cancel: () => void }>();
 
@@ -98,9 +121,10 @@ export class GrpcTransport {
 
     let client: grpc.Client;
     let fn: ((...args: any[]) => any) | null;
+    let ClientCtor: grpc.ServiceClientConstructor;
     try {
       const pkg = loadProto({ protoPath: payload.protoPath, protoContent: payload.protoContent });
-      const ClientCtor = findService(pkg, service);
+      ClientCtor = findService(pkg, service);
       const { target, secure } = normalizeTarget(url, payload.tls);
       const creds = secure ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
       client = new ClientCtor(target, creds);
@@ -108,9 +132,24 @@ export class GrpcTransport {
     } catch (err: any) {
       return fail(grpc.status.INVALID_ARGUMENT, err?.message || String(err));
     }
-    if (!fn) return fail(grpc.status.UNIMPLEMENTED, `Method not found on service: ${method}`);
+    if (!fn) {
+      try { client.close(); } catch { /* ignore */ }
+      return fail(grpc.status.UNIMPLEMENTED, `Method not found on service: ${method}`);
+    }
 
     const callType = payload.callType || "UNARY";
+    const methodDef = resolveMethodDef(ClientCtor, method);
+    if (methodDef) {
+      const expected = callTypeForMethodDef(methodDef);
+      if (expected !== callType) {
+        try { client.close(); } catch { /* ignore */ }
+        return fail(
+          grpc.status.INVALID_ARGUMENT,
+          `Method "${method}" is ${expected}, but the request declared callType ${callType}`
+        );
+      }
+    }
+
     const md = buildMetadata(payload.metadata);
     const deadlineMs = typeof payload.deadline === "number" && payload.deadline > 0 ? payload.deadline : 30000;
     const options: grpc.CallOptions = { deadline: new Date(Date.now() + deadlineMs) };
