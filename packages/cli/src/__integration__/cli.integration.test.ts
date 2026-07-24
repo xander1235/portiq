@@ -11,9 +11,9 @@ let dir: string;
 let server: Server;
 let port: number;
 
-function cli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+function cli(args: string[], env: NodeJS.ProcessEnv = { ...process.env }): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolvePromise) => {
-    execFile("node", [BIN, ...args], { env: { ...process.env } }, (err, stdout, stderr) => {
+    execFile("node", [BIN, ...args], { env }, (err, stdout, stderr) => {
       const code = err && typeof (err as { code?: number }).code === "number" ? (err as { code: number }).code : 0;
       resolvePromise({ code, stdout, stderr });
     });
@@ -80,5 +80,25 @@ describe("portiq CLI (built binary)", () => {
   it("junit reporter emits a testsuites element", async () => {
     const { stdout } = await cli(["run", "API/Ping", "--data-dir", dir, "--reporter", "junit"]);
     expect(stdout).toContain("<testsuites");
+  });
+
+  it("sync --help exits 0 and lists the push/pull/status subcommands", async () => {
+    const { code, stdout } = await cli(["sync", "--help"]);
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/push/);
+    expect(stdout).toMatch(/pull/);
+    expect(stdout).toMatch(/status/);
+  });
+
+  it("sync push with no GitHub token exits 3 without a module-load crash", async () => {
+    // This is the key end-to-end guard: it proves require("@portiq/core/sync")
+    // resolves and loads the Task-2 CJS bundle (dist/sync/index.cjs) in a real,
+    // freshly-spawned Node process — not just under vitest/Bundler resolution.
+    const noTokenEnv = { ...process.env, PORTIQ_GITHUB_TOKEN: "", GITHUB_TOKEN: "" };
+    const { code, stderr } = await cli(["sync", "push", "--data-dir", dir], noTokenEnv);
+    expect(code).toBe(3);
+    expect(stderr).toMatch(/token/i);
+    expect(stderr).not.toMatch(/Cannot find module/);
+    expect(stderr).not.toMatch(/ERR_REQUIRE_ESM/);
   });
 });

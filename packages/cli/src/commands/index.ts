@@ -10,6 +10,7 @@ import { importCommand } from "./import";
 import { exportCommand } from "./export";
 import { mcpCommand } from "./mcp";
 import { mockCommand } from "./mock";
+import { syncCommand } from "./sync";
 
 export const builtinCommands: CommandModule[] = [
   lsCommand,
@@ -23,4 +24,5 @@ export const builtinCommands: CommandModule[] = [
   configCommand,
   mcpCommand(),
   mockCommand(),
+  syncCommand(),
 ];
