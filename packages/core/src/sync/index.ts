@@ -4,3 +4,4 @@
 export * from "./constants";
 export * from "./secrets";
 export * from "./serialize";
+export * from "./deserialize";
