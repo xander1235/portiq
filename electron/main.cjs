@@ -116,7 +116,11 @@ ipcMain.handle("http:sendRequest", async (_event, payload) => {
 });
 
 ipcMain.handle("http:cancelRequest", async (_event, payload) => {
-  return httpTransport.cancel(payload?.requestId);
+  try {
+    return httpTransport.cancel(payload?.requestId);
+  } catch (err) {
+    return { error: err && err.message ? err.message : String(err) };
+  }
 });
 
 // ── GraphQL request handler (HTTP POST with GraphQL payload) ──
