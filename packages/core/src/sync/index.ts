@@ -10,3 +10,4 @@ export * from "./registry";
 export * from "./localRemote";
 export * from "./githubRemote";
 export * from "./engine";
+export * from "./auth";
