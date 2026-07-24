@@ -7,7 +7,7 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "ignoreDeprecations": "6.0",
-    "declaration": false,
+    "declaration": true,
     "noEmitOnError": false
   },
   "exclude": ["**/*.test.ts", "src/sync/**"]
