@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { Command } from "commander";
 import { buildProgram, type CommandModule } from "./registry";
 import { defaultContext } from "./context";
 
