@@ -19,6 +19,8 @@
     "build": "tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13",
     "better-sqlite3": "^12.11.1",
     "dagre": "^0.8.5",
     "ws": "^8.21.1"
