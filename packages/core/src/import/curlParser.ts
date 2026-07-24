@@ -1,4 +1,4 @@
-import type { RequestRow, AuthConfig } from "../hooks/useRequestState";
+import type { RequestRow, AuthConfig } from "../model";
 
 export interface ParsedCurl {
   method: string;

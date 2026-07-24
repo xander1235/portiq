@@ -13,7 +13,7 @@ import {
   looksLikeCurl,
   parameterizeParsedCurl,
   type ParsedCurl,
-} from "./services/curlParser";
+} from "@portiq/core";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
