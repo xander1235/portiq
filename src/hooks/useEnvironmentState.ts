@@ -1,19 +1,8 @@
 import { useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 
-export interface EnvVar {
-    key: string;
-    value: string;
-    comment: string;
-    enabled: boolean;
-    secret?: boolean;
-}
-
-export interface Environment {
-    id: string;
-    name: string;
-    vars: EnvVar[];
-}
+export type { EnvVar, Environment } from "@portiq/core";
+import type { EnvVar, Environment } from "@portiq/core";
 
 export function useEnvironmentState() {
     const [environments, setEnvironments] = useLocalStorage<Environment[]>("ui_environments", [
