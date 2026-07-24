@@ -54,7 +54,12 @@ export function GrpcPane({
     }
   }, [protoContent]);
 
-  // Sync local state to config
+  const currentService = (parsedProto.services as any[]).find((s: any) => s.name === selectedService);
+  const currentMethod = (currentService?.methods as any[] || []).find((m: any) => m.name === selectedMethod);
+
+  // Sync local state to config. `callType` comes from the parsed proto's method
+  // definition (falling back to whatever was already in config) so server-streaming
+  // methods actually get dispatched as SERVER_STREAM instead of always UNARY.
   useEffect(() => {
     setConfig?.({
       ...config,
@@ -63,12 +68,10 @@ export function GrpcPane({
       method: selectedMethod,
       requestBody,
       metadata: (() => { try { return JSON.parse(metadata); } catch { return {}; } })(),
-      deadline
+      deadline,
+      callType: currentMethod?.callType || config?.callType || "UNARY"
     });
-  }, [protoContent, selectedService, selectedMethod, requestBody, metadata, deadline]);
-
-  const currentService = (parsedProto.services as any[]).find((s: any) => s.name === selectedService);
-  const currentMethod = (currentService?.methods as any[] || []).find((m: any) => m.name === selectedMethod);
+  }, [protoContent, selectedService, selectedMethod, requestBody, metadata, deadline, currentMethod]);
 
   const handleGenerateSample = useCallback(() => {
     if (currentMethod) {

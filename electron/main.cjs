@@ -4,6 +4,10 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 const core = require("@portiq/core");
 const aiCore = require("@portiq/core/ai");
+// gRPC is deliberately NOT part of the "@portiq/core" barrel (it pulls in
+// @grpc/grpc-js / @grpc/proto-loader, which must never reach the renderer bundle
+// — see packages/core/src/index.ts). Import it from the Node-only subpath instead.
+const { GrpcTransport } = require("@portiq/core/grpc");
 
 const isDev = !app.isPackaged;
 
@@ -26,6 +30,7 @@ let httpTransport = null;
 
 const wsManager = new core.WsManager();
 const mockManager = core.createMockManager();
+const grpcTransport = new GrpcTransport();
 
 // Forward WsManager events to every renderer window, mirroring the
 // `BrowserWindow.webContents.send` push the old inline WS code performed.
@@ -127,6 +132,33 @@ ipcMain.handle("http:cancelRequest", async (_event, payload) => {
 // ── GraphQL request handler (HTTP POST with GraphQL payload) ──
 ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
   return core.sendGraphQL(payload);
+});
+
+// ── gRPC request handler (native transport via @grpc/grpc-js) ──
+ipcMain.handle("grpc:sendRequest", async (_event, payload) => {
+  try {
+    return await grpcTransport.send(payload);
+  } catch (err) {
+    return {
+      statusCode: 2,
+      statusMessage: "UNKNOWN",
+      duration: 0,
+      metadata: {},
+      trailers: {},
+      body: "",
+      json: null,
+      error: err && err.message ? err.message : String(err),
+      messages: []
+    };
+  }
+});
+
+ipcMain.handle("grpc:cancelRequest", async (_event, payload) => {
+  try {
+    return grpcTransport.cancel(payload && payload.requestId);
+  } catch (err) {
+    return { error: err && err.message ? err.message : String(err) };
+  }
 });
 
 // ── WebSocket connection manager ──

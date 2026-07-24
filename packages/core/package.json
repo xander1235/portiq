@@ -17,12 +17,18 @@
     "./ai": {
       "import": "./src/ai/index.ts",
       "require": "./dist/ai/index.js"
+    },
+    "./grpc": {
+      "import": "./src/transport/grpc.ts",
+      "require": "./dist/transport/grpc.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13",
     "better-sqlite3": "^12.11.1",
     "dagre": "^0.8.5",
     "fuse.js": "^7.1.0",

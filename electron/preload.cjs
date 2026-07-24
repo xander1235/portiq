@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld("api", {
   // ── GraphQL ──
   sendGraphQL: (payload) => ipcRenderer.invoke("graphql:sendRequest", payload),
 
+  // ── gRPC ──
+  sendGrpc: (payload) => ipcRenderer.invoke("grpc:sendRequest", payload),
+  cancelGrpc: (payload) => ipcRenderer.invoke("grpc:cancelRequest", payload),
+
   // ── WebSocket ──
   wsConnect: (payload) => ipcRenderer.invoke("ws:connect", payload),
   wsSend: (payload) => ipcRenderer.invoke("ws:send", payload),

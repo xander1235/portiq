@@ -115,7 +115,9 @@ export const GrpcProtocol: ProtocolHandler & {
       metadata: config.metadata || {},
       callType: config.callType || "UNARY",
       deadline: config.deadline || 30000,
-      tls: config.tls !== false
+      tls: config.tls !== false,
+      protoContent: config.protoContent || "",
+      protoPath: config.protoPath || undefined
     };
   },
 

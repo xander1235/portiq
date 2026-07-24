@@ -2492,24 +2492,51 @@ function App() {
     setIsSending(true);
     setGrpcResponse(null);
     try {
-      // gRPC calls are currently a placeholder - requires native module
-      // For now we show the config validation
       const validation = GrpcProtocol.validateRequest({
-        url,
+        url: interpolate(url),
         service: grpcConfig.service,
         method: grpcConfig.method,
         requestBody: grpcConfig.requestBody
       });
       if (!validation.valid) {
-        setGrpcResponse({ error: validation.errors.join("\n"), statusCode: 2 });
+        setGrpcResponse(GrpcProtocol.parseResponse({
+          error: validation.errors.join("\n"),
+          statusCode: 3
+        }));
+        return;
+      }
+
+      const metadata = grpcConfig.metadata && typeof grpcConfig.metadata === "object"
+        ? Object.fromEntries(
+            Object.entries(grpcConfig.metadata).map(([k, v]) => [k, interpolate(String(v))])
+          )
+        : {};
+
+      const payload = GrpcProtocol.buildRequest({
+        url: interpolate(url),
+        service: grpcConfig.service,
+        method: grpcConfig.method,
+        requestBody: interpolate(grpcConfig.requestBody || "{}"),
+        metadata,
+        callType: grpcConfig.callType || "UNARY",
+        deadline: grpcConfig.deadline || 30000,
+        tls: grpcConfig.tls,
+        protoContent: grpcConfig.protoContent || ""
+      });
+
+      addLog({ source: "API", type: "info", message: `Sending gRPC ${payload.service}/${payload.method} → ${payload.url}` });
+
+      const raw = await window.api.sendGrpc(payload);
+      const result = GrpcProtocol.parseResponse(raw);
+      setGrpcResponse(result);
+
+      if (result.error) {
+        addLog({ source: "API", type: "error", message: `gRPC Error: ${GrpcProtocol.getStatusName(result.statusCode || 0)}`, data: result.error });
       } else {
-        setGrpcResponse({
-          error: "gRPC native transport not yet available. Install @grpc/grpc-js to enable.",
-          statusCode: 12 // UNIMPLEMENTED
-        });
+        addLog({ source: "API", type: "success", message: `gRPC ${GrpcProtocol.getStatusName(result.statusCode || 0)} (${result.duration || 0}ms)` });
       }
     } catch (err: any) {
-      setGrpcResponse({ error: err.message, statusCode: 13 });
+      setGrpcResponse(GrpcProtocol.parseResponse({ error: err.message, statusCode: 13 }));
     } finally {
       setIsSending(false);
     }
