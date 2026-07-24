@@ -18,6 +18,7 @@ export * from "./assist";
 export * from "./context";
 export * from "./prompts";
 export * from "./surface/mcp";
+export * from "./surface/cli";
 export { openaiProvider, OPENAI_DEFAULT_MODEL } from "./providers/openai";
 export { anthropicProvider, ANTHROPIC_DEFAULT_MODEL } from "./providers/anthropic";
 export { geminiProvider, GEMINI_DEFAULT_MODEL } from "./providers/gemini";
