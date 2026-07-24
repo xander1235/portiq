@@ -18,6 +18,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "pretest": "npm run build:core && npm --workspace @portiq/cli run build && npm --workspace @portiq/mcp run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "npm run build:core && npm run build:cli && vite build && electron-builder build --publish never",
