@@ -8,7 +8,11 @@
     "moduleResolution": "Node",
     "ignoreDeprecations": "6.0",
     "declaration": false,
-    "noEmitOnError": false
+    "noEmitOnError": false,
+    "baseUrl": ".",
+    "paths": {
+      "@portiq/core/flows": ["../../node_modules/@portiq/core/src/flows/index.ts"]
+    }
   },
   "exclude": ["**/*.test.ts"]
 }
