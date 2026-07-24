@@ -16,6 +16,7 @@ export * from "./transport/httpResult";
 export * from "./transport/graphql";
 export * from "./transport/websocket";
 export * from "./transport/mock";
+export * from "./transport/grpc";
 export * from "./scripting/testRunner";
 export * from "./scripting/scriptSteps";
 export * from "./scripting/pm";
