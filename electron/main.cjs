@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const Database = require("better-sqlite3");
 const core = require("@portiq/core");
 const aiCore = require("@portiq/core/ai");
 // gRPC is deliberately NOT part of the "@portiq/core" barrel (it pulls in
@@ -21,7 +20,7 @@ try {
   // fall back to Electron's default userData path
 }
 
-let db = null;
+let kvStore = null;
 
 // `app.getVersion()` isn't reliable until Electron signals `ready`, so the
 // HttpTransport (which stamps the User-Agent header with it) is constructed
@@ -59,8 +58,7 @@ function initDb() {
     fs.copyFileSync(legacyDb, dbPath);
   }
 
-  db = new Database(dbPath);
-  db.prepare("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)").run();
+  kvStore = core.openKvStore({ dataDir: dir });
 }
 
 function createWindow() {
@@ -196,33 +194,20 @@ ipcMain.handle("mock:updateRoutes", async (_event, payload) => {
 });
 
 ipcMain.handle("db:saveState", async (_event, key, value) => {
-  if (!db) initDb();
-  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    .run(key, value);
+  if (!kvStore) initDb();
+  kvStore.set(key, value);
   return { ok: true };
 });
 
 ipcMain.handle("db:loadState", async (_event, key) => {
-  if (!db) initDb();
-  const row = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
-  return row ? row.value : null;
+  if (!kvStore) initDb();
+  return kvStore.get(key);
 });
 
 ipcMain.handle("db:clearAll", async () => {
-  const dir = app.getPath("userData");
-  const dbPath = path.join(dir, "appdata.sqlite");
   try {
-    if (db) {
-      db.close();
-      db = null;
-    }
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-    }
-    // Also remove WAL/SHM files if they exist
-    if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
-    if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
-    initDb();
+    if (!kvStore) initDb();
+    kvStore.clear();
     return { ok: true };
   } catch (err) {
     return { error: err.message };
