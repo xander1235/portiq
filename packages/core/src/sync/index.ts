@@ -8,3 +8,4 @@ export * from "./deserialize";
 export * from "./types";
 export * from "./registry";
 export * from "./localRemote";
+export * from "./githubRemote";
