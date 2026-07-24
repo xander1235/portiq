@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
-import { GrpcProtocol } from "../../protocols/grpc";
+import { GrpcProtocol } from "@portiq/core";
 
 /**
  * GrpcPane - Request editor for gRPC calls with proto file support.

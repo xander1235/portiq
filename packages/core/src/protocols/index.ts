@@ -21,6 +21,7 @@ ProtocolRegistry.register(GrpcProtocol);
 
 // Re-export everything for convenient access
 export { ProtocolRegistry } from "./registry";
+export type { ProtocolHandler } from "./registry";
 export { HttpProtocol } from "./http";
 export { GraphQLProtocol } from "./graphql";
 export { WebSocketProtocol } from "./websocket";

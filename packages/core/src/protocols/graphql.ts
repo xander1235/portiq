@@ -67,9 +67,12 @@ export const INTROSPECTION_QUERY = `
 `;
 
 import { ProtocolHandler } from "./registry";
+import { sendGraphQL, type GraphQLSendPayload } from "../transport/graphql";
+
+export type GraphQLSender = (payload: GraphQLSendPayload) => Promise<any>;
 
 export const GraphQLProtocol: ProtocolHandler & {
-  fetchSchema: (url: string, headers?: Record<string, string>) => Promise<any>;
+  fetchSchema: (url: string, headers?: Record<string, string>, send?: GraphQLSender) => Promise<any>;
   detectOperationType: (query: string) => string;
 } = {
   id: "graphql",
@@ -150,7 +153,7 @@ export const GraphQLProtocol: ProtocolHandler & {
       body: raw.body || "",
       json: raw.json || null,
       error: raw.error || null,
-      size: raw.body ? new Blob([raw.body]).size : 0
+      size: Buffer.byteLength(raw.body || "")
     };
 
     // Extract GraphQL-specific fields
@@ -166,20 +169,15 @@ export const GraphQLProtocol: ProtocolHandler & {
 
   /**
    * Fetch the GraphQL schema via introspection.
+   * `send` is injectable so hosts (e.g. the Electron renderer) can route the
+   * request through their own transport (IPC, proxy, etc.) instead of core's
+   * default `sendGraphQL` (plain `fetch`).
    */
-  async fetchSchema(url: string, headers: Record<string, string> = {}) {
+  async fetchSchema(url: string, headers: Record<string, string> = {}, send: GraphQLSender = sendGraphQL) {
     try {
-      const payload = {
-        url,
-        headers: { ...headers, "Content-Type": "application/json" },
-        query: INTROSPECTION_QUERY
-      };
-
-      if ((window as any).api?.sendGraphQL) {
-        const result = await (window as any).api.sendGraphQL(payload);
-        if (result.json?.data?.__schema) {
-          return result.json.data.__schema;
-        }
+      const result = await send({ url, headers, query: INTROSPECTION_QUERY });
+      if (result?.json?.data?.__schema) {
+        return result.json.data.__schema;
       }
       return null;
     } catch (err) {

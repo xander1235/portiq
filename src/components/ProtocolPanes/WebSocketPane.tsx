@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
-import { WebSocketProtocol } from "../../protocols/websocket";
+import { WebSocketProtocol } from "@portiq/core";
+import { createConnectionManager } from "./wsConnectionManager";
 import { TableEditor } from "../TableEditor";
 import styles from "../RequestPane/RequestEditor.module.css";
 import { customJsonLinter } from "../../utils/codemirror/jsonExtensions";
@@ -215,7 +216,7 @@ export function WebSocketPane({
     const connectionId = currentRequestId ? `ws-${currentRequestId}` : connectionIdRef.current;
     connectionIdRef.current = connectionId;
 
-    const manager = WebSocketProtocol.createConnectionManager(connectionId);
+    const manager = createConnectionManager(connectionId);
     managerRef.current = manager;
 
     const unsubMessage = manager.on("message", appendMessage);

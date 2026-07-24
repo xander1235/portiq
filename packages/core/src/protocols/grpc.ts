@@ -131,7 +131,7 @@ export const GrpcProtocol: ProtocolHandler & {
       json: raw.json || null,
       error: raw.error || null,
       messages: raw.messages || [],  // For streaming responses
-      size: raw.body ? new Blob([raw.body]).size : 0
+      size: Buffer.byteLength(raw.body || "")
     };
   },
 

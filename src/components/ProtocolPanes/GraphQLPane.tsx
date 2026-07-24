@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
-import { GraphQLProtocol } from "../../protocols/graphql";
+import { GraphQLProtocol } from "@portiq/core";
 
 /**
  * GraphQLPane - Request editor for GraphQL queries/mutations.
@@ -62,7 +62,7 @@ export function GraphQLPane({
     setSchemaLoading(true);
     setSchemaError(null);
     try {
-      const result = await GraphQLProtocol.fetchSchema(url, headers || {});
+      const result = await GraphQLProtocol.fetchSchema(url, headers || {}, (p) => (window as any).api.sendGraphQL(p));
       if (result) {
         setSchema(result);
       } else {

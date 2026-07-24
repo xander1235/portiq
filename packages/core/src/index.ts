@@ -18,3 +18,4 @@ export * from "./transport/mock";
 export * from "./scripting/testRunner";
 export * from "./scripting/scriptSteps";
 export * from "./scripting/pm";
+export * from "./protocols";

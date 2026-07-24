@@ -3,7 +3,7 @@ import styles from "./App.module.css";
 import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
 import { generateRequestFromPrompt, summarizeResponse, fetchModels } from "./services/ai";
-import { createTestHarness, ScriptStep, toSteps, emptyStep } from "@portiq/core";
+import { createTestHarness, ScriptStep, toSteps, emptyStep, GrpcProtocol, GraphQLProtocol } from "@portiq/core";
 import { jsonToCsv, jsonToXml, xmlToJson } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
@@ -57,8 +57,6 @@ import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
 import { migrateV1 } from "@portiq/core/flows";
 import type { DagGraph } from "@portiq/core/flows";
-import { GrpcProtocol } from "./protocols/index"; // register all built-in protocols
-import { GraphQLProtocol } from "./protocols/graphql";
 import { useTheme } from "./theme/useTheme";
 import { Sun, Moon, Monitor } from "lucide-react";
 import { applyBodyContentType } from "./utils/headers";
