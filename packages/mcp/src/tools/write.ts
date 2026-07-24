@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Collection, Environment, FolderItem, RequestItem } from "@portiq/core";
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
-import { withOptimisticWrite, emptyState, newId } from "../store/write";
+import { withOptimisticWrite, newId } from "../store/write";
 
 const MUTATES = { readOnlyHint: false } as const;
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true } as const;
