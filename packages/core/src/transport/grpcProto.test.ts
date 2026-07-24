@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProto, findService, metadataToObject } from "./grpcProto";
@@ -23,6 +24,16 @@ describe("loadProto", () => {
 
   it("throws when neither protoPath nor protoContent is provided", () => {
     expect(() => loadProto({})).toThrow(/protoPath or protoContent/i);
+  });
+
+  it("removes the temp proto dir it creates when loading protoContent (no leaked temp files)", () => {
+    const content = readFileSync(FIXTURE, "utf8");
+    const before = new Set(readdirSync(tmpdir()).filter((f) => f.startsWith("portiq-proto-")));
+    loadProto({ protoContent: content });
+    const survivors = readdirSync(tmpdir()).filter(
+      (f) => f.startsWith("portiq-proto-") && !before.has(f)
+    );
+    expect(survivors).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as grpc from "@grpc/grpc-js";
@@ -24,16 +24,25 @@ export interface LoadProtoInput {
  */
 export function loadProto(input: LoadProtoInput): grpc.GrpcObject {
   let file = input.protoPath;
+  let tempDir: string | undefined;
   if (!file) {
     if (!input.protoContent || !input.protoContent.trim()) {
       throw new Error("gRPC requires either protoPath or protoContent");
     }
-    const dir = mkdtempSync(join(tmpdir(), "portiq-proto-"));
-    file = join(dir, "service.proto");
+    tempDir = mkdtempSync(join(tmpdir(), "portiq-proto-"));
+    file = join(tempDir, "service.proto");
     writeFileSync(file, input.protoContent, "utf8");
   }
-  const def = protoLoader.loadSync(file, PROTO_LOADER_OPTIONS);
-  return grpc.loadPackageDefinition(def);
+  try {
+    const def = protoLoader.loadSync(file, PROTO_LOADER_OPTIONS);
+    return grpc.loadPackageDefinition(def);
+  } finally {
+    // protoContent is always the path taken by the desktop app (App.tsx never sends
+    // protoPath), so every real call would otherwise leak a temp dir + file forever.
+    if (tempDir) {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+    }
+  }
 }
 
 function isServiceCtor(value: unknown): value is grpc.ServiceClientConstructor {
