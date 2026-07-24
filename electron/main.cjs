@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
 const core = require("@portiq/core");
+const aiCore = require("@portiq/core/ai");
 
 const isDev = !app.isPackaged;
 
@@ -198,4 +199,13 @@ ipcMain.handle("db:clearAll", async () => {
 
 ipcMain.handle("db:getDataPath", async () => {
   return app.getPath("userData");
+});
+
+ipcMain.handle("ai:saveConfig", (_event, config) => {
+  try {
+    aiCore.saveAiConfig(config || {});
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
 });

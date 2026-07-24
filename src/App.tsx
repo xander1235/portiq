@@ -385,6 +385,19 @@ function App() {
   const [aiApiKeyGemini, setAiApiKeyGemini] = useLocalStorage("ui_aiApiKeyGemini", "");
   const [aiSemanticSearchEnabled, setAiSemanticSearchEnabled] = useLocalStorage("ui_aiSemanticSearchEnabled", false);
   const [semanticProgress, setSemanticProgress] = useState<string | null>(null);
+
+  // Mirror the renderer's localStorage-backed AI settings into the shared
+  // store so headless CLI/MCP surfaces can discover desktop-configured
+  // provider/model/keys (the lowest-precedence "desktop-stored" tier).
+  useEffect(() => {
+    window.api?.saveAiConfig?.({
+      provider: aiProvider,
+      model: activeModel,
+      keys: { openai: aiApiKeyOpenAI, anthropic: aiApiKeyAnthropic, gemini: aiApiKeyGemini },
+      semanticSearchEnabled: aiSemanticSearchEnabled,
+    });
+  }, [aiProvider, activeModel, aiApiKeyOpenAI, aiApiKeyAnthropic, aiApiKeyGemini, aiSemanticSearchEnabled]);
+
   useEffect(() => {
     let isMounted = true;
     const fetchAvail = async () => {

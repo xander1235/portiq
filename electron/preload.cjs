@@ -42,5 +42,8 @@ contextBridge.exposeInMainWorld("api", {
   saveState: (key, value) => ipcRenderer.invoke("db:saveState", key, value),
   loadState: (key) => ipcRenderer.invoke("db:loadState", key),
   clearAllData: () => ipcRenderer.invoke("db:clearAll"),
-  getDataPath: () => ipcRenderer.invoke("db:getDataPath")
+  getDataPath: () => ipcRenderer.invoke("db:getDataPath"),
+
+  // ── AI ──
+  saveAiConfig: (config) => ipcRenderer.invoke("ai:saveConfig", config)
 });
