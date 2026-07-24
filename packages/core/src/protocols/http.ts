@@ -72,7 +72,7 @@ export const HttpProtocol: ProtocolHandler = {
       body: raw.body || "",
       json: raw.json || null,
       error: raw.error || null,
-      size: Buffer.byteLength(raw.body || "")
+      size: new TextEncoder().encode(raw.body || "").length
     };
   }
 };
