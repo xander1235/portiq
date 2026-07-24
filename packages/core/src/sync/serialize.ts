@@ -124,3 +124,59 @@ export function buildWorkspaceFiles(appState: AppState, maskedVarIds: Set<string
 
   return files;
 }
+
+export function buildRequestLocationIndex(collections: any[]): Map<string, any> {
+  const index = new Map<string, any>();
+  const walk = (items: any[], collectionMeta: any, folderPath: string[] = []) => {
+    (items || []).forEach((item: any) => {
+      if (item.type === "folder") {
+        walk(item.items || [], collectionMeta, [...folderPath, item.name]);
+        return;
+      }
+      if (item.type === "request") {
+        index.set(item.id, {
+          collectionId: collectionMeta.id,
+          collectionName: collectionMeta.name,
+          folderPath,
+        });
+      }
+    });
+  };
+  (collections || []).forEach((collection: any) => {
+    walk(collection.items || [], { id: collection.id, name: collection.name }, []);
+  });
+  return index;
+}
+
+export function buildHistoryFiles(history: any[], collections: any[]): Record<string, any> {
+  const files: Record<string, any> = {};
+  const locationIndex = buildRequestLocationIndex(collections);
+
+  (history || []).forEach((entry: any, index: number) => {
+    if (!entry?.timestamp) return;
+    const date = new Date(entry.timestamp);
+    const day = date.toISOString().split("T")[0];
+    const requestId = entry.request?.requestId;
+    const indexedMeta = requestId ? locationIndex.get(requestId) : null;
+    const collectionName = entry.request?.collectionName || indexedMeta?.collectionName || "unassigned";
+    const folderPath = entry.request?.folderPath || indexedMeta?.folderPath || [];
+    const requestName = entry.request?.requestName || "request";
+
+    const normalizedFolderPath = Array.isArray(folderPath) && folderPath.length > 0
+      ? folderPath.map((segment: string) => slugify(segment))
+      : ["root"];
+
+    const pathParts = [
+      WORKSPACE_ROOT,
+      "history",
+      day,
+      `${slugify(collectionName)}__${entry.request?.collectionId || indexedMeta?.collectionId || "unassigned"}`,
+      ...normalizedFolderPath,
+    ];
+
+    const filename = `${new Date(entry.timestamp).toISOString().replace(/[:.]/g, "-")}__${slugify(requestName)}__${index}.json`;
+    files[`${pathParts.join("/")}/${filename}`] = entry;
+  });
+
+  return files;
+}

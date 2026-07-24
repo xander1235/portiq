@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodeContent, decodeContent, slugify, buildWorkspaceFiles, previewMaskableVars } from "./serialize";
+import { encodeContent, decodeContent, slugify, buildWorkspaceFiles, previewMaskableVars, buildHistoryFiles } from "./serialize";
 import type { AppState } from "../model";
 
 const sample = (): AppState => ({
@@ -59,5 +59,24 @@ describe("previewMaskableVars", () => {
     const preview = previewMaskableVars([{ id: "e1", name: "L", vars: [{ key: "token", value: "x" }, { key: "page", value: "1" }] }]);
     expect(preview[0].vars[0].shouldMask).toBe(true);
     expect(preview[0].vars[1].shouldMask).toBe(false);
+  });
+});
+
+describe("buildHistoryFiles", () => {
+  it("bins a history entry under workspace/history/<day>/<collection>/root", () => {
+    const history = [{
+      timestamp: Date.parse("2026-07-23T10:00:00Z"),
+      request: { requestId: "r1", requestName: "Get User", collectionName: "My API", collectionId: "c1", folderPath: [] },
+      response: { status: 200 },
+    }];
+    const files = buildHistoryFiles(history, []);
+    const paths = Object.keys(files);
+    expect(paths).toHaveLength(1);
+    expect(paths[0].startsWith("workspace/history/2026-07-23/my-api__c1/root/")).toBe(true);
+    expect(paths[0].endsWith("__get-user__0.json")).toBe(true);
+  });
+
+  it("skips entries without a timestamp", () => {
+    expect(Object.keys(buildHistoryFiles([{ request: {} }], []))).toHaveLength(0);
   });
 });
