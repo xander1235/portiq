@@ -3,3 +3,4 @@
 // CJS dist consumed by the electron main process). Populated task-by-task.
 export * from "./constants";
 export * from "./secrets";
+export * from "./serialize";

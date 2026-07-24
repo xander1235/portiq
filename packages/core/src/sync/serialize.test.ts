@@ -1,0 +1,63 @@
+import { describe, it, expect } from "vitest";
+import { encodeContent, decodeContent, slugify, buildWorkspaceFiles, previewMaskableVars } from "./serialize";
+import type { AppState } from "../model";
+
+const sample = (): AppState => ({
+  collections: [{
+    id: "c1", name: "My API",
+    items: [
+      { type: "request", id: "r1", name: "Get User", description: "", tags: [], protocol: "http", method: "GET", url: "https://x",
+        authConfig: { bearer: { token: "SECRET" }, basic: {}, api_key: {} } } as any,
+      { type: "folder", id: "f1", name: "Sub", items: [
+        { type: "request", id: "r2", name: "Post", description: "", tags: [], protocol: "http", method: "POST", url: "https://y" } as any,
+      ] } as any,
+    ],
+  }],
+  activeCollectionId: "c1",
+  environments: [{ id: "e1", name: "Local", vars: [{ key: "token", value: "abc", comment: "", enabled: true }] }],
+  activeEnvId: "e1",
+  historyRetentionDays: 7,
+});
+
+describe("encode/decode/slug", () => {
+  it("round-trips arbitrary JSON through base64", () => {
+    const v = { a: 1, b: "héllo" };
+    expect(decodeContent(encodeContent(v))).toEqual(v);
+  });
+  it("slugifies to lowercase dash form", () => {
+    expect(slugify("My API!")).toBe("my-api");
+    expect(slugify("")).toBe("item");
+  });
+});
+
+describe("buildWorkspaceFiles", () => {
+  it("emits manifest, settings, draft, environments and per-collection files", () => {
+    const files = buildWorkspaceFiles(sample());
+    expect(files["workspace/manifest.json"].format).toBe("portiq-workspace-tree");
+    expect(files["workspace/settings.json"].activeCollectionId).toBe("c1");
+    expect(files["workspace/environments/environments.json"]).toHaveLength(1);
+    expect(files["workspace/collections/my-api__c1/collection.json"].name).toBe("My API");
+    expect(files["workspace/collections/my-api__c1/get-user__r1.request.json"].id).toBe("r1");
+    expect(files["workspace/collections/my-api__c1/sub__f1/folder.json"].type).toBe("folder");
+    expect(files["workspace/collections/my-api__c1/sub__f1/items/post__r2.request.json"].id).toBe("r2");
+  });
+
+  it("sanitizes request secrets in the serialized tree", () => {
+    const files = buildWorkspaceFiles(sample());
+    const req = files["workspace/collections/my-api__c1/get-user__r1.request.json"];
+    expect(String(req.authConfig.bearer.token).startsWith("__PORTIQ_SECRET__:")).toBe(true);
+  });
+
+  it("masks env vars whose id is in the masked set", () => {
+    const files = buildWorkspaceFiles(sample(), new Set(["e1::0"]));
+    expect(files["workspace/environments/environments.json"][0].vars[0].value).toBe("<SECRET_STORED_LOCALLY>");
+  });
+});
+
+describe("previewMaskableVars", () => {
+  it("flags likely-secret vars for masking", () => {
+    const preview = previewMaskableVars([{ id: "e1", name: "L", vars: [{ key: "token", value: "x" }, { key: "page", value: "1" }] }]);
+    expect(preview[0].vars[0].shouldMask).toBe(true);
+    expect(preview[0].vars[1].shouldMask).toBe(false);
+  });
+});
