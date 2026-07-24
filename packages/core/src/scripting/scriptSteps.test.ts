@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { toSteps, emptyStep, genStepId, ScriptStep } from "./scriptSteps";
+import { toSteps, emptyStep, genStepId } from "./scriptSteps";
+import type { ScriptStep } from "../model";
 
 describe("toSteps", () => {
   it("returns existing steps when the array is non-empty", () => {

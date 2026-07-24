@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { getGitHubToken } from "./githubAuth";
-import { toSteps } from "./scriptSteps";
+import { toSteps } from "@portiq/core";
 
 const SYNC_REPO_NAME = "portiq-sync";
 const WORKSPACE_ROOT = "workspace";

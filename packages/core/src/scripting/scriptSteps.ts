@@ -1,8 +1,4 @@
-export interface ScriptStep {
-  id: string;
-  name: string;
-  script: string;
-}
+import type { ScriptStep } from "../model";
 
 let counter = 0;
 export function genStepId(): string {

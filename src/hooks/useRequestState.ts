@@ -1,6 +1,6 @@
 import { useLocalStorage } from "./useLocalStorage";
 import type { DagGraph } from "@portiq/core/flows";
-import { ScriptStep, toSteps } from "../services/scriptSteps";
+import { ScriptStep, toSteps } from "@portiq/core";
 
 export interface RequestRow {
     key: string;

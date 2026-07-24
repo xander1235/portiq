@@ -1,6 +1,6 @@
 import React from "react";
 import rightRailStyles from "../Layout/RightRail.module.css";
-import { summarizeTests, type TestEntry } from "../../services/testRunner";
+import { summarizeTests, type TestEntry } from "@portiq/core";
 
 interface TestsPaneProps {
     testsOutput: TestEntry[];
