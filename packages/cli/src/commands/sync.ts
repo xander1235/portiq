@@ -82,6 +82,10 @@ export function syncCommand(deps: SyncDeps = {}): CommandModule {
           const syncMod = await loadSync();
           const state = withState(ctx, flags, (s) => s);
           const remote = resolveRemote(syncMod, ctx, flags, deps);
+          ctx.stderr.write(
+            "warning: variable values are pushed unmasked (no desktop-style secret masking). " +
+              "Do not push secrets to shared or untrusted remotes.\n"
+          );
           await syncMod.syncPush(remote, state);
           const label = flags.local ?? (await remote.getIdentity()).login;
           const output: CommandOutput = { kind: "message", text: `Pushed local workspace to ${label}.` };

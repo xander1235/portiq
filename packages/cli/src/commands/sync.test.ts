@@ -108,7 +108,8 @@ describe("sync command", () => {
     });
 
     expect(Object.keys(fake.fileMap).length).toBeGreaterThan(0);
-    const parsed = JSON.parse(out);
+    expect(out).toMatch(/unmasked/);
+    const parsed = JSON.parse(out.slice(out.indexOf("{")));
     expect(parsed.kind).toBe("message");
     expect(parsed.text).toMatch(/Pushed local workspace to tester/);
   });

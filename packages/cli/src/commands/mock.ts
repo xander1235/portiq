@@ -30,10 +30,10 @@ function parsePort(raw: string | undefined): number {
   if (raw === undefined) return 3000;
   const n = Number(raw);
   // 0 is accepted (and used by tests) as the OS-assigned-ephemeral-port sentinel
-  // that packages/core's MockServerManager.start() honors; only negative/non-integer
-  // values are rejected here.
-  if (!Number.isInteger(n) || n < 0) {
-    throw new UsageError(`--port must be a non-negative integer, got "${raw}"`);
+  // that packages/core's MockServerManager.start() honors; negative/non-integer
+  // values and values above the valid TCP port range are rejected here.
+  if (!Number.isInteger(n) || n < 0 || n > 65535) {
+    throw new UsageError(`--port must be an integer between 0 and 65535, got "${raw}"`);
   }
   return n;
 }

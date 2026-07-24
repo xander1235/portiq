@@ -7,6 +7,7 @@ import { openAppStateStore, type AppState } from "@portiq/core";
 import { buildProgram } from "../registry";
 import { mockCommand, type MockDeps } from "./mock";
 import type { CliContext } from "../context";
+import { UsageError } from "../errors";
 
 let dir: string;
 
@@ -110,5 +111,13 @@ describe("mock command", () => {
       waitForShutdown: async () => {},
     });
     await expect(done).rejects.toThrow(/port/i);
+  });
+
+  it("rejects an out-of-range --port with a UsageError", async () => {
+    const { done } = runMock(["mock", "API", "--data-dir", dir, "--port", "99999"], {
+      waitForShutdown: async () => {},
+    });
+    await expect(done).rejects.toThrow(/port/i);
+    await expect(done).rejects.toBeInstanceOf(UsageError);
   });
 });
