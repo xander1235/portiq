@@ -11,6 +11,7 @@
     "dev": "concurrently \"vite\" \"electron .\"",
     "dev:nix": "env -u ELECTRON_RUN_AS_NODE concurrently \"vite\" \"electron .\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "build:core": "npm --workspace @portiq/core run build",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -80,6 +81,7 @@
     }
   },
   "dependencies": {
+    "@portiq/core": "*",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/lang-json": "^6.0.2",
