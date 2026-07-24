@@ -9,6 +9,7 @@ import { runCommand } from "./run";
 import { importCommand } from "./import";
 import { exportCommand } from "./export";
 import { mcpCommand } from "./mcp";
+import { mockCommand } from "./mock";
 
 export const builtinCommands: CommandModule[] = [
   lsCommand,
@@ -21,4 +22,5 @@ export const builtinCommands: CommandModule[] = [
   whereCommand,
   configCommand,
   mcpCommand(),
+  mockCommand(),
 ];
