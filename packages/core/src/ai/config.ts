@@ -79,8 +79,10 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
   const file = readConfigFile(opts) ?? {};
   const kv = readKvSettings(opts) ?? {};
 
-  // provider: flag -> PORTIQ_AI_PROVIDER -> file -> kv -> inferred-from-native-env
-  let provider = opts.provider ?? env.PORTIQ_AI_PROVIDER ?? file.provider ?? kv.provider ?? null;
+  // provider: flag -> PORTIQ_AI_PROVIDER -> inferred-from-native-env -> file -> kv
+  // (native env is part of the "env" tier, so it must outrank the file/kv tiers below it —
+  // matching the DECISION precedence: flag > env > config file > desktop-stored kv.)
+  let provider: string | null = opts.provider ?? env.PORTIQ_AI_PROVIDER ?? null;
   if (!provider) {
     for (const [p, names] of Object.entries(NATIVE_KEY_ENV)) {
       if (names.some((n) => env[n])) {
@@ -89,6 +91,7 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
       }
     }
   }
+  provider = provider ?? file.provider ?? kv.provider ?? null;
 
   // config-file keys outrank desktop-stored kv keys (file is a higher tier).
   const keys: AiKeys = { ...(kv.keys ?? {}), ...(file.keys ?? {}) };
