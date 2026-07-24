@@ -2,3 +2,4 @@
 // "./sync" exports subpath (src-only; @octokit/rest is ESM and must not enter the
 // CJS dist consumed by the electron main process). Populated task-by-task.
 export * from "./constants";
+export * from "./secrets";
