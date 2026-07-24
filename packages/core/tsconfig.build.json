@@ -10,5 +10,5 @@
     "declaration": false,
     "noEmitOnError": false
   },
-  "exclude": ["**/*.test.ts"]
+  "exclude": ["**/*.test.ts", "src/sync/**"]
 }
