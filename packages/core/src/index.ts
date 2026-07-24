@@ -5,3 +5,4 @@ export * from "./store/dataDir";
 export * from "./store/kvStore";
 export * from "./store/appStateStore";
 export * from "./store/portable";
+export * from "./exec/interpolate";
