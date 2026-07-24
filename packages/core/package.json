@@ -21,7 +21,9 @@
     "./grpc": {
       "import": "./src/transport/grpc.ts",
       "require": "./dist/transport/grpc.js"
-    }
+    },
+    "./sync": "./src/sync/index.ts",
+    "./sync/browser": "./src/sync/browser.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
@@ -29,6 +31,7 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.12.6",
     "@grpc/proto-loader": "^0.7.13",
+    "@octokit/rest": "^22.0.1",
     "better-sqlite3": "^12.11.1",
     "dagre": "^0.8.5",
     "fuse.js": "^7.1.0",
