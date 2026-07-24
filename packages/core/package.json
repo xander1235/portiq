@@ -13,6 +13,10 @@
     "./flows": {
       "import": "./src/flows/index.ts",
       "require": "./dist/flows/index.js"
+    },
+    "./grpc": {
+      "import": "./src/transport/grpc.ts",
+      "require": "./dist/transport/grpc.js"
     }
   },
   "scripts": {

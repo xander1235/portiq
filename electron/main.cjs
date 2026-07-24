@@ -3,6 +3,10 @@ const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
 const core = require("@portiq/core");
+// gRPC is deliberately NOT part of the "@portiq/core" barrel (it pulls in
+// @grpc/grpc-js / @grpc/proto-loader, which must never reach the renderer bundle
+// — see packages/core/src/index.ts). Import it from the Node-only subpath instead.
+const { GrpcTransport } = require("@portiq/core/grpc");
 
 const isDev = !app.isPackaged;
 
@@ -25,7 +29,7 @@ let httpTransport = null;
 
 const wsManager = new core.WsManager();
 const mockManager = new core.MockServerManager();
-const grpcTransport = new core.GrpcTransport();
+const grpcTransport = new GrpcTransport();
 
 // Forward WsManager events to every renderer window, mirroring the
 // `BrowserWindow.webContents.send` push the old inline WS code performed.
