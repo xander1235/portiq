@@ -147,3 +147,26 @@ describe("GrpcTransport deadline & cancel", () => {
     expect(t.cancel("")).toEqual({ error: "Missing request ID" });
   });
 });
+
+describe("GrpcTransport server streaming", () => {
+  it("aggregates all streamed messages into messages[]", async () => {
+    const target = await startEchoServer({}); // default ServerStream writes 3 chunks
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "ServerStream",
+      body: { message: "go" },
+      callType: "SERVER_STREAM",
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(0);
+    expect(r.messages).toEqual([
+      { message: "chunk-0" },
+      { message: "chunk-1" },
+      { message: "chunk-2" },
+    ]);
+    expect(JSON.parse(r.body)).toHaveLength(3);
+    expect(r.json).toBeNull();
+  });
+});

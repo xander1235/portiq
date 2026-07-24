@@ -113,7 +113,10 @@ export class GrpcTransport {
     if (callType === "UNARY") {
       return this.unary(client, fn, request, md, options, payload.requestId);
     }
-    // SERVER_STREAM is added in Task 4; CLIENT_STREAM / BIDI_STREAM are deferred.
+    if (callType === "SERVER_STREAM") {
+      return this.serverStream(client, fn, request, md, options, payload.requestId);
+    }
+    // CLIENT_STREAM / BIDI_STREAM are deferred (see plan: Open Questions & Assumptions).
     try { client.close(); } catch { /* ignore */ }
     return fail(grpc.status.UNIMPLEMENTED, `gRPC call type not supported yet: ${callType}`);
   }
@@ -184,6 +187,68 @@ export class GrpcTransport {
 
       // "error" always precedes a terminal "status"; swallow to avoid an unhandled emit.
       call.on("error", () => { /* terminal state handled by "status" */ });
+
+      if (requestId) {
+        this.pending.set(requestId, { cancel: () => { try { call.cancel(); } catch { /* ignore */ } } });
+      }
+    });
+  }
+
+  private serverStream(
+    client: grpc.Client,
+    fn: (...args: any[]) => grpc.ClientReadableStream<any>,
+    request: Record<string, unknown>,
+    md: grpc.Metadata,
+    options: grpc.CallOptions,
+    requestId?: string
+  ): Promise<GrpcSendResult> {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      let settled = false;
+      let initialMd: Record<string, string> = {};
+      const messages: any[] = [];
+
+      const finish = (result: GrpcSendResult) => {
+        if (settled) return;
+        settled = true;
+        if (requestId) this.pending.delete(requestId);
+        try { client.close(); } catch { /* ignore */ }
+        resolve(result);
+      };
+
+      const call = fn.call(client, request, md, options) as grpc.ClientReadableStream<any>;
+      call.on("data", (chunk: any) => { messages.push(chunk); });
+      call.on("metadata", (m: grpc.Metadata) => { initialMd = metadataToObject(m); });
+      call.on("error", () => { /* terminal state handled by "status" */ });
+      call.on("status", (status: grpc.StatusObject) => {
+        const duration = Date.now() - startedAt;
+        const trailers = metadataToObject(status.metadata);
+        if (status.code === grpc.status.OK) {
+          finish({
+            statusCode: 0,
+            statusMessage: "OK",
+            duration,
+            metadata: initialMd,
+            trailers,
+            body: JSON.stringify(messages),
+            json: null,
+            error: null,
+            messages,
+          });
+        } else {
+          finish({
+            statusCode: status.code,
+            statusMessage: statusName(status.code),
+            duration,
+            metadata: initialMd,
+            trailers,
+            body: JSON.stringify(messages),
+            json: null,
+            error: status.details || `gRPC error ${status.code}`,
+            messages,
+          });
+        }
+      });
 
       if (requestId) {
         this.pending.set(requestId, { cancel: () => { try { call.cancel(); } catch { /* ignore */ } } });
