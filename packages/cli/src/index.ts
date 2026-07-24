@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { CLI_NAME, CLI_VERSION } from "./version";
+import { defaultContext } from "./context";
+import { runCli } from "./run";
 
-// Populated task-by-task. The real entry is wired in Task 20.
-if (require.main === module) {
-  process.stdout.write(`${CLI_NAME} ${CLI_VERSION}\n`);
-}
+runCli(defaultContext())
+  .then((code) => { process.exitCode = code; })
+  .catch((err) => { process.stderr.write(`fatal: ${(err as Error).message}\n`); process.exitCode = 1; });
