@@ -462,6 +462,7 @@ function App() {
   const [graphqlResponse, setGraphqlResponse] = useState<any>(null);
   const [grpcConfig, setGrpcConfig] = useState<any>({});
   const [grpcResponse, setGrpcResponse] = useState<any>(null);
+  const [activeGrpcRequestId, setActiveGrpcRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -2221,6 +2222,11 @@ function App() {
     await window.api.cancelRequest({ requestId: activeHttpRequestId });
   }
 
+  async function handleCancelGrpcSend() {
+    if (!activeGrpcRequestId || !window.api?.cancelGrpc) return;
+    await window.api.cancelGrpc({ requestId: activeGrpcRequestId });
+  }
+
   async function handleSend() {
     setIsSending(true);
     const requestId = `http-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2490,6 +2496,8 @@ function App() {
   async function handleGrpcSend() {
     if (!url.trim()) return;
     setIsSending(true);
+    const requestId = `grpc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setActiveGrpcRequestId(requestId);
     setGrpcResponse(null);
     try {
       const validation = GrpcProtocol.validateRequest({
@@ -2512,17 +2520,20 @@ function App() {
           )
         : {};
 
-      const payload = GrpcProtocol.buildRequest({
-        url: interpolate(url),
-        service: grpcConfig.service,
-        method: grpcConfig.method,
-        requestBody: interpolate(grpcConfig.requestBody || "{}"),
-        metadata,
-        callType: grpcConfig.callType || "UNARY",
-        deadline: grpcConfig.deadline || 30000,
-        tls: grpcConfig.tls,
-        protoContent: grpcConfig.protoContent || ""
-      });
+      const payload = {
+        ...GrpcProtocol.buildRequest({
+          url: interpolate(url),
+          service: grpcConfig.service,
+          method: grpcConfig.method,
+          requestBody: interpolate(grpcConfig.requestBody || "{}"),
+          metadata,
+          callType: grpcConfig.callType || "UNARY",
+          deadline: grpcConfig.deadline || 30000,
+          tls: grpcConfig.tls,
+          protoContent: grpcConfig.protoContent || ""
+        }),
+        requestId
+      };
 
       addLog({ source: "API", type: "info", message: `Sending gRPC ${payload.service}/${payload.method} → ${payload.url}` });
 
@@ -2538,6 +2549,7 @@ function App() {
     } catch (err: any) {
       setGrpcResponse(GrpcProtocol.parseResponse({ error: err.message, statusCode: 13 }));
     } finally {
+      setActiveGrpcRequestId(null);
       setIsSending(false);
     }
   }
@@ -3431,6 +3443,7 @@ function App() {
                   config={grpcConfig}
                   setConfig={setGrpcConfig}
                   onSend={handleGrpcSend}
+                  onCancel={handleCancelGrpcSend}
                   isSending={isSending}
                   response={grpcResponse}
                 />

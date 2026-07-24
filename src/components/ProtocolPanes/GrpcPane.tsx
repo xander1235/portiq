@@ -16,6 +16,7 @@ export interface GrpcPaneProps {
   config: any;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   onSend: () => void;
+  onCancel?: () => void;
   isSending: boolean;
   response?: any;
 }
@@ -26,6 +27,7 @@ export function GrpcPane({
   config,
   setConfig,
   onSend,
+  onCancel,
   isSending,
   response
 }: GrpcPaneProps) {
@@ -128,14 +130,23 @@ export function GrpcPane({
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <button
-          className="primary"
-          onClick={handleSend}
-          disabled={isSending}
-          style={{ flexShrink: 0, padding: "8px 20px" }}
-        >
-          {isSending ? "Calling..." : "Invoke"}
-        </button>
+        {isSending ? (
+          <button
+            className="primary"
+            onClick={() => onCancel?.()}
+            style={{ flexShrink: 0, padding: "8px 20px", background: "var(--danger)", color: "#fff" }}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            className="primary"
+            onClick={handleSend}
+            style={{ flexShrink: 0, padding: "8px 20px" }}
+          >
+            Invoke
+          </button>
+        )}
       </div>
 
       {/* Service / Method selector */}
