@@ -3,3 +3,4 @@
 // Providers self-register into AIProviderRegistry below (populated in Task 7).
 export * from "./config";
 export * from "./providerRegistry";
+export * from "./parseLLMJson";
