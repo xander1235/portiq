@@ -24,7 +24,7 @@ let db = null;
 let httpTransport = null;
 
 const wsManager = new core.WsManager();
-const mockManager = new core.MockServerManager();
+const mockManager = core.createMockManager();
 
 // Forward WsManager events to every renderer window, mirroring the
 // `BrowserWindow.webContents.send` push the old inline WS code performed.
