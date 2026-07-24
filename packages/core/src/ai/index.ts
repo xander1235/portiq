@@ -13,6 +13,7 @@ AIProviderRegistry.register(geminiProvider);
 export * from "./config";
 export * from "./providerRegistry";
 export * from "./parseLLMJson";
+export * from "./summarize";
 export { openaiProvider, OPENAI_DEFAULT_MODEL } from "./providers/openai";
 export { anthropicProvider, ANTHROPIC_DEFAULT_MODEL } from "./providers/anthropic";
 export { geminiProvider, GEMINI_DEFAULT_MODEL } from "./providers/gemini";
