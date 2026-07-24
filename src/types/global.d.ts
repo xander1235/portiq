@@ -67,6 +67,9 @@ declare global {
       clearAllData: () => Promise<any>;
       getDataPath: () => Promise<string>;
 
+      // AI
+      saveAiConfig?: (config: any) => Promise<any>;
+
       // Others
       onGithubAuth: (callback: (url: string) => void) => void;
     };
