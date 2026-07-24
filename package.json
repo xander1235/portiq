@@ -2,6 +2,9 @@
   "name": "portiq",
   "version": "0.6.2",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
