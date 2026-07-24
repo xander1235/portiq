@@ -11,7 +11,7 @@ import {
   WORKSPACE_MANAGED_PREFIXES,
   HISTORY_PREFIX,
   type SyncRemote,
-} from "@portiq/core/sync";
+} from "@portiq/core/sync/browser";
 import { toSteps } from "@portiq/core";
 
 // Re-export for existing consumers (TableEditor.tsx imports these two).
