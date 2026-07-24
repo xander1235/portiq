@@ -16,6 +16,7 @@
       "require": "./dist/flows/index.js"
     },
     "./ai": {
+      "browser": "./src/ai/index.browser.ts",
       "import": "./src/ai/index.ts",
       "require": "./dist/ai/index.js"
     },
