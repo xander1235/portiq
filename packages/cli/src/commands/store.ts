@@ -1,4 +1,4 @@
-import { openAppStateStore, type AppState, type AppStateStore } from "@portiq/core";
+import { openAppStateStore, recomposeLegacyBlob, type AppState, type AppStateStore } from "@portiq/core";
 import type { CliContext } from "../context";
 import { loadConfig, resolveConfigPath, resolveEffectiveDataDir } from "../config";
 import { RuntimeError } from "../errors";
@@ -31,6 +31,17 @@ export async function withStateAsync<T>(
   const { store, state } = open(ctx, flags);
   try {
     return await fn(state, store);
+  } finally {
+    store.close();
+  }
+}
+
+/** Rollback helper: rewrite the legacy `appState` blob from per-entity rows. */
+export function recomposeBlob(ctx: CliContext, flags: { dataDir?: string }): boolean {
+  const dataDir = resolveEffectiveDataDir(flags, ctx.env, loadConfig(resolveConfigPath(ctx.env)));
+  const store = openAppStateStore({ dataDir });
+  try {
+    return recomposeLegacyBlob(store.entities.raw);
   } finally {
     store.close();
   }

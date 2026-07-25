@@ -4,6 +4,7 @@ import { parseGlobalFlags, type CommandModule } from "../registry";
 import { loadConfig, resolveConfigPath, saveConfig, type CliConfig } from "../config";
 import { UsageError } from "../errors";
 import { emit } from "./emit";
+import { recomposeBlob } from "./store";
 
 const SETTABLE = new Set(["dataDir", "reporter", "env"]);
 
@@ -30,8 +31,14 @@ export const configCommand: CommandModule = {
       });
 
     config
-      .action((_o, cmd: Command) => {
+      .option("--recompose-legacy-blob", "rewrite the appState blob from per-entity rows (run before downgrading)")
+      .action((opts: { recomposeLegacyBlob?: boolean }, cmd: Command) => {
         const flags = parseGlobalFlags(cmd);
+        if (opts.recomposeLegacyBlob) {
+          const ok = recomposeBlob(ctx, flags);
+          emit(ctx, flags, { kind: "message", text: ok ? "Recomposed appState blob from entity rows." : "No entity rows to recompose." });
+          return;
+        }
         const current = loadConfig(resolveConfigPath(ctx.env)) as Record<string, unknown>;
         emit(ctx, flags, { kind: "entity", entity: current });
       });
