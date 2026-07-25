@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const core = require("@portiq/core");
 const aiCore = require("@portiq/core/ai");
+const { createSafeStorageEncryptor } = require("./keystore.cjs");
 // gRPC is deliberately NOT part of the "@portiq/core" barrel (it pulls in
 // @grpc/grpc-js / @grpc/proto-loader, which must never reach the renderer bundle
 // — see packages/core/src/index.ts). Import it from the Node-only subpath instead.
@@ -22,6 +23,15 @@ try {
 
 let kvStore = null;
 let appStore = null;
+
+// Lazily constructed: `safeStorage.isEncryptionAvailable()` is only reliable
+// after `app.whenReady()`, so the encryptor is built on first use rather than
+// at module load time.
+let aiEncryptor = null;
+function getAiEncryptor() {
+  if (!aiEncryptor) aiEncryptor = createSafeStorageEncryptor();
+  return aiEncryptor;
+}
 
 // `app.getVersion()` isn't reliable until Electron signals `ready`, so the
 // HttpTransport (which stamps the User-Agent header with it) is constructed
@@ -98,6 +108,16 @@ function createWindow() {
 app.whenReady().then(() => {
   httpTransport = new core.HttpTransport({ appVersion: app.getVersion() });
   initDb();
+
+  // One-time, idempotent: encrypt any plaintext AI credentials left over from
+  // before this encryptor was wired up. A migration failure must not block
+  // app startup — log and continue with plaintext (still functional).
+  try {
+    aiCore.migrateAiKeystore({ encryptor: getAiEncryptor() });
+  } catch (err) {
+    console.error("AI keystore migration failed:", err);
+  }
+
   createWindow();
 
   app.on("activate", () => {
@@ -234,7 +254,7 @@ ipcMain.handle("db:getDataPath", async () => {
 
 ipcMain.handle("ai:saveConfig", (_event, config) => {
   try {
-    aiCore.saveAiConfig(config || {});
+    aiCore.saveAiConfig(config || {}, { encryptor: getAiEncryptor() });
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };
