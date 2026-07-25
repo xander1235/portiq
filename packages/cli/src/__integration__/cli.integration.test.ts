@@ -82,12 +82,13 @@ describe("portiq CLI (built binary)", () => {
     expect(stdout).toContain("<testsuites");
   });
 
-  it("sync --help exits 0 and lists the push/pull/status subcommands", async () => {
+  it("sync --help exits 0 and lists the push/pull/status/login subcommands", async () => {
     const { code, stdout } = await cli(["sync", "--help"]);
     expect(code).toBe(0);
     expect(stdout).toMatch(/push/);
     expect(stdout).toMatch(/pull/);
     expect(stdout).toMatch(/status/);
+    expect(stdout).toMatch(/login/);
   });
 
   it("sync push with no GitHub token exits 3 without a module-load crash", async () => {
