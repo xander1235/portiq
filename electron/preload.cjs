@@ -56,5 +56,9 @@ contextBridge.exposeInMainWorld("api", {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on("state:externalChange", handler);
     return () => ipcRenderer.removeListener("state:externalChange", handler);
-  }
+  },
+
+  // ── CLI PATH commands ──
+  installCliShims: () => ipcRenderer.invoke("cli:installShims"),
+  uninstallCliShims: () => ipcRenderer.invoke("cli:uninstallShims")
 });

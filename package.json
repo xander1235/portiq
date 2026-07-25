@@ -58,8 +58,15 @@
     ],
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**",
+      "**/node_modules/bindings/**",
+      "**/node_modules/file-uri-to-path/**",
       "**/*.node"
     ],
+    "extraResources": [
+      { "from": "packages/cli/dist/portiq.bundle.cjs", "to": "bin/portiq.bundle.cjs" },
+      { "from": "packages/mcp/dist/portiq-mcp.bundle.cjs", "to": "bin/portiq-mcp.bundle.cjs" }
+    ],
+    "afterPack": "build/afterPack.cjs",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.developer-tools",

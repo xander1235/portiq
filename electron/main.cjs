@@ -294,3 +294,39 @@ ipcMain.handle("ai:saveConfig", (_event, config) => {
     return { ok: false, error: err && err.message ? err.message : String(err) };
   }
 });
+
+// ── Install/uninstall the `portiq` / `portiq-mcp` commands on PATH ──
+// Symlinks the app's Resources/bin launchers into /usr/local/bin (macOS/Linux).
+// Windows PATH is handled by the NSIS installer, so this is a no-op there.
+const PATH_TARGET_DIR = "/usr/local/bin";
+function shimSourceDir() {
+  // process.resourcesPath = .../Contents/Resources (mac) or .../resources (linux/win)
+  return path.join(process.resourcesPath, "bin");
+}
+ipcMain.handle("cli:installShims", async () => {
+  if (process.platform === "win32") {
+    return { error: "On Windows the installer manages PATH automatically." };
+  }
+  try {
+    const src = shimSourceDir();
+    const made = [];
+    for (const name of ["portiq", "portiq-mcp"]) {
+      const from = path.join(src, name);
+      const to = path.join(PATH_TARGET_DIR, name);
+      try { fs.unlinkSync(to); } catch { /* not present */ }
+      fs.symlinkSync(from, to);
+      made.push(to);
+    }
+    return { ok: true, paths: made };
+  } catch (err) {
+    // EACCES on /usr/local/bin is expected without admin rights.
+    return { error: err && err.message ? err.message : String(err) };
+  }
+});
+ipcMain.handle("cli:uninstallShims", async () => {
+  if (process.platform === "win32") return { ok: true };
+  for (const name of ["portiq", "portiq-mcp"]) {
+    try { fs.unlinkSync(path.join(PATH_TARGET_DIR, name)); } catch { /* absent */ }
+  }
+  return { ok: true };
+});

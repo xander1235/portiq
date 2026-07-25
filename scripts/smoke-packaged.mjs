@@ -64,3 +64,16 @@ execFileSync(exe, ["-e", probe], {
   stdio: "inherit",
   env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
 });
+
+// 3) Run the generated PATH launcher and assert it prints a version.
+const binDir = join(
+  asar.replace(/app\.asar$/, ""), // .../Resources/ or .../resources/
+  "bin",
+);
+const launcher = platform() === "win32" ? join(binDir, "portiq.cmd") : join(binDir, "portiq");
+const ver = execFileSync(launcher, ["--version"], { encoding: "utf8" }).trim();
+if (!/\d+\.\d+\.\d+/.test(ver)) {
+  console.error(`smoke: launcher --version returned unexpected output: ${ver}`);
+  process.exit(1);
+}
+console.log(`smoke: PATH launcher OK (portiq --version -> ${ver})`);

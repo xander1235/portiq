@@ -77,6 +77,10 @@ declare global {
       // External DB change (live-reload)
       onExternalStateChange?: (callback: (data: { version: number }) => void) => () => void;
 
+      // CLI PATH commands
+      installCliShims: () => Promise<{ ok: true; paths: string[] } | { error: string }>;
+      uninstallCliShims: () => Promise<{ ok: true } | { error: string }>;
+
       // Others
       onGithubAuth: (callback: (url: string) => void) => void;
     };
