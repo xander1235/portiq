@@ -54,3 +54,15 @@ describe("appStateStore", () => {
     s.close();
   });
 });
+
+describe("appStateStore fine-grained access", () => {
+  it("exposes the per-entity EntityStore via .entities", () => {
+    const s = openAppStateStore({ dataDir: tempDir() });
+    s.save(sample());
+    const { collection, version } = s.entities.getCollection("c1");
+    expect(collection?.name).toBe("API");
+    s.entities.upsertCollection({ ...collection!, name: "API v2" }, version);
+    expect(s.collections().find((c) => c.id === "c1")?.name).toBe("API v2");
+    s.close();
+  });
+});

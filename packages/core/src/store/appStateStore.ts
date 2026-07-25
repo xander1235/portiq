@@ -1,8 +1,7 @@
-import { openKvStore, type KvStore } from "./kvStore";
+import { openEntityStore, type EntityStore } from "./entityStore";
+import type { KvStore } from "./kvStore";
 import type { ResolveDataDirOptions } from "./dataDir";
 import type { AppState, Collection, Environment, RequestItem, FolderItem } from "../model";
-
-const APP_STATE_KEY = "appState";
 
 export interface AppStateStore {
   load(): { state: AppState | null; version: number };
@@ -10,6 +9,8 @@ export interface AppStateStore {
   collections(): Collection[];
   environments(): Environment[];
   flattenRequests(): RequestItem[];
+  /** Fine-grained per-entity access (used by MCP/CLI writers). */
+  entities: EntityStore;
   close(): void;
 }
 
@@ -21,25 +22,16 @@ function collect(items: (FolderItem | RequestItem)[], out: RequestItem[]): void 
 }
 
 export function openAppStateStore(opts: ResolveDataDirOptions = {}, kv?: KvStore): AppStateStore {
-  const store = kv ?? openKvStore(opts);
+  const entities = openEntityStore(opts, kv);
 
   function load(): { state: AppState | null; version: number } {
-    const { value, version } = store.getVersioned(APP_STATE_KEY);
-    if (!value) return { state: null, version };
-    try {
-      return { state: JSON.parse(value) as AppState, version };
-    } catch {
-      return { state: null, version };
-    }
+    return entities.loadState();
   }
 
   return {
     load,
     save(state, expectedVersion) {
-      const encoded = JSON.stringify(state);
-      return expectedVersion === undefined
-        ? store.set(APP_STATE_KEY, encoded)
-        : store.setIfVersion(APP_STATE_KEY, encoded, expectedVersion);
+      return entities.saveState(state, expectedVersion);
     },
     collections() {
       return load().state?.collections ?? [];
@@ -52,8 +44,9 @@ export function openAppStateStore(opts: ResolveDataDirOptions = {}, kv?: KvStore
       for (const c of load().state?.collections ?? []) collect(c.items, out);
       return out;
     },
+    entities,
     close() {
-      store.close();
+      entities.close();
     },
   };
 }
