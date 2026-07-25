@@ -66,3 +66,48 @@ export async function requestDeviceCode(opts: RequestDeviceCodeOptions = {}): Pr
     intervalSeconds: data.interval,
   };
 }
+
+export interface PollDeviceTokenOptions {
+  clientId?: string;
+  fetch?: DeviceFlowFetch;
+  /** Injectable so tests resolve instantly instead of waiting real seconds. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Step 2 of RFC 8628: poll the token endpoint every `interval` seconds until
+ *  the user authorizes (or the device code is denied/expires). Mirrors the
+ *  desktop app's polling shape (src/services/githubAuth.ts:35-70) but runs to
+ *  completion headlessly instead of resolving a Promise from a setTimeout chain. */
+export async function pollDeviceToken(device: DeviceCodeResult, opts: PollDeviceTokenOptions = {}): Promise<string> {
+  const fetchFn = opts.fetch ?? defaultFetch;
+  const sleep = opts.sleep ?? defaultSleep;
+  const clientId = opts.clientId ?? GITHUB_CLIENT_ID;
+  let intervalMs = device.intervalSeconds * 1000;
+
+  while (true) {
+    await sleep(intervalMs);
+
+    const res = await fetchFn(GITHUB_ACCESS_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        client_id: clientId,
+        device_code: device.deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    });
+    const data = await res.json();
+
+    if (data.access_token) return data.access_token as string;
+    if (data.error === "authorization_pending") continue;
+    if (data.error === "slow_down") {
+      intervalMs += 5000;
+      continue;
+    }
+    if (data.error === "access_denied") throw new DeviceFlowDeniedError();
+    if (data.error === "expired_token") throw new DeviceFlowExpiredError();
+    throw new Error(data.error_description || data.error || "Unknown error polling for a device token.");
+  }
+}

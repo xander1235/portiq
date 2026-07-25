@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { requestDeviceCode, GITHUB_DEVICE_CODE_URL, type DeviceFlowFetch } from "./deviceLogin";
+import {
+  requestDeviceCode,
+  pollDeviceToken,
+  GITHUB_DEVICE_CODE_URL,
+  GITHUB_ACCESS_TOKEN_URL,
+  DeviceFlowDeniedError,
+  DeviceFlowExpiredError,
+  type DeviceFlowFetch,
+} from "./deviceLogin";
 import { GITHUB_CLIENT_ID } from "./auth";
 
 function fakeFetch(sequence: any[]): DeviceFlowFetch {
@@ -53,5 +61,90 @@ describe("requestDeviceCode", () => {
   it("throws with GitHub's error_description when the device-code request itself fails", async () => {
     const fetch = fakeFetch([{ error: "unauthorized_client", error_description: "the client id is not valid" }]);
     await expect(requestDeviceCode({ fetch })).rejects.toThrow("the client id is not valid");
+  });
+});
+
+function sequencedFetch(responses: any[]): { fetch: DeviceFlowFetch; calls: string[] } {
+  const calls: string[] = [];
+  let i = 0;
+  const fetch: DeviceFlowFetch = async (url, init) => {
+    calls.push(url);
+    void init;
+    const data = responses[Math.min(i, responses.length - 1)];
+    i++;
+    return { json: async () => data };
+  };
+  return { fetch, calls };
+}
+
+const device = {
+  deviceCode: "d-123",
+  userCode: "ABCD-1234",
+  verificationUri: "https://github.com/login/device",
+  expiresInSeconds: 900,
+  intervalSeconds: 5,
+};
+
+describe("pollDeviceToken", () => {
+  it("returns the access token once GitHub reports success", async () => {
+    const { fetch, calls } = sequencedFetch([{ access_token: "gho_abc", token_type: "bearer", scope: "repo" }]);
+    const sleeps: number[] = [];
+    const token = await pollDeviceToken(device, { fetch, sleep: async (ms) => { sleeps.push(ms); } });
+    expect(token).toBe("gho_abc");
+    expect(calls).toEqual([GITHUB_ACCESS_TOKEN_URL]);
+    expect(sleeps).toEqual([5000]);
+  });
+
+  it("keeps polling at the same interval on authorization_pending", async () => {
+    const { fetch, calls } = sequencedFetch([
+      { error: "authorization_pending" },
+      { error: "authorization_pending" },
+      { access_token: "gho_abc" },
+    ]);
+    const sleeps: number[] = [];
+    const token = await pollDeviceToken(device, { fetch, sleep: async (ms) => { sleeps.push(ms); } });
+    expect(token).toBe("gho_abc");
+    expect(calls.length).toBe(3);
+    expect(sleeps).toEqual([5000, 5000, 5000]);
+  });
+
+  it("grows the interval by 5s on slow_down and keeps using the new interval", async () => {
+    const { fetch } = sequencedFetch([
+      { error: "slow_down" },
+      { error: "authorization_pending" },
+      { access_token: "gho_abc" },
+    ]);
+    const sleeps: number[] = [];
+    const token = await pollDeviceToken(device, { fetch, sleep: async (ms) => { sleeps.push(ms); } });
+    expect(token).toBe("gho_abc");
+    expect(sleeps).toEqual([5000, 10000, 10000]);
+  });
+
+  it("throws DeviceFlowDeniedError on access_denied", async () => {
+    const { fetch } = sequencedFetch([{ error: "access_denied" }]);
+    await expect(pollDeviceToken(device, { fetch, sleep: async () => {} })).rejects.toThrow(DeviceFlowDeniedError);
+  });
+
+  it("throws DeviceFlowExpiredError on expired_token", async () => {
+    const { fetch } = sequencedFetch([{ error: "expired_token" }]);
+    await expect(pollDeviceToken(device, { fetch, sleep: async () => {} })).rejects.toThrow(DeviceFlowExpiredError);
+  });
+
+  it("throws a generic error with GitHub's description for any other error", async () => {
+    const { fetch } = sequencedFetch([{ error: "server_error", error_description: "GitHub had a hiccup" }]);
+    await expect(pollDeviceToken(device, { fetch, sleep: async () => {} })).rejects.toThrow("GitHub had a hiccup");
+  });
+
+  it("defaults clientId to GITHUB_CLIENT_ID and sends the device_code/grant_type in the polling request body", async () => {
+    let seenBody = "";
+    const fetch: DeviceFlowFetch = async (_url, init) => {
+      seenBody = init.body;
+      return { json: async () => ({ access_token: "gho_abc" }) };
+    };
+    await pollDeviceToken(device, { fetch, sleep: async () => {} });
+    const parsed = JSON.parse(seenBody);
+    expect(parsed.client_id).toBe(GITHUB_CLIENT_ID);
+    expect(parsed.device_code).toBe("d-123");
+    expect(parsed.grant_type).toBe("urn:ietf:params:oauth:grant-type:device_code");
   });
 });
