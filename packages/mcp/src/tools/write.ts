@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Collection, Environment, FolderItem, RequestItem } from "@portiq/core";
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
-import { withOptimisticWrite, newId } from "../store/write";
+import { withEntityRetry, newId } from "../store/write";
 
 const MUTATES = { readOnlyHint: false } as const;
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true } as const;
@@ -53,14 +53,14 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       { title: "Create request", description: "Add a new request to a collection.", inputSchema: requestFields, annotations: MUTATES },
       async (args) => {
         try {
-          const created = withOptimisticWrite<RequestItem>(ctx.store, (state) => {
-            const collection = state.collections.find((c) => c.id === args.collectionId);
+          const item = makeRequestItem(args);
+          withEntityRetry(() => {
+            const { collection, version } = ctx.store.entities.getCollection(args.collectionId);
             if (!collection) throw new Error(`Collection '${args.collectionId}' not found`);
-            const item = makeRequestItem(args);
             (collection.items ??= []).push(item);
-            return { next: state, result: item };
+            ctx.store.entities.upsertCollection(collection, version);
           });
-          return jsonToolResult(created);
+          return jsonToolResult(item);
         } catch (err) {
           return errorToolResult((err as Error).message);
         }
@@ -77,11 +77,19 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       },
       async ({ id, patch }) => {
         try {
-          const updated = withOptimisticWrite<RequestItem>(ctx.store, (state) => {
-            const item = findRequest(state.collections, id);
-            if (!item) throw new Error(`Request '${id}' not found`);
-            Object.assign(item, patch, { type: "request", id });
-            return { next: state, result: item };
+          let updated: RequestItem | null = null;
+          withEntityRetry(() => {
+            for (const meta of ctx.store.collections()) {
+              const fresh = ctx.store.entities.getCollection(meta.id);
+              if (!fresh.collection) continue;
+              const item = findRequest([fresh.collection], id);
+              if (!item) continue;
+              Object.assign(item, patch, { type: "request", id });
+              ctx.store.entities.upsertCollection(fresh.collection, fresh.version);
+              updated = item;
+              return;
+            }
+            throw new Error(`Request '${id}' not found`);
           });
           return jsonToolResult(updated);
         } catch (err) {
@@ -95,19 +103,23 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       { title: "Delete request", description: "Remove a request from its collection by id.", inputSchema: { id: z.string() }, annotations: DESTRUCTIVE },
       async ({ id }) => {
         try {
-          const removed = withOptimisticWrite<boolean>(ctx.store, (state) => {
-            let found = false;
-            const prune = (items: (FolderItem | RequestItem)[]): (FolderItem | RequestItem)[] =>
-              items.filter((it) => {
-                if (it.type === "request" && it.id === id) { found = true; return false; }
-                if (it.type === "folder") it.items = prune(it.items);
-                return true;
-              });
-            for (const c of state.collections) c.items = prune(c.items ?? []);
-            if (!found) throw new Error(`Request '${id}' not found`);
-            return { next: state, result: true };
+          withEntityRetry(() => {
+            for (const meta of ctx.store.collections()) {
+              const fresh = ctx.store.entities.getCollection(meta.id);
+              if (!fresh.collection) continue;
+              let found = false;
+              const prune = (items: (FolderItem | RequestItem)[]): (FolderItem | RequestItem)[] =>
+                items.filter((it) => {
+                  if (it.type === "request" && it.id === id) { found = true; return false; }
+                  if (it.type === "folder") it.items = prune(it.items);
+                  return true;
+                });
+              fresh.collection.items = prune(fresh.collection.items ?? []);
+              if (found) { ctx.store.entities.upsertCollection(fresh.collection, fresh.version); return; }
+            }
+            throw new Error(`Request '${id}' not found`);
           });
-          return jsonToolResult({ deleted: removed, id });
+          return jsonToolResult({ deleted: true, id });
         } catch (err) {
           return errorToolResult((err as Error).message);
         }
@@ -119,13 +131,9 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       { title: "Create collection", description: "Create a new empty collection.", inputSchema: { name: z.string() }, annotations: MUTATES },
       async ({ name }) => {
         try {
-          const created = withOptimisticWrite<Collection>(ctx.store, (state) => {
-            const collection: Collection = { id: newId("col"), name, items: [] };
-            state.collections.push(collection);
-            if (!state.activeCollectionId) state.activeCollectionId = collection.id;
-            return { next: state, result: collection };
-          });
-          return jsonToolResult(created);
+          const collection: Collection = { id: newId("col"), name, items: [] };
+          withEntityRetry(() => ctx.store.entities.upsertCollection(collection));
+          return jsonToolResult(collection);
         } catch (err) {
           return errorToolResult((err as Error).message);
         }
@@ -142,15 +150,17 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       },
       async ({ envId, key, value }) => {
         try {
-          const env = withOptimisticWrite<Environment>(ctx.store, (state) => {
-            const target = state.environments.find((e) => e.id === envId);
-            if (!target) throw new Error(`Environment '${envId}' not found`);
-            const existing = (target.vars ??= []).find((v) => v.key === key);
+          let target: Environment | null = null;
+          withEntityRetry(() => {
+            const { environment, version } = ctx.store.entities.getEnvironment(envId);
+            if (!environment) throw new Error(`Environment '${envId}' not found`);
+            const existing = (environment.vars ??= []).find((v) => v.key === key);
             if (existing) existing.value = value;
-            else target.vars.push({ key, value, comment: "", enabled: true });
-            return { next: state, result: target };
+            else environment.vars.push({ key, value, comment: "", enabled: true });
+            ctx.store.entities.upsertEnvironment(environment, version);
+            target = environment;
           });
-          return jsonToolResult(env);
+          return jsonToolResult(target);
         } catch (err) {
           return errorToolResult((err as Error).message);
         }
@@ -162,14 +172,14 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
       { title: "Save ad-hoc request", description: "Persist an ad-hoc request into a collection.", inputSchema: requestFields, annotations: MUTATES },
       async (args) => {
         try {
-          const created = withOptimisticWrite<RequestItem>(ctx.store, (state) => {
-            const collection = state.collections.find((c) => c.id === args.collectionId);
+          const item = makeRequestItem(args);
+          withEntityRetry(() => {
+            const { collection, version } = ctx.store.entities.getCollection(args.collectionId);
             if (!collection) throw new Error(`Collection '${args.collectionId}' not found`);
-            const item = makeRequestItem(args);
             (collection.items ??= []).push(item);
-            return { next: state, result: item };
+            ctx.store.entities.upsertCollection(collection, version);
           });
-          return jsonToolResult(created);
+          return jsonToolResult(item);
         } catch (err) {
           return errorToolResult((err as Error).message);
         }

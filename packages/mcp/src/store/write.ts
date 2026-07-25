@@ -29,3 +29,16 @@ export function withOptimisticWrite<T>(
   }
   throw new Error("Optimistic write failed: version conflict after retry");
 }
+
+/** Retry a single-entity optimistic write once on ConflictError, then rethrow. */
+export function withEntityRetry<T>(fn: () => T): T {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return fn();
+    } catch (err) {
+      if (err instanceof ConflictError && attempt === 0) continue;
+      throw err;
+    }
+  }
+  throw new Error("Entity write failed: version conflict after retry");
+}

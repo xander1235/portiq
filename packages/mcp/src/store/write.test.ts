@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { openAppStateStore, type AppState } from "@portiq/core";
-import { withOptimisticWrite, emptyState, newId } from "./write";
+import { openAppStateStore, ConflictError, type AppState } from "@portiq/core";
+import { withOptimisticWrite, withEntityRetry, emptyState, newId } from "./write";
 import { withTempDataDir } from "../testkit/tempStore";
 
 const dirs: Array<() => void> = [];
@@ -30,5 +30,22 @@ describe("write helpers", () => {
     });
     expect(added).toBe("c9");
     expect(store.collections().find((c) => c.id === "c9")?.name).toBe("New");
+  });
+});
+
+describe("withEntityRetry", () => {
+  it("returns the result on success", () => {
+    expect(withEntityRetry(() => 42)).toBe(42);
+  });
+
+  it("retries once then rethrows a persistent ConflictError", () => {
+    let calls = 0;
+    expect(() =>
+      withEntityRetry(() => {
+        calls += 1;
+        throw new ConflictError("k", 1, 2);
+      })
+    ).toThrow(ConflictError);
+    expect(calls).toBe(2);
   });
 });
