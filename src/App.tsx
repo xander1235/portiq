@@ -24,6 +24,7 @@ import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
 import { resolvePaneLayout, clampTopHeight, clampRightWidth, type PaneDefaults } from "./utils/paneLayout";
 import { buildSearchEntities, searchEntities, type SearchEntity, type RevealTarget } from "./utils/searchIndex";
+import { computeExternalReloadAction } from "./utils/externalReload";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -295,6 +296,11 @@ function App() {
   // `collections`, since the restore unconditionally overwrites `collections`
   // from the on-disk snapshot.
   const [hydrated, setHydrated] = useState(false);
+
+  // True while a debounced autosave is armed but not yet flushed — the signal
+  // for "unsaved local edits" that gates live-reload (see utils/externalReload).
+  const pendingSaveRef = useRef(false);
+  const [externalReloadPrompt, setExternalReloadPrompt] = useState(false);
 
   // One-time migration of the legacy global DAG Flow graph (Task 10, keyed by
   // "portiq_dag_flow_state_v1") into the new per-request `dagGraph` field.
@@ -1116,9 +1122,11 @@ function App() {
       headersMode,
       testsMode
     };
+    pendingSaveRef.current = true;
     const timer = setTimeout(() => {
       const value = JSON.stringify(payload);
       savePersisted(value);
+      pendingSaveRef.current = false;
     }, 200);
     return () => clearTimeout(timer);
   }, [
@@ -1160,6 +1168,34 @@ function App() {
     headersMode,
     testsMode
   ]);
+
+  // Live-reload when another process (CLI/MCP or a second instance) writes the
+  // shared appState. Reload silently when nothing local is pending; otherwise
+  // show a non-destructive banner instead of clobbering local edits.
+  const reloadFromDisk = useCallback(async () => {
+    const value = await loadPersisted();
+    if (value) {
+      try {
+        applyPersistedState(JSON.parse(value));
+      } catch {
+        // ignore corrupt state
+      }
+    }
+    setExternalReloadPrompt(false);
+  }, [applyPersistedState]);
+
+  useEffect(() => {
+    if (!window.api?.onExternalStateChange) return;
+    const unsubscribe = window.api.onExternalStateChange(() => {
+      const action = computeExternalReloadAction({ hasPendingLocalEdits: pendingSaveRef.current });
+      if (action === "prompt") {
+        setExternalReloadPrompt(true);
+        return;
+      }
+      void reloadFromDisk();
+    });
+    return unsubscribe;
+  }, [reloadFromDisk]);
 
   const handleGitHubSyncStateChange = useCallback((nextState: any) => {
     setGitHubSyncState(nextState || { status: "idle", label: "", detail: "" });
@@ -3110,6 +3146,23 @@ function App() {
 
   return (
     <div className={styles.app}>
+      {externalReloadPrompt && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+          style={{ background: "rgba(56, 189, 248, 0.12)", color: "#7dd3fc", borderBottom: "1px solid rgba(56, 189, 248, 0.24)" }}
+        >
+          <span>This library was changed by another process. You have unsaved local edits.</span>
+          <span className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { void reloadFromDisk(); }}>
+              Reload from disk
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setExternalReloadPrompt(false)}>
+              Keep my changes
+            </Button>
+          </span>
+        </div>
+      )}
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
         <div className="flex items-center gap-2">
           <img src={logo} alt="Portiq Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
