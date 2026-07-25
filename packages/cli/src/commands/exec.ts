@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parseCurl, type RequestRow } from "@portiq/core";
 import type { Command } from "commander";
 import type { CliContext } from "../context";
@@ -22,6 +23,12 @@ export interface ExecOptions {
   service?: string;
   proto?: string;
   callType?: string;
+  message: string[];
+  reflection?: boolean;
+  caCert?: string;
+  clientCert?: string;
+  clientKey?: string;
+  token?: string;
 }
 
 function headerRows(headers: string[]): RequestRow[] {
@@ -66,6 +73,12 @@ export const execCommand: CommandModule = {
       .option("--service <name>", "gRPC service name (implies --grpc)")
       .option("--proto <file>", "path to a .proto file (gRPC)")
       .option("--call-type <type>", "gRPC call type: UNARY | SERVER_STREAM | CLIENT_STREAM | BIDI_STREAM", "UNARY")
+      .option("--message <json>", "gRPC request message JSON (repeatable; for client/bidi streaming)", (v: string, p: string[]) => p.concat([v]), [])
+      .option("--reflection", "resolve gRPC descriptors via server reflection (no --proto needed)")
+      .option("--ca-cert <file>", "gRPC custom CA bundle (PEM)")
+      .option("--client-cert <file>", "gRPC client certificate (PEM, for mTLS)")
+      .option("--client-key <file>", "gRPC client private key (PEM, for mTLS)")
+      .option("--token <token>", "gRPC call-credential bearer token")
       .action(async (url: string | undefined, opts: Omit<ExecOptions, "url">, cmd: Command) => {
         const flags = parseGlobalFlags(cmd);
         const isGrpc = !!opts.grpc || !!opts.service || (!!url && /^grpcs?:\/\//i.test(url));
@@ -85,7 +98,16 @@ export const execCommand: CommandModule = {
               requestBody: opts.data ?? "{}", metadata,
               callType: (opts.callType as import("@portiq/core").GrpcConfig["callType"]) || "UNARY",
               protoPath: opts.proto,
-              tls: /^grpcs:\/\//i.test(url),
+              messages: opts.message.length ? opts.message : undefined,
+              useReflection: opts.reflection,
+              tlsConfig: (opts.caCert || opts.clientCert || opts.clientKey)
+                ? {
+                    rootCertsPem: opts.caCert ? readFileSync(opts.caCert, "utf8") : undefined,
+                    clientCertPem: opts.clientCert ? readFileSync(opts.clientCert, "utf8") : undefined,
+                    clientKeyPem: opts.clientKey ? readFileSync(opts.clientKey, "utf8") : undefined,
+                  }
+                : undefined,
+              callToken: opts.token,
             },
           };
           if (!item.grpcConfig!.method) throw new UsageError("gRPC exec requires -X <RpcMethod>");

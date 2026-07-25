@@ -63,6 +63,12 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
         callType: z.enum(["UNARY", "SERVER_STREAM", "CLIENT_STREAM", "BIDI_STREAM"]).optional(),
         deadline: z.number().optional(),
         tls: z.boolean().optional(),
+        messages: z.array(z.string()).optional(),
+        useReflection: z.boolean().optional(),
+        rootCertsPem: z.string().optional(),
+        clientCertPem: z.string().optional(),
+        clientKeyPem: z.string().optional(),
+        callToken: z.string().optional(),
         env: z.string().optional(),
         vars: varsSchema,
       },
@@ -85,6 +91,12 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
           callType: args.callType ?? "UNARY",
           deadline: args.deadline, tls: args.tls,
           protoContent: args.protoContent, protoPath: args.protoPath,
+          messages: args.messages,
+          useReflection: args.useReflection,
+          tlsConfig: (args.rootCertsPem || args.clientCertPem || args.clientKeyPem)
+            ? { rootCertsPem: args.rootCertsPem, clientCertPem: args.clientCertPem, clientKeyPem: args.clientKeyPem }
+            : undefined,
+          callToken: args.callToken,
         };
         item.grpcConfig = grpcConfig;
       }

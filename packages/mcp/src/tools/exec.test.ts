@@ -114,4 +114,16 @@ describe("exec tools gRPC", () => {
     const out = await call(c, "run_request", { id: "gr1" });
     expect(out.response.json).toEqual({ message: "hi saved" });
   });
+
+  it("run_ad_hoc_request performs a CLIENT_STREAM call with batch messages", async () => {
+    const c = await client();
+    const out = await call(c, "run_ad_hoc_request", {
+      protocol: "grpc", url: grpcServer.target, method: "ClientStream",
+      service: "echo.EchoService", callType: "CLIENT_STREAM",
+      messages: ['{"message":"a"}', '{"message":"b"}'],
+      protoContent: grpcServer.protoContent, tls: false,
+    });
+    expect(out.response.streamed).toBe(true);
+    expect(out.response.json).toEqual({ message: "got:a,b" });
+  });
 });

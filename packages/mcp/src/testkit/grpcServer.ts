@@ -11,6 +11,7 @@ message EchoReply { string message = 1; }
 service EchoService {
   rpc Unary (EchoRequest) returns (EchoReply);
   rpc ServerStream (EchoRequest) returns (stream EchoReply);
+  rpc ClientStream (stream EchoRequest) returns (EchoReply);
 }`;
 
 export interface GrpcTestServer {
@@ -32,6 +33,11 @@ export function startEchoGrpcServer(): Promise<GrpcTestServer> {
     ServerStream: (call: any) => {
       for (let i = 0; i < 3; i++) call.write({ message: "chunk-" + i });
       call.end();
+    },
+    ClientStream: (call: any, cb: any) => {
+      const parts: string[] = [];
+      call.on("data", (m: any) => parts.push(m.message));
+      call.on("end", () => cb(null, { message: "got:" + parts.join(",") }));
     },
   });
   return new Promise((resolve, reject) => {

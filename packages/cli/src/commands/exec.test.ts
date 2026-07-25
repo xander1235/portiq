@@ -59,6 +59,8 @@ describe("exec gRPC", () => {
     const pkg = grpc.loadPackageDefinition(def) as any;
     server = new grpc.Server();
     server.addService(pkg.echo.EchoService.service, { Unary: (call: any, cb: any) => cb(null, { message: "hi " + call.request.message }) });
+    const { ReflectionService } = await import("@grpc/reflection");
+    new ReflectionService(def).addToServer(server);
     target = await new Promise<string>((res, rej) => server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (e, p) => e ? rej(e) : res(`grpc://127.0.0.1:${p}`)));
   });
   afterAll(() => { server.forceShutdown(); });
@@ -69,5 +71,12 @@ describe("exec gRPC", () => {
     expect(parsed.kind).toBe("execution");
     expect(parsed.grpc.statusCode).toBe(0);
     expect(parsed.grpc.json).toEqual({ message: "hi cli" });
+  });
+
+  it("runs a gRPC exec resolving descriptors via reflection (no --proto)", async () => {
+    const { out } = await run(["exec", target, "--service", "echo.EchoService", "-X", "Unary", "--reflection", "-d", '{"message":"refl"}', "--reporter", "json"]);
+    const parsed = JSON.parse(out);
+    expect(parsed.grpc.statusCode).toBe(0);
+    expect(parsed.grpc.json).toEqual({ message: "hi refl" });
   });
 });
