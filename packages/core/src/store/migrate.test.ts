@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openKvStore } from "./kvStore";
 import { migrateBlobIfNeeded, recomposeLegacyBlob } from "./migrate";
-import { INDEX_KEY, COL_PREFIX, ENV_PREFIX, LEGACY_BLOB_KEY, recomposeState } from "./entityStore";
+import { INDEX_KEY, COL_PREFIX, ENV_PREFIX, LEGACY_BLOB_KEY, recomposeState, openEntityStore } from "./entityStore";
 import type { AppState } from "../model";
 
 const dirs: string[] = [];
@@ -45,6 +45,30 @@ describe("migrateBlobIfNeeded", () => {
     const kv = openKvStore({ dataDir: tempDir() });
     expect(migrateBlobIfNeeded(kv)).toBe(false);
     kv.close();
+  });
+
+  it.each([
+    ["the literal null", "null"],
+    ["an array", "[]"],
+    ["a primitive string", '"just a string"'],
+  ])("returns false (and does not throw) when the legacy blob is valid JSON but not a plain object: %s", (_label, degenerateBlob) => {
+    const kv = openKvStore({ dataDir: tempDir() });
+    kv.set(LEGACY_BLOB_KEY, degenerateBlob);
+    expect(() => migrateBlobIfNeeded(kv)).not.toThrow();
+    expect(migrateBlobIfNeeded(kv)).toBe(false);
+    expect(kv.get(INDEX_KEY)).toBeNull();
+    kv.close();
+  });
+
+  it("openEntityStore does not throw when the legacy blob is a degenerate JSON value", () => {
+    const dir = tempDir();
+    const kv = openKvStore({ dataDir: dir });
+    kv.set(LEGACY_BLOB_KEY, "null");
+    kv.close();
+    expect(() => {
+      const s = openEntityStore({ dataDir: dir });
+      s.close();
+    }).not.toThrow();
   });
 });
 

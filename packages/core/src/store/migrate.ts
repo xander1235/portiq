@@ -13,7 +13,11 @@ export function migrateBlobIfNeeded(kv: KvStore): boolean {
     const raw = kv.get(LEGACY_BLOB_KEY);
     if (!raw) return false;
     let state: AppState;
-    try { state = JSON.parse(raw) as AppState; } catch { return false; }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+      state = parsed as AppState;
+    } catch { return false; }
     for (const c of state.collections ?? []) kv.set(COL_PREFIX + c.id, JSON.stringify(c));
     for (const e of state.environments ?? []) kv.set(ENV_PREFIX + e.id, JSON.stringify(e));
     kv.set(INDEX_KEY, JSON.stringify(toEntityIndex(state)));
