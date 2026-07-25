@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { resolveDataDir, type ResolveDataDirOptions } from "../store/dataDir";
 
 /** Kept identical to the renderer's localStorage key and OAuth app for parity. */
@@ -32,4 +32,28 @@ export function resolveGitHubToken(opts: ResolveTokenOptions = {}): string | nul
     }
   }
   return null;
+}
+
+/**
+ * Write-side counterpart of resolveGitHubToken()'s config.json read. Read-
+ * merge-write so any other keys already in config.json survive (mirrors
+ * ../ai/configStore.ts's saveAiConfig() merge behavior, just for a plain
+ * JSON file instead of the kv store — resolveGitHubToken() only ever reads
+ * config.json, never the kv store, so this stays a plain file write).
+ * Returns the absolute config.json path that was written, for CLI messaging.
+ */
+export function saveGitHubToken(token: string, opts: ResolveDataDirOptions = {}): string {
+  const configPath = join(resolveDataDir(opts), "config.json");
+  let existing: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+      if (parsed && typeof parsed === "object") existing = parsed;
+    } catch {
+      // malformed config.json — overwrite rather than fail the login.
+    }
+  }
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify({ ...existing, githubToken: token.trim() }, null, 2) + "\n", "utf8");
+  return configPath;
 }
