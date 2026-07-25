@@ -89,3 +89,33 @@ jobs:
 
     - name: Renderer smoke test
       run: npm run smoke:renderer
+
+  packaging:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Use Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build core + CLI + MCP bundles
+      run: npm run bundle:bins
+
+    - name: Audit publish tarballs (no src/tests leak)
+      run: |
+        npm pack --dry-run -w @portiq/cli 2>&1 | tee /tmp/cli.txt
+        npm pack --dry-run -w @portiq/mcp 2>&1 | tee /tmp/mcp.txt
+        grep -q "portiq.bundle.cjs" /tmp/cli.txt
+        grep -q "portiq-mcp.bundle.cjs" /tmp/mcp.txt
+        ! grep -qE "src/|\.test\." /tmp/cli.txt
+        ! grep -qE "src/|\.test\." /tmp/mcp.txt
+
+    - name: Bundle self-containment smoke (core inlined)
+      run: node packages/cli/dist/portiq.bundle.cjs where --data-dir "$(mktemp -d)"

@@ -52,6 +52,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild
+
       - name: Build @portiq/core workspace package
         run: npm run build:core
 
@@ -120,3 +123,35 @@ jobs:
         with:
           body_path: release-body.md
           generate_release_notes: true
+
+  publish-npm:
+    name: Publish CLI + MCP to npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build publishable bundles
+        run: npm run bundle:bins
+
+      - name: Publish @portiq/cli and @portiq/mcp
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish -w @portiq/cli --access public
+          npm publish -w @portiq/mcp --access public
