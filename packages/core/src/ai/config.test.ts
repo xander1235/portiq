@@ -2,8 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openKvStore } from "@portiq/core";
 import { requireApiKey, redactKey, AiConfigError, AI_CONFIG_FILE } from "./config";
-import { resolveAiConfig, saveAiConfig } from "./configStore";
+import { resolveAiConfig, saveAiConfig, migrateAiKeystore } from "./configStore";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -84,5 +85,42 @@ describe("redactKey", () => {
     expect(redactKey(null)).toBe("(none)");
     expect(redactKey("sk-1234567890")).toBe("sk-1…90");
     expect(redactKey("short")).toBe("****");
+  });
+});
+
+describe("AI credential encryption at rest", () => {
+  it("stores the kv key encrypted and decrypts it on resolve", () => {
+    const dir = tempDir();
+    saveAiConfig({ provider: "openai", keys: { openai: "sk-plaintext-value" } }, { dataDir: dir });
+    const kv = openKvStore({ dataDir: dir });
+    const rawStored = JSON.parse(kv.get("aiSettings")!);
+    expect(rawStored.keys.openai).toMatch(/^enc:v1:/); // encrypted at rest
+    expect(rawStored.keys.openai).not.toContain("sk-plaintext-value");
+    kv.close();
+    const cfg = resolveAiConfig({ dataDir: dir, env: {} });
+    expect(cfg.apiKey).toBe("sk-plaintext-value"); // decrypted on read
+    expect(cfg.source).toBe("kv");
+  });
+
+  it("still reads a legacy plaintext kv key (back-compat)", () => {
+    const dir = tempDir();
+    const kv = openKvStore({ dataDir: dir });
+    kv.set("aiSettings", JSON.stringify({ provider: "openai", keys: { openai: "legacy-plain" } }));
+    kv.close();
+    const cfg = resolveAiConfig({ dataDir: dir, env: {} });
+    expect(cfg.apiKey).toBe("legacy-plain");
+  });
+
+  it("migrateAiKeystore encrypts existing plaintext keys in place", () => {
+    const dir = tempDir();
+    const kv = openKvStore({ dataDir: dir });
+    kv.set("aiSettings", JSON.stringify({ provider: "anthropic", keys: { anthropic: "plain", openai: "" } }));
+    kv.close();
+    expect(migrateAiKeystore({ dataDir: dir })).toBe(1); // only the non-empty one
+    const kv2 = openKvStore({ dataDir: dir });
+    expect(JSON.parse(kv2.get("aiSettings")!).keys.anthropic).toMatch(/^enc:v1:/);
+    kv2.close();
+    expect(migrateAiKeystore({ dataDir: dir })).toBe(0); // idempotent
+    expect(resolveAiConfig({ dataDir: dir, env: {} }).apiKey).toBe("plain");
   });
 });

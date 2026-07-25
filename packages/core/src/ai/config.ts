@@ -5,6 +5,8 @@
 // and better-sqlite3 into the browser bundle.
 import type { ResolveDataDirOptions } from "../store/dataDir";
 import type { KvStore } from "../store/kvStore";
+import type { Encryptor } from "../store/keystoreTypes";
+export type { Encryptor } from "../store/keystoreTypes";
 
 export const AI_SETTINGS_KEY = "aiSettings";
 export const AI_CONFIG_FILE = "ai.json";
@@ -41,6 +43,8 @@ export interface AiConfigOptions extends ResolveDataDirOptions {
   env?: NodeJS.ProcessEnv;
   /** Inject a kv store (tests / reuse); else one is opened + closed per call. */
   kv?: KvStore;
+  /** Injected encryptor for at-rest credential encryption (desktop safeStorage; else local keyfile). */
+  encryptor?: Encryptor;
 }
 
 export function requireApiKey(config: AiConfig): { provider: string; apiKey: string } {

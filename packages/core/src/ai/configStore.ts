@@ -7,6 +7,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { resolveDataDir } from "../store/dataDir";
 import { openKvStore } from "../store/kvStore";
+import { isEncrypted, type Encryptor } from "../store/keystoreTypes";
+import { createLocalEncryptor } from "../store/keystore";
 import {
   AI_SETTINGS_KEY,
   AI_CONFIG_FILE,
@@ -20,6 +22,20 @@ const NATIVE_KEY_ENV: Record<string, string[]> = {
   openai: ["OPENAI_API_KEY"],
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
 };
+
+function resolveEncryptor(opts: AiConfigOptions): Encryptor {
+  if (opts.encryptor?.available) return opts.encryptor;
+  return createLocalEncryptor(opts);
+}
+
+function decryptKeys(keys: AiKeys | undefined, enc: Encryptor): AiKeys {
+  const out: AiKeys = {};
+  for (const [k, v] of Object.entries(keys ?? {})) {
+    if (!v) continue;
+    out[k as keyof AiKeys] = isEncrypted(v) ? enc.decrypt(v) : v;
+  }
+  return out;
+}
 
 function readConfigFile(opts: AiConfigOptions): Partial<AiConfig> | null {
   const env = opts.env ?? process.env;
@@ -69,7 +85,8 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
   provider = provider ?? file.provider ?? kv.provider ?? null;
 
   // config-file keys outrank desktop-stored kv keys (file is a higher tier).
-  const keys: AiKeys = { ...(kv.keys ?? {}), ...(file.keys ?? {}) };
+  const enc = resolveEncryptor(opts);
+  const keys: AiKeys = { ...decryptKeys(kv.keys, enc), ...decryptKeys(file.keys, enc) };
   const model = opts.model ?? env.PORTIQ_AI_MODEL ?? file.model ?? kv.model ?? null;
   const semanticSearchEnabled = Boolean(file.semanticSearchEnabled ?? kv.semanticSearchEnabled ?? false);
 
@@ -86,12 +103,9 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
     const name = NATIVE_KEY_ENV[provider].find((n) => env[n])!;
     apiKey = env[name]!;
     source = `env:${name}`;
-  } else if (provider && file.keys?.[provider as keyof AiKeys]) {
-    apiKey = file.keys[provider as keyof AiKeys]!;
-    source = "file";
-  } else if (provider && kv.keys?.[provider as keyof AiKeys]) {
-    apiKey = kv.keys[provider as keyof AiKeys]!;
-    source = "kv";
+  } else if (provider && keys[provider as keyof AiKeys]) {
+    apiKey = keys[provider as keyof AiKeys]!;
+    source = file.keys?.[provider as keyof AiKeys] ? "file" : "kv";
   }
 
   return { provider, model, apiKey, keys, semanticSearchEnabled, source };
@@ -100,9 +114,45 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
 export function saveAiConfig(config: Partial<AiConfig>, opts: AiConfigOptions = {}): void {
   const kv = opts.kv ?? openKvStore(opts);
   try {
+    const enc = resolveEncryptor(opts);
+    const toStore: Partial<AiConfig> = { ...config };
+    if (config.keys) {
+      const encKeys: AiKeys = {};
+      for (const [k, v] of Object.entries(config.keys)) {
+        if (!v) continue;
+        encKeys[k as keyof AiKeys] = isEncrypted(v) ? v : enc.encrypt(v);
+      }
+      toStore.keys = encKeys;
+    }
     const existing = kv.get(AI_SETTINGS_KEY);
-    const merged = { ...(existing ? JSON.parse(existing) : {}), ...config };
+    const merged = { ...(existing ? JSON.parse(existing) : {}), ...toStore };
     kv.set(AI_SETTINGS_KEY, JSON.stringify(merged));
+  } finally {
+    if (!opts.kv) kv.close();
+  }
+}
+
+/** Encrypt any plaintext values in the stored aiSettings.keys. Idempotent. Returns count changed. */
+export function migrateAiKeystore(opts: AiConfigOptions = {}): number {
+  const kv = opts.kv ?? openKvStore(opts);
+  try {
+    const raw = kv.get(AI_SETTINGS_KEY);
+    if (!raw) return 0;
+    const settings = JSON.parse(raw) as Partial<AiConfig>;
+    const keys = settings.keys ?? {};
+    const enc = resolveEncryptor(opts);
+    let changed = 0;
+    for (const [k, v] of Object.entries(keys)) {
+      if (v && !isEncrypted(v)) {
+        keys[k as keyof AiKeys] = enc.encrypt(v);
+        changed += 1;
+      }
+    }
+    if (changed > 0) {
+      settings.keys = keys;
+      kv.set(AI_SETTINGS_KEY, JSON.stringify(settings));
+    }
+    return changed;
   } finally {
     if (!opts.kv) kv.close();
   }
