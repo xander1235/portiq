@@ -18,6 +18,39 @@ portiq-mcp --allow-writes
 portiq-mcp --data-dir /path/to/dir
 ```
 
+### HTTP transport (streamable HTTP)
+
+```bash
+# Serve over HTTP instead of stdio (default host 127.0.0.1, port 3939, endpoint /mcp):
+portiq-mcp --http
+# or: PORTIQ_MCP_HTTP=1 portiq-mcp
+
+# Custom bind host/port and a required bearer token:
+portiq-mcp --http --host 127.0.0.1 --port 8080 --auth-token my-secret
+# env equivalents: PORTIQ_MCP_HOST, PORTIQ_MCP_PORT, PORTIQ_MCP_AUTH_TOKEN
+```
+
+Clients connect to `http://<host>:<port>/mcp` and send `Authorization: Bearer <token>` when a token is set.
+The HTTP server is **single-session** (one client at a time) and defaults to the **loopback** interface;
+binding to a non-loopback host without `--auth-token` prints a warning. HTTP host-config drop-in:
+
+```json
+{ "mcpServers": { "portiq": { "url": "http://127.0.0.1:3939/mcp" } } }
+```
+
+### Execution allow/deny-list (host safety knob)
+
+```bash
+# Only permit executions targeting these hosts (repeatable; comma lists; supports *.example.com and host:port):
+portiq-mcp --exec-allow api.example.com --exec-allow '*.internal.test'
+# Always block these hosts (deny wins over allow):
+portiq-mcp --exec-deny 169.254.169.254 --exec-deny localhost:5432
+# env equivalents: PORTIQ_MCP_EXEC_ALLOW, PORTIQ_MCP_EXEC_DENY (comma-separated)
+```
+
+The list gates the execute tools (`run_request`, `run_ad_hoc_request`, `run_collection`, `run_flow`) by the
+resolved target host of each network send; a blocked host returns a tool error naming the deny- or allow-list.
+
 ## Tools
 
 - **Read (always on):** `list_collections`, `list_requests`, `get_request`,
@@ -69,7 +102,16 @@ Add to `claude_desktop_config.json`:
 
 ## Notes & limitations
 
-- **stdio only** (no HTTP transport in this phase).
+- **Transports:** stdio (default) or streamable HTTP (`--http`). The HTTP server is single-session and
+  loopback-first; multi-session pooling is out of scope.
+- **Gate precedence (independent gates over disjoint tool categories):**
+  - `--allow-writes` gates library-MUTATION tools (`create_*`, `update_*`, `delete_*`,
+    `set_environment_variable`, `save_ad_hoc_as_request`) — unrelated to transport and to host policy.
+  - The exec allow/deny-list gates EXECUTE tools by resolved target host. **Deny wins**: a denied host is
+    blocked even if allow-listed; an empty allow-list permits all non-denied hosts; a non-empty allow-list
+    default-denies unlisted hosts.
+  - A mutating tool is never subject to the host policy; an execute tool is never subject to `--allow-writes`.
+  - HTTP bind-host + `--auth-token` act at the transport layer, before any tool gate.
 - **Protocols:** `http` and `graphql` execute; `websocket`/`grpc` return a clear
   "not supported headlessly yet" error (gRPC will run through `run_request` once
   its core sender lands).
