@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Writable } from "node:stream";
 import { openAppStateStore, type AppState } from "@portiq/core";
 import type { SyncRemote, SyncRepoInfo, FetchWorkspaceResult } from "@portiq/core/sync";
+import { resolveGitHubToken } from "@portiq/core/sync";
 import { buildProgram } from "../registry";
 import { syncCommand, type SyncDeps } from "./sync";
 import type { CliContext } from "../context";
@@ -182,5 +183,90 @@ describe("sync command", () => {
 
     expect(caught).toBeInstanceOf(UsageError);
     expect((caught as Error).message).toMatch(/token/i);
+  });
+});
+
+describe("sync login", () => {
+  function fakeDevice() {
+    return {
+      deviceCode: "d-123",
+      userCode: "ABCD-1234",
+      verificationUri: "https://github.com/login/device",
+      verificationUriComplete: "https://github.com/login/device?user_code=ABCD-1234",
+      expiresInSeconds: 900,
+      intervalSeconds: 5,
+    };
+  }
+
+  it("prints the verification URL and code, saves the token, and it's readable via resolveGitHubToken", async () => {
+    const dir = tempDir();
+
+    const { out } = await cli(["sync", "login", "--data-dir", dir, "--reporter", "json"], {
+      requestDeviceCode: async () => fakeDevice(),
+      pollDeviceToken: async () => "gho_faketoken",
+    });
+
+    expect(out).toMatch(/https:\/\/github\.com\/login\/device/);
+    expect(out).toMatch(/ABCD-1234/);
+    const parsed = JSON.parse(out.slice(out.indexOf("{")));
+    expect(parsed.kind).toBe("message");
+    expect(parsed.text).toMatch(/Logged in to GitHub/);
+
+    expect(resolveGitHubToken({ env: {}, dataDir: dir })).toBe("gho_faketoken");
+  });
+
+  it("passes --client-id through to requestDeviceCode and pollDeviceToken", async () => {
+    const dir = tempDir();
+    const seenClientIds: string[] = [];
+
+    await cli(["sync", "login", "--data-dir", dir, "--client-id", "custom-id", "--reporter", "json"], {
+      requestDeviceCode: async ({ clientId }) => {
+        seenClientIds.push(clientId);
+        return fakeDevice();
+      },
+      pollDeviceToken: async ({ clientId }) => {
+        seenClientIds.push(clientId);
+        return "gho_faketoken";
+      },
+    });
+
+    expect(seenClientIds).toEqual(["custom-id", "custom-id"]);
+  });
+
+  it("surfaces a denied authorization as an error without saving a token", async () => {
+    const dir = tempDir();
+
+    let caught: unknown;
+    try {
+      await cli(["sync", "login", "--data-dir", dir], {
+        requestDeviceCode: async () => fakeDevice(),
+        pollDeviceToken: async ({ sync }) => {
+          throw new sync.DeviceFlowDeniedError();
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect((caught as Error)?.message).toMatch(/denied/i);
+    expect(resolveGitHubToken({ env: {}, dataDir: dir })).toBeNull();
+  });
+
+  it("surfaces an expired device code as an error", async () => {
+    const dir = tempDir();
+
+    let caught: unknown;
+    try {
+      await cli(["sync", "login", "--data-dir", dir], {
+        requestDeviceCode: async () => fakeDevice(),
+        pollDeviceToken: async ({ sync }) => {
+          throw new sync.DeviceFlowExpiredError();
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect((caught as Error)?.message).toMatch(/expired/i);
   });
 });

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { SyncRemote } from "@portiq/core/sync";
+import type { SyncRemote, DeviceCodeResult } from "@portiq/core/sync";
 import type { CliContext } from "../context";
 import { parseGlobalFlags, type CommandModule, type GlobalFlags } from "../registry";
 import { withState } from "./store";
@@ -31,17 +31,27 @@ export interface SyncDeps {
     dataDir?: string;
     env: NodeJS.ProcessEnv;
   }) => SyncRemote;
+  /** Default calls sync.requestDeviceCode(...); tests inject a fake to avoid github.com. */
+  requestDeviceCode?: (args: { sync: SyncModule; clientId: string; scope: string }) => Promise<DeviceCodeResult>;
+  /** Default calls sync.pollDeviceToken(...); tests inject a fake to avoid real polling. */
+  pollDeviceToken?: (args: { sync: SyncModule; device: DeviceCodeResult; clientId: string }) => Promise<string>;
 }
 
 interface SyncFlags extends GlobalFlags {
   token?: string;
   local?: string;
+  clientId?: string;
 }
 
 function parseSyncFlags(cmd: Command): SyncFlags {
   const flags = parseGlobalFlags(cmd);
   const o = cmd.optsWithGlobals() as Record<string, unknown>;
-  return { ...flags, token: o.token as string | undefined, local: o.local as string | undefined };
+  return {
+    ...flags,
+    token: o.token as string | undefined,
+    local: o.local as string | undefined,
+    clientId: o.clientId as string | undefined,
+  };
 }
 
 function buildRemote(sync: SyncModule, ctx: CliContext, flags: SyncFlags): SyncRemote {
@@ -68,8 +78,40 @@ export function syncCommand(deps: SyncDeps = {}): CommandModule {
       const sync = program
         .command("sync")
         .description("sync your workspace with a git remote")
-        .option("--token <token>", "GitHub token (else PORTIQ_GITHUB_TOKEN / GITHUB_TOKEN / config.json)")
+        .option("--token <token>", "GitHub token (else PORTIQ_GITHUB_TOKEN / GITHUB_TOKEN / config.json — see `sync login`)")
         .option("--local <dir>", "sync to a local git repo directory instead of GitHub");
+
+      sync
+        .command("login")
+        .description("authenticate with GitHub via the OAuth device flow and save the token for push/pull/status")
+        .option("--client-id <id>", "GitHub OAuth App client id (defaults to Portiq's desktop app client id)")
+        .action(async (_opts: unknown, cmd: Command) => {
+          const flags = parseSyncFlags(cmd);
+          const syncMod = await loadSync();
+          const clientId = flags.clientId ?? syncMod.GITHUB_CLIENT_ID;
+          const scope = "repo";
+
+          const device = deps.requestDeviceCode
+            ? await deps.requestDeviceCode({ sync: syncMod, clientId, scope })
+            : await syncMod.requestDeviceCode({ clientId, scope });
+
+          ctx.stderr.write(
+            `First copy your one-time code: ${device.userCode}\n` +
+              `Then open ${device.verificationUri} in your browser and paste it to authorize Portiq.\n` +
+              "Waiting for you to authorize...\n"
+          );
+
+          const token = deps.pollDeviceToken
+            ? await deps.pollDeviceToken({ sync: syncMod, device, clientId })
+            : await syncMod.pollDeviceToken(device, { clientId });
+
+          const configPath = syncMod.saveGitHubToken(token, { dataDir: flags.dataDir, env: ctx.env });
+          const output: CommandOutput = {
+            kind: "message",
+            text: `Logged in to GitHub. Token saved to ${configPath}; sync push/pull/status will use it automatically.`,
+          };
+          emit(ctx, flags, output);
+        });
 
       sync
         .command("push")
