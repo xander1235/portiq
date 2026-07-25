@@ -16,6 +16,8 @@ export interface GrpcSendPayload {
   protoContent?: string;
   protoPath?: string;
   useReflection?: boolean;
+  tlsConfig?: { rootCertsPem?: string; clientCertPem?: string; clientKeyPem?: string };
+  callToken?: string;
 }
 
 export interface GrpcSendResult {
@@ -54,6 +56,37 @@ function normalizeTarget(url: string, tls?: boolean): { target: string; secure: 
   if (lower.startsWith("grpcs://")) return { target: url.slice("grpcs://".length), secure: true };
   if (lower.startsWith("grpc://")) return { target: url.slice("grpc://".length), secure: tls === true };
   return { target: url, secure: tls === true };
+}
+
+/** Build channel credentials honoring custom CA / client certs (mTLS) and an optional call-credential token. */
+function buildCredentials(
+  secure: boolean,
+  tlsConfig: GrpcSendPayload["tlsConfig"],
+  callToken: string | undefined
+): grpc.ChannelCredentials {
+  const wantsTls = secure || !!tlsConfig;
+  let channelCreds: grpc.ChannelCredentials;
+  if (!wantsTls) {
+    channelCreds = grpc.credentials.createInsecure();
+  } else {
+    const root = tlsConfig?.rootCertsPem ? Buffer.from(tlsConfig.rootCertsPem) : null;
+    const key = tlsConfig?.clientKeyPem ? Buffer.from(tlsConfig.clientKeyPem) : null;
+    const cert = tlsConfig?.clientCertPem ? Buffer.from(tlsConfig.clientCertPem) : null;
+    channelCreds = grpc.credentials.createSsl(root, key, cert);
+  }
+  if (callToken) {
+    if (wantsTls) {
+      const callCreds = grpc.credentials.createFromMetadataGenerator((_params, cb) => {
+        const md = new grpc.Metadata();
+        md.set("authorization", `Bearer ${callToken}`);
+        cb(null, md);
+      });
+      channelCreds = grpc.credentials.combineChannelCredentials(channelCreds, callCreds);
+    }
+    // Over an insecure channel grpc-js rejects call credentials; the token is added to
+    // request metadata instead (see send() below).
+  }
+  return channelCreds;
 }
 
 function parseBody(body: GrpcSendPayload["body"]): Record<string, unknown> {
@@ -130,7 +163,7 @@ export class GrpcTransport {
     let ClientCtor: grpc.ServiceClientConstructor;
     try {
       const { target, secure } = normalizeTarget(url, payload.tls);
-      const creds = secure ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+      const creds = buildCredentials(secure, payload.tlsConfig, payload.callToken);
       const hasProto = !!(payload.protoPath || (payload.protoContent && payload.protoContent.trim()));
       const pkg = hasProto && !payload.useReflection
         ? loadProto({ protoPath: payload.protoPath, protoContent: payload.protoContent })
@@ -160,6 +193,8 @@ export class GrpcTransport {
     }
 
     const md = buildMetadata(payload.metadata);
+    const insecureToken = payload.callToken && !(payload.tls || url.toLowerCase().startsWith("grpcs://") || payload.tlsConfig);
+    if (insecureToken) md.set("authorization", `Bearer ${payload.callToken}`);
     const deadlineMs = typeof payload.deadline === "number" && payload.deadline > 0 ? payload.deadline : 30000;
     const options: grpc.CallOptions = { deadline: new Date(Date.now() + deadlineMs) };
 

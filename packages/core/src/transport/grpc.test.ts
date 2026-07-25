@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { ReflectionService } from "@grpc/reflection";
@@ -8,8 +9,10 @@ import { GrpcTransport } from "./grpc";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, "fixtures", "echo.proto");
+const TLS = join(here, "fixtures", "tls");
 
 let server: grpc.Server | null = null;
+let tlsServer: grpc.Server | null = null;
 
 /** Start an in-process Echo server on an ephemeral port; returns "127.0.0.1:<port>". */
 function startEchoServer(
@@ -52,6 +55,35 @@ function startEchoServer(
 afterEach(() => {
   server?.forceShutdown();
   server = null;
+});
+
+/** Start an in-process mTLS Echo server on an ephemeral port; returns "127.0.0.1:<port>". */
+function startMtlsEchoServer(onToken: (t: string | undefined) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const def = protoLoader.loadSync(FIXTURE, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
+    const pkg = grpc.loadPackageDefinition(def) as any;
+    tlsServer = new grpc.Server();
+    tlsServer.addService(pkg.echo.EchoService.service, {
+      Unary: (call: any, cb: any) => {
+        onToken(call.metadata.get("authorization")[0] as string | undefined);
+        cb(null, { message: "secure " + call.request.message });
+      },
+    });
+    const creds = grpc.ServerCredentials.createSsl(
+      readFileSync(join(TLS, "ca.crt")),
+      [{ private_key: readFileSync(join(TLS, "server.key")), cert_chain: readFileSync(join(TLS, "server.crt")) }],
+      true // require + verify client cert (mTLS)
+    );
+    tlsServer.bindAsync("127.0.0.1:0", creds, (err, port) => {
+      if (err) return reject(err);
+      resolve(`127.0.0.1:${port}`);
+    });
+  });
+}
+
+afterEach(() => {
+  tlsServer?.forceShutdown();
+  tlsServer = null;
 });
 
 describe("GrpcTransport unary", () => {
@@ -288,5 +320,30 @@ describe("GrpcTransport via reflection", () => {
     });
     expect(r.statusCode).toBe(0);
     expect(r.json).toEqual({ message: "hi reflected" });
+  });
+});
+
+describe("GrpcTransport advanced auth", () => {
+  it("performs an mTLS unary call with a custom CA + client cert and injects a call-credential token", async () => {
+    let seenToken: string | undefined;
+    const target = await startMtlsEchoServer((t) => { seenToken = t; });
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: `grpcs://${target}`,
+      service: "echo.EchoService",
+      method: "Unary",
+      body: { message: "world" },
+      callType: "UNARY",
+      protoPath: FIXTURE,
+      tlsConfig: {
+        rootCertsPem: readFileSync(join(TLS, "ca.crt"), "utf8"),
+        clientCertPem: readFileSync(join(TLS, "client.crt"), "utf8"),
+        clientKeyPem: readFileSync(join(TLS, "client.key"), "utf8"),
+      },
+      callToken: "s3cr3t",
+    });
+    expect(r.statusCode).toBe(0);
+    expect(r.json).toEqual({ message: "secure world" });
+    expect(seenToken).toBe("Bearer s3cr3t");
   });
 });
