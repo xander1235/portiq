@@ -11,7 +11,8 @@
     "noEmitOnError": false,
     "baseUrl": ".",
     "paths": {
-      "@portiq/core/flows": ["../../node_modules/@portiq/core/src/flows/index.ts"]
+      "@portiq/core/flows": ["../../node_modules/@portiq/core/src/flows/index.ts"],
+      "@portiq/core/grpc": ["../../node_modules/@portiq/core/src/transport/grpc.ts"]
     }
   },
   "exclude": ["**/*.test.ts"]

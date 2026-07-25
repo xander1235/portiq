@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { resolveVars, type FolderItem, type RequestItem } from "@portiq/core";
+import { resolveVars, type FolderItem, type RequestItem, type GrpcConfig } from "@portiq/core";
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
 import { runRequestItem } from "../exec/run";
@@ -48,7 +48,7 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
     "run_ad_hoc_request",
     {
       title: "Run ad-hoc request",
-      description: "Execute an inline request that is not saved to the library.",
+      description: "Execute an inline request (http, graphql, or grpc) that is not saved to the library.",
       inputSchema: {
         method: z.string(),
         url: z.string(),
@@ -56,18 +56,38 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
         body: z.string().optional(),
         bodyType: z.string().optional(),
         protocol: z.string().optional(),
+        // gRPC-only fields (used when protocol === "grpc"): method=RPC name, url=target, headers=metadata, body=request JSON.
+        service: z.string().optional(),
+        protoContent: z.string().optional(),
+        protoPath: z.string().optional(),
+        callType: z.enum(["UNARY", "SERVER_STREAM", "CLIENT_STREAM", "BIDI_STREAM"]).optional(),
+        deadline: z.number().optional(),
+        tls: z.boolean().optional(),
         env: z.string().optional(),
         vars: varsSchema,
       },
       annotations: EXECUTES,
     },
-    async ({ method, url, headers, body, bodyType, protocol, env, vars }) => {
+    async (args) => {
+      const { method, url, headers, body, bodyType, protocol, env, vars } = args;
+      const proto = (protocol || "http").toLowerCase();
       const item: RequestItem = {
         type: "request", id: "ad-hoc", name: "ad-hoc", description: "", tags: [],
-        protocol: protocol || "http", method, url,
+        protocol: proto, method, url,
         bodyType: bodyType || (body ? "raw" : "none"), bodyText: body ?? "",
         headersRows: Object.entries(headers ?? {}).map(([key, value]) => ({ key, value, comment: "", enabled: true })),
       };
+      if (proto === "grpc") {
+        const grpcConfig: GrpcConfig = {
+          service: args.service ?? "", method,
+          requestBody: body ?? "{}",
+          metadata: headers ?? {},
+          callType: args.callType ?? "UNARY",
+          deadline: args.deadline, tls: args.tls,
+          protoContent: args.protoContent, protoPath: args.protoPath,
+        };
+        item.grpcConfig = grpcConfig;
+      }
       try {
         return jsonToolResult(await runRequestItem(item, { transport: ctx.transport, env: resolveEnvironment(ctx, env), vars }));
       } catch (err) {

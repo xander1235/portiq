@@ -3,6 +3,8 @@ import { HttpTransport } from "@portiq/core";
 import type { RequestItem } from "@portiq/core";
 import { runRequestItem } from "./run";
 import { startTestHttpServer } from "../testkit/httpServer";
+import { GrpcTransport } from "@portiq/core/grpc";
+import { startEchoGrpcServer, type GrpcTestServer } from "../testkit/grpcServer";
 
 let server: { url: string; close: () => Promise<void> };
 beforeAll(async () => { server = await startTestHttpServer(); });
@@ -39,5 +41,38 @@ describe("runRequestItem", () => {
       protocol: "websocket", method: "GET", url: "wss://x",
     };
     await expect(runRequestItem(item, { transport })).rejects.toThrow(/not supported headlessly/i);
+  });
+});
+
+describe("runRequestItem gRPC", () => {
+  let grpcServer: GrpcTestServer;
+  beforeAll(async () => { grpcServer = await startEchoGrpcServer(); });
+  afterAll(async () => { await grpcServer.close(); });
+
+  const grpcItem = (over: Partial<import("@portiq/core").GrpcConfig> = {}): RequestItem => ({
+    type: "request", id: "g1", name: "echo", description: "", tags: [],
+    protocol: "grpc", method: "", url: grpcServer.target,
+    grpcConfig: { service: "echo.EchoService", method: "Unary", requestBody: '{"message":"world"}',
+      callType: "UNARY", tls: false, protoContent: grpcServer.protoContent, ...over },
+  });
+
+  it("dispatches a unary gRPC call and normalizes the response", async () => {
+    const { response } = await runRequestItem(grpcItem(), { transport, grpcTransport: new GrpcTransport() });
+    const r = response as import("@portiq/core").NormalizedGrpcResponse;
+    expect(r.protocol).toBe("grpc");
+    expect(r.statusCode).toBe(0);
+    expect(r.json).toEqual({ message: "hi world" });
+    expect(r.streamed).toBe(false);
+  });
+
+  it("aggregates a server-streaming gRPC call into messages[]", async () => {
+    const { response } = await runRequestItem(
+      grpcItem({ method: "ServerStream", callType: "SERVER_STREAM" }),
+      { transport, grpcTransport: new GrpcTransport() }
+    );
+    const r = response as import("@portiq/core").NormalizedGrpcResponse;
+    expect(r.statusCode).toBe(0);
+    expect(r.streamed).toBe(true);
+    expect(r.messages).toEqual([{ message: "chunk-0" }, { message: "chunk-1" }, { message: "chunk-2" }]);
   });
 });

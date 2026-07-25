@@ -5,6 +5,8 @@ import {
   interpolate,
   assembleRequest,
   resolveVars,
+  buildGrpcPayload,
+  normalizeGrpcResult,
   type Environment,
   type HttpResult,
   type HttpTransport,
@@ -12,7 +14,9 @@ import {
   type RequestResponse,
   type TestEntry,
   type TestSummary,
+  type NormalizedGrpcResponse,
 } from "@portiq/core";
+import { GrpcTransport } from "@portiq/core/grpc";
 
 export interface NormalizedResponse {
   status: number;
@@ -29,12 +33,13 @@ export interface NormalizedResponse {
 
 export interface RunContext {
   transport: HttpTransport;
+  grpcTransport?: GrpcTransport;
   env?: Environment | null;
   vars?: Record<string, string>;
 }
 
 export interface RunResult {
-  response: NormalizedResponse;
+  response: NormalizedResponse | NormalizedGrpcResponse;
   tests: TestSummary;
 }
 
@@ -83,6 +88,14 @@ export async function runRequestItem(item: RequestItem, ctx: RunContext): Promis
   }
 
   const protocol = (item.protocol || "http").toLowerCase();
+
+  if (protocol === "grpc") {
+    const transport = ctx.grpcTransport ?? new GrpcTransport();
+    const raw = await transport.send(buildGrpcPayload(item, vars));
+    const callType = item.grpcConfig?.callType || "UNARY";
+    return { response: normalizeGrpcResult(raw, callType), tests: summarizeTests([]) };
+  }
+
   let outcome: SendOutcome;
   if (protocol === "http" || protocol === "") {
     const payload = assembleRequest(item, { env: ctx.env, vars });

@@ -5,6 +5,7 @@ import { createMcpServer } from "../server";
 import { connectInProcess } from "../testkit/inProcessClient";
 import { withTempDataDir, seedStore } from "../testkit/tempStore";
 import { startTestHttpServer } from "../testkit/httpServer";
+import { startEchoGrpcServer, type GrpcTestServer } from "../testkit/grpcServer";
 
 let http: { url: string; close: () => Promise<void> };
 beforeAll(async () => { http = await startTestHttpServer(); });
@@ -75,5 +76,42 @@ describe("exec tools", () => {
     const c = await client();
     const res = await c.callTool({ name: "run_request", arguments: { id: "nope" } });
     expect(res.isError).toBe(true);
+  });
+});
+
+describe("exec tools gRPC", () => {
+  let grpcServer: GrpcTestServer;
+  beforeAll(async () => { grpcServer = await startEchoGrpcServer(); });
+  afterAll(async () => { await grpcServer.close(); });
+
+  it("run_ad_hoc_request performs a unary gRPC call", async () => {
+    const c = await client();
+    const out = await call(c, "run_ad_hoc_request", {
+      protocol: "grpc", url: grpcServer.target, method: "Unary",
+      service: "echo.EchoService", body: '{"message":"world"}',
+      protoContent: grpcServer.protoContent, tls: false, callType: "UNARY",
+    });
+    expect(out.response.protocol).toBe("grpc");
+    expect(out.response.json).toEqual({ message: "hi world" });
+  });
+
+  it("run_request runs a SAVED gRPC request", async () => {
+    const { dir, cleanup } = withTempDataDir();
+    dirs.push(cleanup);
+    seedStore(dir, {
+      collections: [{ id: "c1", name: "gRPC", items: [
+        { type: "request", id: "gr1", name: "Echo", description: "", tags: [],
+          protocol: "grpc", method: "", url: grpcServer.target,
+          grpcConfig: { service: "echo.EchoService", method: "Unary",
+            requestBody: '{"message":"saved"}', callType: "UNARY", tls: false, protoContent: grpcServer.protoContent } },
+      ] }],
+      activeCollectionId: "c1", environments: [], activeEnvId: null, historyRetentionDays: 7,
+    });
+    const ctx = buildContext({ dataDir: dir, allowWrites: false, appVersion: "test" });
+    dirs.push(() => ctx.close());
+    const c = await connectInProcess(createMcpServer(ctx));
+    dirs.push(() => { void c.close(); });
+    const out = await call(c, "run_request", { id: "gr1" });
+    expect(out.response.json).toEqual({ message: "hi saved" });
   });
 });
