@@ -17,6 +17,7 @@
     "build:cli": "npm --workspace @portiq/cli run build",
     "build": "vite build",
     "preview": "vite preview",
+    "smoke:renderer": "node scripts/smoke-renderer.mjs",
     "lint": "eslint .",
     "pretest": "npm run build:core && npm --workspace @portiq/cli run build && npm --workspace @portiq/mcp run build",
     "test": "vitest run",

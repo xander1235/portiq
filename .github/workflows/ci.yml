@@ -65,3 +65,27 @@ jobs:
 
     - name: Test
       run: npm test
+
+  renderer-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Use Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Playwright Chromium
+      run: npx playwright install --with-deps chromium
+
+    - name: Build renderer
+      run: npm run build
+
+    - name: Renderer smoke test
+      run: npm run smoke:renderer
