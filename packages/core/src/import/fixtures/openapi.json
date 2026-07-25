@@ -1,0 +1,57 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Petstore", "version": "1.0.0" },
+  "servers": [
+    {
+      "url": "https://{host}/v1",
+      "variables": { "host": { "default": "api.petstore.io" } }
+    }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "apiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-Api-Key" }
+    },
+    "parameters": {
+      "PageParam": { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 } }
+    },
+    "requestBodies": {
+      "PetBody": {
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "properties": { "name": { "type": "string", "example": "Rex" }, "age": { "type": "integer" } } }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/pets": {
+      "get": {
+        "tags": ["pets"],
+        "summary": "List pets",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "name": "X-Trace", "in": "header", "schema": { "type": "string" } }
+        ]
+      },
+      "post": {
+        "tags": ["pets"],
+        "operationId": "createPet",
+        "requestBody": { "$ref": "#/components/requestBodies/PetBody" }
+      }
+    },
+    "/pets/{petId}": {
+      "get": {
+        "tags": ["pets"],
+        "summary": "Get a pet",
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [{ "name": "petId", "in": "path", "required": true, "schema": { "type": "string" } }]
+      }
+    },
+    "/health": {
+      "get": { "summary": "Health check" }
+    }
+  }
+}
