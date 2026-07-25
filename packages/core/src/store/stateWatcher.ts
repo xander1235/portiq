@@ -75,3 +75,55 @@ export function debounce(fn: () => void, waitMs: number): (() => void) & { cance
   };
   return debounced;
 }
+
+export interface WatchHandle {
+  close(): void;
+}
+
+export interface WatchStateFileOptions {
+  /** Absolute path to appdata.sqlite. */
+  dbPath: string;
+  detector: StateChangeDetector;
+  /** Debounce window collapsing bursts of fs events (default 150ms). */
+  debounceMs?: number;
+  /** Fallback poll for WAL writes/checkpoints fs.watch may miss (default 2000ms; 0 disables). */
+  pollMs?: number;
+}
+
+/**
+ * Wire node:fs `watch` on the DB's DIRECTORY (SQLite WAL writes land in
+ * `<db>-wal` and checkpoints touch the main file, so watching a single file is
+ * unreliable — watch the dir and filter by basename), plus a low-frequency
+ * fallback poll, both funnelling into a debounced detector.check(). This thin
+ * wiring is confirmed in the interactive GUI smoke; the decision logic it drives
+ * lives in StateChangeDetector (unit-tested in Task 1).
+ */
+export function watchStateFile(opts: WatchStateFileOptions): WatchHandle {
+  const debounceMs = opts.debounceMs ?? 150;
+  const pollMs = opts.pollMs ?? 2000;
+  const dir = dirname(opts.dbPath);
+  const base = basename(opts.dbPath);
+  const fire = debounce(() => opts.detector.check(), debounceMs);
+
+  let watcher: FSWatcher | null = null;
+  try {
+    watcher = watch(dir, (_event, filename) => {
+      // filename can be null on some platforms; when present it may be
+      // "appdata.sqlite", "...-wal", "...-shm", or "...-journal".
+      if (!filename || filename.toString().startsWith(base)) fire();
+    });
+  } catch {
+    // Some platforms/filesystems don't support fs.watch; the poll covers us.
+  }
+
+  const interval = pollMs > 0 ? setInterval(() => opts.detector.check(), pollMs) : null;
+  if (interval && typeof interval.unref === "function") interval.unref();
+
+  return {
+    close() {
+      fire.cancel();
+      if (watcher) watcher.close();
+      if (interval) clearInterval(interval);
+    },
+  };
+}

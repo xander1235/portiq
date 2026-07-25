@@ -9,6 +9,7 @@ export * from "./store/migrate";
 export * from "./store/keystoreTypes";
 export * from "./store/keystore";
 export * from "./store/portable";
+export * from "./store/stateWatcher";
 export * from "./exec/interpolate";
 export * from "./exec/headers";
 export * from "./exec/autoHeaders";
