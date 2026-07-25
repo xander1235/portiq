@@ -19,7 +19,19 @@ export async function loadProtoViaReflection(
   service: string
 ): Promise<grpc.GrpcObject> {
   const client = new ReflectionClient(target, creds);
-  const root = await client.fileContainingSymbol(service);
-  const packageDefinition = protoLoader.fromJSON(root.toJSON(), PROTO_LOADER_OPTIONS);
-  return grpc.loadPackageDefinition(packageDefinition);
+  try {
+    const root = await client.fileContainingSymbol(service);
+    const packageDefinition = protoLoader.fromJSON(root.toJSON(), PROTO_LOADER_OPTIONS);
+    return grpc.loadPackageDefinition(packageDefinition);
+  } finally {
+    // grpc-reflection-js's Client opens a real gRPC channel (`grpcClient`, a
+    // @grpc/grpc-js Client subclass) to the reflection endpoint but never closes it.
+    // Close it defensively on both the success and error paths so no-proto send()
+    // calls don't leak one open channel per call.
+    try {
+      (client as unknown as { grpcClient?: { close?(): void } }).grpcClient?.close?.();
+    } catch {
+      /* ignore close failures; they must not mask the real result/error */
+    }
+  }
 }
