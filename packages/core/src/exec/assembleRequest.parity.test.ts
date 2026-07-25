@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assembleRequest, type AssemblableRequest } from "./assembleRequest";
+import { assembleRequest, InvalidJsonBodyError, type AssemblableRequest } from "./assembleRequest";
 import { interpolate as coreInterpolate } from "./interpolate";
 
 /**
@@ -160,6 +160,96 @@ describe("golden parity: assembleRequest == renderer handleSend", () => {
     // Buffer.from("alice:pa55").toString("base64") === btoa("alice:pa55") for ASCII.
     expect(pick(assembleRequest(model, { vars }))).toEqual(rendererAssemble(model, vars));
   });
+
+  it("matches for multipart FILE-kind rows, including fileName/mimeType/fileBase64 defaults", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "POST", url: "https://api.test/upload",
+      bodyType: "multipart",
+      bodyRows: [
+        { key: "avatar", value: "", comment: "", enabled: true, kind: "file", fileName: "photo.png", mimeType: "image/png", fileBase64: "QUJD" },
+        { key: "blob", value: "", comment: "", enabled: true, kind: "file" },
+      ],
+      httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.multipartParts).toEqual([
+      { kind: "file", name: "avatar", filename: "photo.png", contentType: "image/png", dataBase64: "QUJD" },
+      { kind: "file", name: "blob", filename: "upload.bin", contentType: "application/octet-stream", dataBase64: "" },
+    ]);
+    expect(result.body).toBeUndefined();
+  });
+
+  it("matches for an xml body: interpolated straight through, no JSON parsing/stripping", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "POST", url: "https://api.test/xml",
+      bodyType: "xml", bodyText: "<id>{{token}}</id>",
+      httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.body).toBe(coreInterpolate(model.bodyText!, vars));
+  });
+
+  it("matches for a raw body: interpolated straight through", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "POST", url: "https://api.test/raw",
+      bodyType: "raw", bodyText: "plain {{token}} text",
+      httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.body).toBe(coreInterpolate(model.bodyText!, vars));
+  });
+
+  it("matches for api_key HEADER-mode auth: key used raw, value interpolated into headers", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "GET", url: "https://api.test/secure",
+      authType: "api_key",
+      authConfig: { bearer: { token: "" }, basic: { username: "", password: "" }, api_key: { key: "X-Api-Key", value: "{{token}}", add_to: "header" } },
+      bodyType: "none", httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.headers?.["X-Api-Key"]).toBe("sekret");
+  });
+
+  it("matches for custom auth rows: each enabled row becomes a header (key raw, value interpolated); disabled rows skipped", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "GET", url: "https://api.test/secure",
+      authType: "custom",
+      authConfig: { bearer: { token: "" }, basic: { username: "", password: "" }, api_key: { key: "", value: "", add_to: "header" } },
+      authRows: [
+        { key: "X-Sig", value: "{{token}}", comment: "", enabled: true },
+        { key: "X-Off", value: "nope", comment: "", enabled: false },
+      ],
+      bodyType: "none", httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.headers).toEqual({ "X-Sig": "sekret" });
+  });
+
+  it("matches for an empty JSON body: renders empty string, not \"null\" or undefined", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "POST", url: "https://api.test/items",
+      bodyType: "json", bodyText: "",
+      httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const result = assembleRequest(model, { vars });
+    expect(pick(result)).toEqual(rendererAssemble(model, vars));
+    expect(result.body).toBe("");
+  });
+
+  it("throws InvalidJsonBodyError with a descriptive message for malformed JSON", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "POST", url: "https://api.test/items",
+      bodyType: "json", bodyText: "{ invalid",
+      httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    expect(() => assembleRequest(model, { vars })).toThrow(InvalidJsonBodyError);
+    expect(() => assembleRequest(model, { vars })).toThrow(/^Invalid JSON body:/);
+  });
 });
 
 describe("documented deviation: basic-auth credential interpolation (core fixes a renderer bug)", () => {
@@ -174,5 +264,44 @@ describe("documented deviation: basic-auth credential interpolation (core fixes 
     expect(core.headers?.Authorization).toBe(`Basic ${Buffer.from("sekret:pw").toString("base64")}`);
     // The renderer would emit Basic <base64 of "{{token}}:pw"> — the latent bug core intentionally fixes.
     expect(core.headers?.Authorization).not.toBe(rendererAssemble(model, vars).headers.Authorization);
+  });
+});
+
+describe("documented deviation: non-string JSON header values are stringified", () => {
+  it("stringifies a numeric headersText value before interpolating (renderer leaves the raw number)", () => {
+    const model: AssemblableRequest = {
+      protocol: "http", method: "GET", url: "https://api.test/",
+      headersText: '{"X-Num": 3}',
+      bodyType: "none", httpVersion: "auto", requestTimeoutMs: 30000,
+    };
+    const core = assembleRequest(model, { vars });
+    expect(core.headers?.["X-Num"]).toBe("3");
+    // The renderer's final step is `interpolate(v as string)` with no explicit
+    // String() cast; coreInterpolate no-ops on non-string input, so a JSON number
+    // header value passes through as the raw number 3. core's assembleHeaders
+    // explicitly does `interpolate(String(v), vars)`, normalizing every header
+    // value to a string before interpolation. This is an intentional
+    // normalization, not a behavior regression: on-the-wire bytes are unchanged
+    // either way, since the HTTP client stringifies header values when writing
+    // them regardless of whether the in-memory value was a number or a string.
+    expect(rendererAssemble(model, vars).headers["X-Num"]).toBe(3);
+    expect(core.headers?.["X-Num"]).not.toBe(rendererAssemble(model, vars).headers["X-Num"]);
+  });
+});
+
+describe("documented deviation: method/httpVersion normalization (CLI-only inputs)", () => {
+  it("uppercases method and defaults a missing httpVersion to \"auto\"", () => {
+    // The renderer's method <select> only ever supplies already-uppercase HTTP
+    // verbs, and its httpVersion control always has a populated value, so this
+    // normalization never fires from real UI state. It only matters for
+    // hand-built requests that bypass the UI (e.g. the CLI `exec` path), which
+    // is why the renderer reference function above never needed to replicate it.
+    const model: AssemblableRequest = {
+      protocol: "http", method: "get", url: "https://api.test/",
+      bodyType: "none",
+    };
+    const core = assembleRequest(model, { vars });
+    expect(core.method).toBe("GET");
+    expect(core.httpVersion).toBe("auto");
   });
 });
