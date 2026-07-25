@@ -23,6 +23,8 @@ try {
 
 let kvStore = null;
 let appStore = null;
+let stateDetector = null;
+let stateWatchHandle = null;
 
 // Lazily constructed: `safeStorage.isEncryptionAvailable()` is only reliable
 // after `app.whenReady()`, so the encryptor is built on first use rather than
@@ -120,6 +122,25 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // Watch appdata.sqlite for writes made by OTHER processes (CLI/MCP or a
+  // second app instance) and live-reload the renderer. External-vs-self is
+  // decided by the "ent:index" row's version: entities.saveState() (which
+  // appStore.save() below delegates to) returns exactly this version as "the
+  // whole-state version" (see entityStore.ts), and it's the one kv key that
+  // both full UI saves AND fine-grained MCP/CLI entity writes bump — unlike
+  // the legacy "appState" blob key, which fine-grained entity writes never
+  // touch. Self-writes are suppressed via noteLocalWrite in db:saveState below.
+  const dbPath = path.join(app.getPath("userData"), "appdata.sqlite");
+  stateDetector = new core.StateChangeDetector({
+    readVersion: () => kvStore.getVersioned(core.INDEX_KEY).version,
+    onExternalChange: (version) => {
+      BrowserWindow.getAllWindows().forEach((w) =>
+        w.webContents.send("state:externalChange", { version })
+      );
+    },
+  });
+  stateWatchHandle = core.watchStateFile({ dbPath, detector: stateDetector });
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -130,6 +151,13 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+app.on("before-quit", () => {
+  if (stateWatchHandle) {
+    stateWatchHandle.close();
+    stateWatchHandle = null;
   }
 });
 
@@ -222,7 +250,10 @@ ipcMain.handle("db:saveState", async (_event, key, value) => {
   if (key === "appState") {
     // Decompose into per-entity rows; the legacy blob is dual-written inside save()
     // so external/old readers keep working. Renderer contract (blob in) is unchanged.
-    appStore.save(JSON.parse(value));
+    const version = appStore.save(JSON.parse(value));
+    // Record the app's own write so the watcher (which reads the same
+    // "ent:index" version appStore.save() returns) never re-broadcasts it.
+    if (stateDetector) stateDetector.noteLocalWrite(version);
   } else {
     kvStore.set(key, value);
   }
@@ -242,6 +273,9 @@ ipcMain.handle("db:clearAll", async () => {
   try {
     if (!kvStore) initDb();
     kvStore.clear();
+    // clear() resets kv_version (and therefore ent:index) to 0; re-sync so
+    // the detector doesn't misread the reset as an external change.
+    if (stateDetector) stateDetector.reset(0);
     return { ok: true };
   } catch (err) {
     return { error: err.message };
