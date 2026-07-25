@@ -25,6 +25,20 @@ export default tseslint.config(
     },
   },
   {
+    // Node ESM scripts (e.g. scripts/smoke-renderer.mjs). Node globals plus
+    // browser globals for code serialized into a page via Playwright.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        ...globals.es2020,
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,
