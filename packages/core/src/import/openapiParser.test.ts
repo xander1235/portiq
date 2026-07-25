@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { looksLikeOpenApi, parseOpenApi } from "./openapiParser";
 import { assembleRequest } from "../exec/assembleRequest";
-import { interpolate } from "../exec/interpolate";
 import type { FolderItem, RequestItem, Environment } from "../model";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -34,10 +33,10 @@ describe("parseOpenApi", () => {
     expect(() => parseOpenApi({ portiq: 1 })).toThrow();
   });
 
-  it("names the collection from info.title and exposes a baseUrl variable", () => {
+  it("names the collection from info.title and exposes a flat, resolved baseUrl variable", () => {
     const col = parseOpenApi(fixture(), { newId: seq() }).collections[0];
     expect(col.name).toBe("Petstore");
-    expect(col.variables?.baseUrl).toBe("https://{{host}}/v1");
+    expect(col.variables?.baseUrl).toBe("https://api.petstore.io/v1");
     expect(col.variables?.host).toBe("api.petstore.io");
   });
 
@@ -82,17 +81,15 @@ describe("parseOpenApi", () => {
   it("resolves the imported baseUrl end-to-end through assembleRequest (no leftover braces)", () => {
     const col = parseOpenApi(fixture(), { newId: seq() }).collections[0];
     const list = flatten(col.items).find((r) => r.name === "List pets")!;
-    const rawVars = col.variables ?? {};
-    // A collection variable can embed a single-level self-reference (baseUrl
-    // -> {{host}}); flatten it the way a real environment-resolution step
-    // would before handing the vars to assembleRequest, which only expands
-    // {{...}} tokens once per call.
+    // baseUrl is baked to a flat literal at import time, so it resolves
+    // correctly even though interpolate() only expands {{...}} tokens once
+    // per call — no manual pre-flattening of the collection vars needed.
     const env: Environment = {
       id: "env-1",
       name: "Imported",
-      vars: Object.entries(rawVars).map(([key, value]) => ({
+      vars: Object.entries(col.variables ?? {}).map(([key, value]) => ({
         key,
-        value: interpolate(value, rawVars),
+        value,
         comment: "",
         enabled: true,
       })),
@@ -100,6 +97,23 @@ describe("parseOpenApi", () => {
     const payload = assembleRequest(list, { env });
     expect(payload.url).toBe("https://api.petstore.io/v1/pets");
     expect(payload.url).not.toMatch(/[{}]/);
+  });
+
+  it("falls back to a {{var}} token when a server variable has no default (spec-violating input)", () => {
+    const doc = {
+      openapi: "3.0.3",
+      info: { title: "NoDefault", version: "1.0.0" },
+      servers: [
+        {
+          url: "https://{host}/v1",
+          variables: { host: {} },
+        },
+      ],
+      paths: {},
+    };
+    const col = parseOpenApi(doc, { newId: seq() }).collections[0];
+    expect(col.variables?.baseUrl).toBe("https://{{host}}/v1");
+    expect(col.variables?.host).toBeUndefined();
   });
 
   it("terminates on a cyclic $ref instead of hanging (self-referencing schema)", () => {

@@ -40,6 +40,23 @@ function pathToTemplate(path: string): string {
   return path.replace(/\{([^}]+)\}/g, "{{$1}}");
 }
 
+/** Resolve an OpenAPI `server.url` into a flat literal baseUrl by substituting
+ *  each `{varName}` token with its `server.variables[varName].default` (the
+ *  OpenAPI 3.x spec requires every server variable to declare one). Portiq's
+ *  `interpolate()` is single-pass, so leaving a nested `{{varName}}` inside
+ *  `baseUrl` would never expand at request time; baking in the literal
+ *  default avoids that. Only a variable with no matching entry / no default
+ *  (spec-violating input) falls back to the `{{varName}}` double-brace form,
+ *  and even then this never throws. */
+function resolveServerUrl(server: any): string {
+  const url = typeof server?.url === "string" ? server.url : "";
+  const vars = server?.variables && typeof server.variables === "object" ? server.variables : {};
+  return url.replace(/\{([^}]+)\}/g, (_match: string, name: string) => {
+    const v = vars[name];
+    return v && v.default != null ? String(v.default) : `{{${name}}}`;
+  });
+}
+
 function sampleForType(t: unknown): unknown {
   switch (t) {
     case "integer":
@@ -138,7 +155,7 @@ export function parseOpenApi(data: unknown, opts: { newId?: IdFactory } = {}): I
 
   const server = Array.isArray(doc.servers) && doc.servers[0] ? doc.servers[0] : undefined;
   const variables: Record<string, string> = {};
-  if (server && typeof server.url === "string") variables.baseUrl = pathToTemplate(server.url);
+  if (server && typeof server.url === "string") variables.baseUrl = resolveServerUrl(server);
   if (server && server.variables && typeof server.variables === "object") {
     for (const [k, raw] of Object.entries<any>(server.variables)) {
       if (raw && raw.default != null) variables[k] = String(raw.default);
