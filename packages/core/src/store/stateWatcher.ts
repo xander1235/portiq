@@ -112,6 +112,19 @@ export function watchStateFile(opts: WatchStateFileOptions): WatchHandle {
       // "appdata.sqlite", "...-wal", "...-shm", or "...-journal".
       if (!filename || filename.toString().startsWith(base)) fire();
     });
+    // FSWatcher is an EventEmitter that can asynchronously emit 'error'
+    // (watched directory removed, inotify limits, platform watch-service
+    // failures). With no listener, Node rethrows this as an uncaught
+    // exception, crashing the Electron main process. Degrade to poll-only
+    // instead — the fallback interval below keeps detection alive.
+    watcher.on("error", () => {
+      try {
+        watcher?.close();
+      } catch {
+        /* ignore */
+      }
+      watcher = null;
+    });
   } catch {
     // Some platforms/filesystems don't support fs.watch; the poll covers us.
   }
