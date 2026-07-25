@@ -49,4 +49,36 @@ describe("import command", () => {
     expect(state!.collections.map((c) => c.id).sort()).toEqual(["c1", "c2"]);
     s.close();
   });
+
+  it("imports a Postman v2.1 collection file", async () => {
+    const pm = {
+      info: { name: "PM Import", schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+      item: [{ name: "Ping", request: { method: "GET", url: "https://x/ping" } }],
+    };
+    const file = join(dir, "collection.postman.json");
+    writeFileSync(file, JSON.stringify(pm));
+    await run(["import", file, "--data-dir", dir]);
+    const s = openAppStateStore({ dataDir: dir });
+    const { state } = s.load();
+    const imported = state!.collections.find((c) => c.name === "PM Import");
+    expect(imported).toBeTruthy();
+    expect((imported!.items[0] as { method: string }).method).toBe("GET");
+    s.close();
+  });
+
+  it("imports an OpenAPI 3.x document file", async () => {
+    const oas = {
+      openapi: "3.0.0",
+      info: { title: "OAS Import", version: "1.0.0" },
+      servers: [{ url: "https://x" }],
+      paths: { "/ping": { get: { summary: "Ping", tags: ["health"] } } },
+    };
+    const file = join(dir, "openapi.json");
+    writeFileSync(file, JSON.stringify(oas));
+    await run(["import", file, "--data-dir", dir]);
+    const s = openAppStateStore({ dataDir: dir });
+    const { state } = s.load();
+    expect(state!.collections.some((c) => c.name === "OAS Import")).toBe(true);
+    s.close();
+  });
 });

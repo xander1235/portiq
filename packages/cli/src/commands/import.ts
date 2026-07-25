@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  ConflictError, importPortable, inferRequestNameFromUrl, looksLikeCurl, mergeIntoAppState, parseCurl,
+  ConflictError, importLibrary, inferRequestNameFromUrl, looksLikeCurl, mergeIntoAppState, parseCurl,
   type AppState, type ParsedCurl, type RequestItem,
 } from "@portiq/core";
 import type { Command } from "commander";
@@ -45,9 +45,14 @@ function applyImport(state: AppState, contents: string, collectionName: string):
   } catch {
     throw new UsageError("File is neither a curl command nor valid JSON");
   }
-  const incoming = importPortable(parsed);
+  let incoming: { collections: unknown[]; environments: unknown[] };
+  try {
+    incoming = importLibrary(parsed) as { collections: unknown[]; environments: unknown[] };
+  } catch (err) {
+    throw new UsageError(err instanceof Error ? err.message : "Unrecognized import format");
+  }
   return {
-    state: mergeIntoAppState(state, incoming),
+    state: mergeIntoAppState(state, incoming as any),
     summary: `merged ${incoming.collections.length} collection(s), ${incoming.environments.length} environment(s)`,
   };
 }
@@ -56,7 +61,7 @@ export const importCommand: CommandModule = {
   register(program: Command, ctx: CliContext) {
     program
       .command("import <file>")
-      .description("import a curl command or a portiq.json portable file")
+      .description("import a curl command, a portiq.json file, a Postman v2.1 collection, or an OpenAPI 3.x document")
       .option("--collection <name>", "target collection for curl imports", "Imported")
       .action((file: string, opts: { collection: string }, cmd: Command) => {
         const flags = parseGlobalFlags(cmd);
