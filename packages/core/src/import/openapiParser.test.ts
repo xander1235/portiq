@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { looksLikeOpenApi, parseOpenApi } from "./openapiParser";
-import type { FolderItem, RequestItem } from "../model";
+import { assembleRequest } from "../exec/assembleRequest";
+import { interpolate } from "../exec/interpolate";
+import type { FolderItem, RequestItem, Environment } from "../model";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = () => JSON.parse(readFileSync(join(here, "fixtures", "openapi.json"), "utf8"));
@@ -35,7 +37,7 @@ describe("parseOpenApi", () => {
   it("names the collection from info.title and exposes a baseUrl variable", () => {
     const col = parseOpenApi(fixture(), { newId: seq() }).collections[0];
     expect(col.name).toBe("Petstore");
-    expect(col.variables?.baseUrl).toBe("https://{host}/v1");
+    expect(col.variables?.baseUrl).toBe("https://{{host}}/v1");
     expect(col.variables?.host).toBe("api.petstore.io");
   });
 
@@ -75,5 +77,59 @@ describe("parseOpenApi", () => {
     expect(create.method).toBe("POST");
     expect(create.bodyType).toBe("json");
     expect(JSON.parse(create.bodyText!)).toEqual({ name: "Rex", age: 0 });
+  });
+
+  it("resolves the imported baseUrl end-to-end through assembleRequest (no leftover braces)", () => {
+    const col = parseOpenApi(fixture(), { newId: seq() }).collections[0];
+    const list = flatten(col.items).find((r) => r.name === "List pets")!;
+    const rawVars = col.variables ?? {};
+    // A collection variable can embed a single-level self-reference (baseUrl
+    // -> {{host}}); flatten it the way a real environment-resolution step
+    // would before handing the vars to assembleRequest, which only expands
+    // {{...}} tokens once per call.
+    const env: Environment = {
+      id: "env-1",
+      name: "Imported",
+      vars: Object.entries(rawVars).map(([key, value]) => ({
+        key,
+        value: interpolate(value, rawVars),
+        comment: "",
+        enabled: true,
+      })),
+    };
+    const payload = assembleRequest(list, { env });
+    expect(payload.url).toBe("https://api.petstore.io/v1/pets");
+    expect(payload.url).not.toMatch(/[{}]/);
+  });
+
+  it("terminates on a cyclic $ref instead of hanging (self-referencing schema)", () => {
+    const cyclicDoc = {
+      openapi: "3.0.3",
+      info: { title: "Cyclic", version: "1.0.0" },
+      paths: {
+        "/nodes": {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": { schema: { $ref: "#/components/schemas/Node" } },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Node: { $ref: "#/components/schemas/Node" },
+        },
+      },
+    };
+    let result: ReturnType<typeof parseOpenApi>;
+    expect(() => {
+      result = parseOpenApi(cyclicDoc, { newId: seq() });
+    }).not.toThrow();
+    const reqs = flatten(result!.collections[0].items);
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0].bodyType).toBe("json");
+    expect(reqs[0].bodyText).toBe("");
   });
 });

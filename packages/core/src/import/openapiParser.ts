@@ -138,7 +138,7 @@ export function parseOpenApi(data: unknown, opts: { newId?: IdFactory } = {}): I
 
   const server = Array.isArray(doc.servers) && doc.servers[0] ? doc.servers[0] : undefined;
   const variables: Record<string, string> = {};
-  if (server && typeof server.url === "string") variables.baseUrl = server.url;
+  if (server && typeof server.url === "string") variables.baseUrl = pathToTemplate(server.url);
   if (server && server.variables && typeof server.variables === "object") {
     for (const [k, raw] of Object.entries<any>(server.variables)) {
       if (raw && raw.default != null) variables[k] = String(raw.default);
