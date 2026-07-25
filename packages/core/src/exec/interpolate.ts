@@ -3,7 +3,19 @@ import type { Environment } from "../model";
 export function getEnvVars(env: Environment | null | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const v of env?.vars ?? []) {
-    if (v.enabled) out[v.key] = v.value;
+    if (v.key && v.enabled !== false) out[v.key] = v.value;
+  }
+  return out;
+}
+
+/** Env vars marked `secret` (and enabled), keyed for redactSecrets. Mirrors
+ *  getEnvVars's row-enabled convention: a var counts as enabled unless
+ *  `enabled` is explicitly `false` (covers rows loaded from data that
+ *  predates the `enabled` field). */
+export function getSecretVars(env: Environment | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of env?.vars ?? []) {
+    if (v.key && v.secret && v.enabled !== false && v.value) out[v.key] = v.value;
   }
   return out;
 }
