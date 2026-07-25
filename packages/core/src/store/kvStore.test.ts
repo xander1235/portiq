@@ -53,3 +53,34 @@ describe("openKvStore", () => {
     s.close();
   });
 });
+
+describe("openKvStore multi-key primitives", () => {
+  it("lists keys by prefix", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("ent:col:a", "1");
+    s.set("ent:col:b", "2");
+    s.set("ent:env:x", "3");
+    expect(s.keys("ent:col:").sort()).toEqual(["ent:col:a", "ent:col:b"]);
+    expect(s.keys().length).toBe(3);
+    s.close();
+  });
+
+  it("deleteKey removes value and version", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("k", "v");
+    s.deleteKey("k");
+    expect(s.get("k")).toBeNull();
+    expect(s.getVersioned("k").version).toBe(0);
+    s.close();
+  });
+
+  it("transaction commits multiple writes atomically and rolls back on throw", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.transaction(() => { s.set("a", "1"); s.set("b", "2"); });
+    expect(s.get("a")).toBe("1");
+    expect(s.get("b")).toBe("2");
+    expect(() => s.transaction(() => { s.set("a", "9"); throw new Error("boom"); })).toThrow("boom");
+    expect(s.get("a")).toBe("1"); // rolled back
+    s.close();
+  });
+});

@@ -14,6 +14,9 @@ export interface KvStore {
   getVersioned(key: string): { value: string | null; version: number };
   set(key: string, value: string): number;
   setIfVersion(key: string, value: string, expectedVersion: number): number;
+  keys(prefix?: string): string[];
+  deleteKey(key: string): void;
+  transaction<T>(fn: () => T): T;
   clear(): void;
   close(): void;
 }
@@ -63,6 +66,19 @@ export function openKvStore(opts: ResolveDataDirOptions = {}): KvStore {
     },
     setIfVersion(key, value, expectedVersion) {
       return writeTxn(key, value, expectedVersion);
+    },
+    keys(prefix) {
+      const rows = prefix
+        ? db.prepare("SELECT key FROM kv WHERE key LIKE ? || '%'").all(prefix)
+        : db.prepare("SELECT key FROM kv").all();
+      return (rows as { key: string }[]).map((r) => r.key);
+    },
+    deleteKey(key) {
+      db.prepare("DELETE FROM kv WHERE key = ?").run(key);
+      db.prepare("DELETE FROM kv_version WHERE key = ?").run(key);
+    },
+    transaction(fn) {
+      return db.transaction(fn)();
     },
     clear() {
       db.prepare("DELETE FROM kv").run();
