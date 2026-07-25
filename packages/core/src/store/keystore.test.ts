@@ -45,7 +45,9 @@ describe("createLocalEncryptor", () => {
   it("throws on a tampered ciphertext (GCM auth failure)", () => {
     const enc = createLocalEncryptor({ dataDir: tempDir() });
     const c = enc.encrypt("data");
-    const tampered = c.slice(0, -2) + (c.endsWith("A") ? "B" : "A");
+    const mid = Math.floor(c.length / 2);
+    const flipped = c[mid] === "A" ? "B" : "A";
+    const tampered = c.slice(0, mid) + flipped + c.slice(mid + 1);
     expect(() => enc.decrypt(tampered)).toThrow();
   });
 });
