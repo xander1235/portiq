@@ -1,6 +1,7 @@
 import { openKvStore, ConflictError, type KvStore } from "./kvStore";
 import type { ResolveDataDirOptions } from "./dataDir";
 import type { AppState, Collection, Environment } from "../model";
+import { migrateBlobIfNeeded } from "./migrate";
 
 export const INDEX_KEY = "ent:index";
 export const LEGACY_BLOB_KEY = "appState";
@@ -83,6 +84,7 @@ export interface EntityStore {
 
 export function openEntityStore(opts: ResolveDataDirOptions = {}, kv?: KvStore): EntityStore {
   const store = kv ?? openKvStore(opts);
+  migrateBlobIfNeeded(store);
 
   function saveState(state: AppState, expectedVersion?: number): number {
     return store.transaction(() => {

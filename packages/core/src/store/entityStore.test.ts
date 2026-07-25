@@ -107,3 +107,15 @@ describe("entityStore round-trip", () => {
     s.close();
   });
 });
+
+describe("entityStore auto-migration", () => {
+  it("adopts an existing legacy appState blob on open", () => {
+    const dir = tempDir();
+    const kv = openKvStore({ dataDir: dir });
+    kv.set(LEGACY_BLOB_KEY, JSON.stringify(sample()));
+    kv.close();
+    const s = openEntityStore({ dataDir: dir });
+    expect(s.loadState().state).toEqual(sample());
+    s.close();
+  });
+});

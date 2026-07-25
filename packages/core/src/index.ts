@@ -4,6 +4,8 @@ export * from "./model";
 export * from "./store/dataDir";
 export * from "./store/kvStore";
 export * from "./store/appStateStore";
+export * from "./store/entityStore";
+export * from "./store/migrate";
 export * from "./store/portable";
 export * from "./exec/interpolate";
 export * from "./exec/headers";
