@@ -1,5 +1,6 @@
 import * as grpc from "@grpc/grpc-js";
 import { loadProto, findService, metadataToObject } from "./grpcProto";
+import { loadProtoViaReflection } from "./grpcReflection";
 
 export interface GrpcSendPayload {
   requestId?: string;
@@ -14,6 +15,7 @@ export interface GrpcSendPayload {
   tls?: boolean;
   protoContent?: string;
   protoPath?: string;
+  useReflection?: boolean;
 }
 
 export interface GrpcSendResult {
@@ -127,10 +129,13 @@ export class GrpcTransport {
     let fn: ((...args: any[]) => any) | null;
     let ClientCtor: grpc.ServiceClientConstructor;
     try {
-      const pkg = loadProto({ protoPath: payload.protoPath, protoContent: payload.protoContent });
-      ClientCtor = findService(pkg, service);
       const { target, secure } = normalizeTarget(url, payload.tls);
       const creds = secure ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+      const hasProto = !!(payload.protoPath || (payload.protoContent && payload.protoContent.trim()));
+      const pkg = hasProto && !payload.useReflection
+        ? loadProto({ protoPath: payload.protoPath, protoContent: payload.protoContent })
+        : await loadProtoViaReflection(target, creds, service);
+      ClientCtor = findService(pkg, service);
       client = new ClientCtor(target, creds);
       fn = resolveMethod(client, method);
     } catch (err: any) {

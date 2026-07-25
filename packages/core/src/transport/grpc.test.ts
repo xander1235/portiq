@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
+import { ReflectionService } from "@grpc/reflection";
 import { GrpcTransport } from "./grpc";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,7 @@ function startEchoServer(
       },
       ...impl,
     });
+    new ReflectionService(def).addToServer(server);
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (err, port) => {
       if (err) return reject(err);
       resolve(`127.0.0.1:${port}`);
@@ -268,5 +270,23 @@ describe("GrpcTransport bidi streaming", () => {
     expect(r.messages).toEqual([{ message: "echo:x" }, { message: "echo:y" }]);
     expect(r.json).toBeNull();
     expect(JSON.parse(r.body)).toHaveLength(2);
+  });
+});
+
+describe("GrpcTransport via reflection", () => {
+  it("performs a unary call with NO proto supplied (descriptors from reflection)", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "Unary",
+      body: { message: "reflected" },
+      callType: "UNARY",
+      tls: false,
+      useReflection: true,
+    });
+    expect(r.statusCode).toBe(0);
+    expect(r.json).toEqual({ message: "hi reflected" });
   });
 });
