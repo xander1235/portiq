@@ -22,6 +22,7 @@
 // them, nor any `@portiq/core/{store,transport,mock}` subpath).
 export const CORE_VERSION = "0.0.0";
 export * from "./model";
+export * from "./store/keystoreTypes";
 export * from "./store/portable";
 export * from "./exec/interpolate";
 export * from "./exec/headers";

@@ -6,6 +6,8 @@ export * from "./store/kvStore";
 export * from "./store/appStateStore";
 export * from "./store/entityStore";
 export * from "./store/migrate";
+export * from "./store/keystoreTypes";
+export * from "./store/keystore";
 export * from "./store/portable";
 export * from "./exec/interpolate";
 export * from "./exec/headers";
