@@ -1,0 +1,68 @@
+import { GITHUB_CLIENT_ID } from "./auth";
+
+export const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
+export const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
+export const DEFAULT_DEVICE_SCOPE = "repo";
+
+export interface DeviceCodeResult {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  expiresInSeconds: number;
+  intervalSeconds: number;
+}
+
+/** The exact subset of `fetch` used by the device flow: a JSON-body POST that
+ *  resolves to something with an async `.json()`. Injectable so tests never
+ *  reach github.com. */
+export type DeviceFlowFetch = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string }
+) => Promise<{ json(): Promise<any> }>;
+
+const defaultFetch: DeviceFlowFetch = (url, init) => (globalThis.fetch as any)(url, init);
+
+export class DeviceFlowDeniedError extends Error {
+  constructor(message = "GitHub authorization was denied. Run `portiq sync login` again to retry.") {
+    super(message);
+    this.name = "DeviceFlowDeniedError";
+  }
+}
+
+export class DeviceFlowExpiredError extends Error {
+  constructor(message = "The device code expired before authorization completed. Run `portiq sync login` again.") {
+    super(message);
+    this.name = "DeviceFlowExpiredError";
+  }
+}
+
+export interface RequestDeviceCodeOptions {
+  clientId?: string;
+  scope?: string;
+  fetch?: DeviceFlowFetch;
+}
+
+/** Step 1 of RFC 8628: ask GitHub for a device_code + user_code pair. */
+export async function requestDeviceCode(opts: RequestDeviceCodeOptions = {}): Promise<DeviceCodeResult> {
+  const fetchFn = opts.fetch ?? defaultFetch;
+  const clientId = opts.clientId ?? GITHUB_CLIENT_ID;
+  const scope = opts.scope ?? DEFAULT_DEVICE_SCOPE;
+
+  const res = await fetchFn(GITHUB_DEVICE_CODE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ client_id: clientId, scope }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error_description || data.error);
+
+  return {
+    deviceCode: data.device_code,
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    verificationUriComplete: data.verification_uri_complete,
+    expiresInSeconds: data.expires_in,
+    intervalSeconds: data.interval,
+  };
+}
