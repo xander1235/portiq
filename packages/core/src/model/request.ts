@@ -25,6 +25,18 @@ export interface GraphqlConfig {
   headers: Record<string, string>;
 }
 
+export interface GrpcConfig {
+  service: string;
+  method: string;
+  requestBody?: string;
+  metadata?: Record<string, string>;
+  callType?: "UNARY" | "SERVER_STREAM" | "CLIENT_STREAM" | "BIDI_STREAM";
+  deadline?: number;
+  tls?: boolean;
+  protoContent?: string;
+  protoPath?: string;
+}
+
 export interface WsMessage {
   type: "sent" | "received";
   text: string;
@@ -71,6 +83,7 @@ export interface RequestItem {
   authConfig?: AuthConfig;
   bodyRows?: RequestRow[];
   graphqlConfig?: GraphqlConfig;
+  grpcConfig?: GrpcConfig;
   wsConfig?: WsConfig;
   dagGraph?: DagGraph;
   paneLayout?: { topHeight?: number; rightWidth?: number };

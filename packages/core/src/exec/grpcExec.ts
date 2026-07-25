@@ -1,0 +1,66 @@
+import { GrpcProtocol } from "../protocols/grpc";
+import { interpolate } from "./interpolate";
+import type { RequestItem } from "../model/request";
+// Type-only: erased at runtime, so this module never pulls @grpc/* into the barrel.
+import type { GrpcSendPayload, GrpcSendResult } from "../transport/grpc";
+
+/**
+ * Canonical gRPC payload builder (peer to assembleRequest for HTTP): interpolate the
+ * saved request's dynamic fields against `vars`, then reuse the renderer-safe
+ * GrpcProtocol.buildRequest so there is exactly one gRPC payload shape in the codebase.
+ */
+export function buildGrpcPayload(
+  item: RequestItem,
+  vars: Record<string, string>,
+  requestId?: string
+): GrpcSendPayload {
+  const cfg = item.grpcConfig ?? { service: "", method: "" };
+  const metadata: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cfg.metadata ?? {})) metadata[k] = interpolate(String(v), vars);
+  const built = GrpcProtocol.buildRequest({
+    url: interpolate(item.url ?? "", vars),
+    service: cfg.service,
+    method: cfg.method,
+    requestBody: interpolate(cfg.requestBody ?? "{}", vars),
+    metadata,
+    callType: cfg.callType || "UNARY",
+    deadline: cfg.deadline || 30000,
+    tls: cfg.tls,
+    protoContent: cfg.protoContent || "",
+    protoPath: cfg.protoPath,
+  });
+  return { ...built, requestId } as GrpcSendPayload;
+}
+
+export interface NormalizedGrpcResponse {
+  protocol: "grpc";
+  callType: string;
+  statusCode: number;
+  statusMessage: string;
+  duration: number;
+  metadata: Record<string, string>;
+  trailers: Record<string, string>;
+  messages: unknown[];
+  json: unknown;
+  body: string;
+  streamed: boolean;
+  error: string | null;
+}
+
+/** Normalize a raw GrpcSendResult into the headless response shape CLI/MCP return. */
+export function normalizeGrpcResult(raw: GrpcSendResult, callType: string): NormalizedGrpcResponse {
+  return {
+    protocol: "grpc",
+    callType,
+    statusCode: raw.statusCode,
+    statusMessage: raw.statusMessage,
+    duration: raw.duration,
+    metadata: raw.metadata ?? {},
+    trailers: raw.trailers ?? {},
+    messages: raw.messages ?? [],
+    json: raw.json ?? null,
+    body: raw.body ?? "",
+    streamed: callType !== "UNARY",
+    error: raw.error ?? null,
+  };
+}
