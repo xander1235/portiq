@@ -303,6 +303,19 @@ function shimSourceDir() {
   // process.resourcesPath = .../Contents/Resources (mac) or .../resources (linux/win)
   return path.join(process.resourcesPath, "bin");
 }
+// Guards against clobbering/deleting a file that isn't ours: true only if
+// `targetPath` is a symlink whose resolved target lives under our own
+// Resources/bin (`shimSrcDir`). Any other file/symlink there is left alone.
+function isOwnPortiqShim(targetPath, shimSrcDir) {
+  try {
+    const st = fs.lstatSync(targetPath);
+    if (!st.isSymbolicLink()) return false;
+    const dest = fs.realpathSync(targetPath);
+    return dest.startsWith(shimSrcDir);
+  } catch {
+    return false;
+  }
+}
 ipcMain.handle("cli:installShims", async () => {
   if (process.platform === "win32") {
     return { error: "On Windows the installer manages PATH automatically." };
@@ -313,7 +326,24 @@ ipcMain.handle("cli:installShims", async () => {
     for (const name of ["portiq", "portiq-mcp"]) {
       const from = path.join(src, name);
       const to = path.join(PATH_TARGET_DIR, name);
-      try { fs.unlinkSync(to); } catch { /* not present */ }
+      // Use lstat (not existsSync) so a broken symlink — which existsSync
+      // reports as absent but which still occupies the path — is detected.
+      let alreadyExists = false;
+      try {
+        fs.lstatSync(to);
+        alreadyExists = true;
+      } catch {
+        alreadyExists = false;
+      }
+      if (alreadyExists && !isOwnPortiqShim(to, src)) {
+        return {
+          error: `${to} already exists and is not a Portiq shim; refusing to overwrite`,
+          made
+        };
+      }
+      if (alreadyExists) {
+        try { fs.unlinkSync(to); } catch { /* not present */ }
+      }
       fs.symlinkSync(from, to);
       made.push(to);
     }
@@ -325,8 +355,13 @@ ipcMain.handle("cli:installShims", async () => {
 });
 ipcMain.handle("cli:uninstallShims", async () => {
   if (process.platform === "win32") return { ok: true };
+  const src = shimSourceDir();
   for (const name of ["portiq", "portiq-mcp"]) {
-    try { fs.unlinkSync(path.join(PATH_TARGET_DIR, name)); } catch { /* absent */ }
+    const to = path.join(PATH_TARGET_DIR, name);
+    if (isOwnPortiqShim(to, src)) {
+      try { fs.unlinkSync(to); } catch { /* absent */ }
+    }
+    // else: absent, or not ours — leave it alone.
   }
   return { ok: true };
 });
