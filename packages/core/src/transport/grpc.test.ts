@@ -16,6 +16,7 @@ function startEchoServer(
     Unary?: grpc.handleUnaryCall<any, any>;
     ServerStream?: grpc.handleServerStreamingCall<any, any>;
     ClientStream?: grpc.handleClientStreamingCall<any, any>;
+    BidiStream?: grpc.handleBidiStreamingCall<any, any>;
   }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,10 @@ function startEchoServer(
         const parts: string[] = [];
         call.on("data", (msg: any) => parts.push(msg.message));
         call.on("end", () => cb(null, { message: "got:" + parts.join(",") }));
+      },
+      BidiStream: (call: any) => {
+        call.on("data", (msg: any) => call.write({ message: "echo:" + msg.message }));
+        call.on("end", () => call.end());
       },
       ...impl,
     });
@@ -244,5 +249,24 @@ describe("GrpcTransport client streaming", () => {
     expect(r.statusCode).toBe(0);
     expect(r.json).toEqual({ message: "got:a,b,c" });
     expect(r.messages).toEqual([]);
+  });
+});
+
+describe("GrpcTransport bidi streaming", () => {
+  it("sends all request messages and aggregates all streamed replies", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "BidiStream",
+      callType: "BIDI_STREAM",
+      messages: [{ message: "x" }, { message: "y" }],
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(0);
+    expect(r.messages).toEqual([{ message: "echo:x" }, { message: "echo:y" }]);
+    expect(r.json).toBeNull();
+    expect(JSON.parse(r.body)).toHaveLength(2);
   });
 });
