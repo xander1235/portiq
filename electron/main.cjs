@@ -21,6 +21,7 @@ try {
 }
 
 let kvStore = null;
+let appStore = null;
 
 // `app.getVersion()` isn't reliable until Electron signals `ready`, so the
 // HttpTransport (which stamps the User-Agent header with it) is constructed
@@ -59,6 +60,9 @@ function initDb() {
   }
 
   kvStore = core.openKvStore({ dataDir: dir });
+  // Normalized per-entity store; shares the same kv handle so the migration and
+  // dual-written legacy blob stay consistent within the process.
+  appStore = core.openAppStateStore({ dataDir: dir }, kvStore);
 }
 
 function createWindow() {
@@ -195,12 +199,22 @@ ipcMain.handle("mock:updateRoutes", async (_event, payload) => {
 
 ipcMain.handle("db:saveState", async (_event, key, value) => {
   if (!kvStore) initDb();
-  kvStore.set(key, value);
+  if (key === "appState") {
+    // Decompose into per-entity rows; the legacy blob is dual-written inside save()
+    // so external/old readers keep working. Renderer contract (blob in) is unchanged.
+    appStore.save(JSON.parse(value));
+  } else {
+    kvStore.set(key, value);
+  }
   return { ok: true };
 });
 
 ipcMain.handle("db:loadState", async (_event, key) => {
   if (!kvStore) initDb();
+  if (key === "appState") {
+    const { state } = appStore.load();
+    return state ? JSON.stringify(state) : null;
+  }
   return kvStore.get(key);
 });
 
