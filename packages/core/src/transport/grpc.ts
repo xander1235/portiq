@@ -7,6 +7,7 @@ export interface GrpcSendPayload {
   service: string;
   method: string;
   body?: Record<string, unknown> | string;
+  messages?: unknown[];
   metadata?: Record<string, string>;
   callType?: "UNARY" | "SERVER_STREAM" | "CLIENT_STREAM" | "BIDI_STREAM";
   deadline?: number;
@@ -119,6 +120,9 @@ export class GrpcTransport {
       return fail(grpc.status.INVALID_ARGUMENT, "Request body must be valid JSON");
     }
 
+    const streamMessages: unknown[] =
+      Array.isArray(payload.messages) && payload.messages.length ? payload.messages : [request];
+
     let client: grpc.Client;
     let fn: ((...args: any[]) => any) | null;
     let ClientCtor: grpc.ServiceClientConstructor;
@@ -160,7 +164,10 @@ export class GrpcTransport {
     if (callType === "SERVER_STREAM") {
       return this.serverStream(client, fn, request, md, options, payload.requestId);
     }
-    // CLIENT_STREAM / BIDI_STREAM are deferred (see plan: Open Questions & Assumptions).
+    if (callType === "CLIENT_STREAM") {
+      return this.clientStream(client, fn, streamMessages, md, options, payload.requestId);
+    }
+    // BIDI_STREAM is deferred (see plan: Open Questions & Assumptions).
     try { client.close(); } catch { /* ignore */ }
     return fail(grpc.status.UNIMPLEMENTED, `gRPC call type not supported yet: ${callType}`);
   }
@@ -297,6 +304,55 @@ export class GrpcTransport {
       if (requestId) {
         this.pending.set(requestId, { cancel: () => { try { call.cancel(); } catch { /* ignore */ } } });
       }
+    });
+  }
+
+  private clientStream(
+    client: grpc.Client,
+    fn: (...args: any[]) => grpc.ClientWritableStream<any>,
+    messages: unknown[],
+    md: grpc.Metadata,
+    options: grpc.CallOptions,
+    requestId?: string
+  ): Promise<GrpcSendResult> {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      let settled = false;
+      let initialMd: Record<string, string> = {};
+      let responseMsg: any = undefined;
+
+      const finish = (result: GrpcSendResult) => {
+        if (settled) return;
+        settled = true;
+        if (requestId) this.pending.delete(requestId);
+        try { client.close(); } catch { /* ignore */ }
+        resolve(result);
+      };
+
+      const call = fn.call(client, md, options, (err: grpc.ServiceError | null, value: any) => {
+        if (!err) responseMsg = value;
+      }) as grpc.ClientWritableStream<any>;
+
+      call.on("metadata", (m: grpc.Metadata) => { initialMd = metadataToObject(m); });
+      call.on("error", () => { /* terminal state handled by "status" */ });
+      call.on("status", (status: grpc.StatusObject) => {
+        const duration = Date.now() - startedAt;
+        const trailers = metadataToObject(status.metadata);
+        if (status.code === grpc.status.OK) {
+          finish({ statusCode: 0, statusMessage: "OK", duration, metadata: initialMd, trailers,
+            body: JSON.stringify(responseMsg ?? {}), json: responseMsg ?? null, error: null, messages: [] });
+        } else {
+          finish({ statusCode: status.code, statusMessage: statusName(status.code), duration, metadata: initialMd, trailers,
+            body: "", json: null, error: status.details || `gRPC error ${status.code}`, messages: [] });
+        }
+      });
+
+      if (requestId) {
+        this.pending.set(requestId, { cancel: () => { try { call.cancel(); } catch { /* ignore */ } } });
+      }
+
+      for (const m of messages) call.write(m);
+      call.end();
     });
   }
 }

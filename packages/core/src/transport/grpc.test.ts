@@ -15,6 +15,7 @@ function startEchoServer(
   impl: {
     Unary?: grpc.handleUnaryCall<any, any>;
     ServerStream?: grpc.handleServerStreamingCall<any, any>;
+    ClientStream?: grpc.handleClientStreamingCall<any, any>;
   }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -26,6 +27,11 @@ function startEchoServer(
       ServerStream: (call: any) => {
         for (let i = 0; i < 3; i++) call.write({ message: "chunk-" + i });
         call.end();
+      },
+      ClientStream: (call: any, cb: any) => {
+        const parts: string[] = [];
+        call.on("data", (msg: any) => parts.push(msg.message));
+        call.on("end", () => cb(null, { message: "got:" + parts.join(",") }));
       },
       ...impl,
     });
@@ -220,5 +226,23 @@ describe("GrpcTransport server streaming", () => {
     ]);
     expect(JSON.parse(r.body)).toHaveLength(3);
     expect(r.json).toBeNull();
+  });
+});
+
+describe("GrpcTransport client streaming", () => {
+  it("sends all request messages and returns the single aggregated reply", async () => {
+    const target = await startEchoServer({});
+    const t = new GrpcTransport();
+    const r = await t.send({
+      url: target,
+      service: "echo.EchoService",
+      method: "ClientStream",
+      callType: "CLIENT_STREAM",
+      messages: [{ message: "a" }, { message: "b" }, { message: "c" }],
+      protoPath: FIXTURE,
+    });
+    expect(r.statusCode).toBe(0);
+    expect(r.json).toEqual({ message: "got:a,b,c" });
+    expect(r.messages).toEqual([]);
   });
 });
