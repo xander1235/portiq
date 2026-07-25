@@ -40,6 +40,7 @@ export class PrettyReporter implements Reporter {
           .map(([k, v]) => `${this.c(DIM, k + ":")} ${typeof v === "string" ? v : JSON.stringify(v)}`)
           .join("\n");
       case "execution":
+        if (out.grpc) return this.grpc(out.request.method, out.request.url, out.grpc);
         return this.execution(out.request.method, out.request.url, out.response, out.error, out.tests);
       case "suite": {
         const lines = out.items.map((it) =>
@@ -70,6 +71,17 @@ export class PrettyReporter implements Reporter {
     const parts = [`${head}\n${status}`];
     if (tests) parts.push(this.testsLine(tests));
     return parts.join("\n");
+  }
+  private grpc(callType: string, url: string, r: import("@portiq/core").NormalizedGrpcResponse): string {
+    const head = `${callType} ${url}`;
+    if (r.error) {
+      return `${head}\n${this.c(RED, `${r.statusCode} ${r.statusMessage}`)} ${this.c(DIM, `(${r.duration}ms)`)}\n${this.c(RED, "ERROR")} ${r.error}`;
+    }
+    const status = `${this.c(r.statusCode === 0 ? GREEN : RED, `${r.statusCode} ${r.statusMessage}`)} ${this.c(DIM, `(${r.duration}ms)`)}`;
+    const payload = r.streamed
+      ? this.c(DIM, `${r.messages.length} messages`)
+      : this.c(DIM, JSON.stringify(r.json));
+    return `${head}\n${status}\n${payload}`;
   }
   private testsLine(tests: import("@portiq/core").TestSummary): string {
     const failed = tests.failed + tests.errored;

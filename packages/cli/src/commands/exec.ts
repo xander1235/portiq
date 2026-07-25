@@ -18,6 +18,10 @@ export interface ExecOptions {
   header: string[];
   data?: string;
   fromCurl?: string;
+  grpc?: boolean;
+  service?: string;
+  proto?: string;
+  callType?: string;
 }
 
 function headerRows(headers: string[]): RequestRow[] {
@@ -58,18 +62,45 @@ export const execCommand: CommandModule = {
       .option("-H, --header <header>", "request header 'Key: Value' (repeatable)", (v: string, p: string[]) => p.concat([v]), [])
       .option("-d, --data <body>", "request body")
       .option("--from-curl <command>", "parse a curl command string")
+      .option("--grpc", "send a gRPC request (target = [url] as grpc://host:port, RPC method = -X, metadata = -H, body = -d)")
+      .option("--service <name>", "gRPC service name (implies --grpc)")
+      .option("--proto <file>", "path to a .proto file (gRPC)")
+      .option("--call-type <type>", "gRPC call type: UNARY | SERVER_STREAM | CLIENT_STREAM | BIDI_STREAM", "UNARY")
       .action(async (url: string | undefined, opts: Omit<ExecOptions, "url">, cmd: Command) => {
         const flags = parseGlobalFlags(cmd);
-        const req = buildExecRequest({ ...opts, url });
+        const isGrpc = !!opts.grpc || !!opts.service || (!!url && /^grpcs?:\/\//i.test(url));
         const vars = safeResolveVars(ctx, flags);
+        const deps: RunDeps = defaultRunDeps();
 
+        if (isGrpc) {
+          if (!url) throw new UsageError("gRPC exec requires a <url> target (grpc://host:port)");
+          if (!opts.service) throw new UsageError("gRPC exec requires --service <name>");
+          const metadata: Record<string, string> = {};
+          for (const h of opts.header) { const i = h.indexOf(":"); metadata[i === -1 ? h.trim() : h.slice(0, i).trim()] = i === -1 ? "" : h.slice(i + 1).trim(); }
+          const item: RequestItem = {
+            type: "request", id: "adhoc", name: "adhoc", description: "", tags: [],
+            protocol: "grpc", method: "", url,
+            grpcConfig: {
+              service: opts.service, method: opts.method || "",
+              requestBody: opts.data ?? "{}", metadata,
+              callType: (opts.callType as import("@portiq/core").GrpcConfig["callType"]) || "UNARY",
+              protoPath: opts.proto,
+              tls: /^grpcs:\/\//i.test(url),
+            },
+          };
+          if (!item.grpcConfig!.method) throw new UsageError("gRPC exec requires -X <RpcMethod>");
+          const outcome = await runRequest(item, vars, deps, { runTests: false });
+          emit(ctx, flags, { kind: "execution", request: outcome.request, response: null, error: outcome.error, tests: null, grpc: outcome.grpc });
+          if (outcome.error) process.exitCode = 1;
+          return;
+        }
+
+        const req = buildExecRequest({ ...opts, url });
         if (flags.dryRun) {
           const { view } = resolveHttpPayload(req, vars, { timeoutMs: flags.timeout });
           emit(ctx, flags, { kind: "entity", entity: { ...view } } as CommandOutput);
           return;
         }
-
-        const deps: RunDeps = defaultRunDeps();
         const item: RequestItem = { type: "request", id: "adhoc", name: "adhoc", description: "", tags: [], ...req } as RequestItem;
         const outcome = await runRequest(item, vars, deps, { timeoutMs: flags.timeout, runTests: false });
         emit(ctx, flags, { kind: "execution", request: outcome.request, response: outcome.response, error: outcome.error, tests: null });

@@ -12,7 +12,8 @@
     "baseUrl": ".",
     "paths": {
       "@portiq/core/flows": ["../../node_modules/@portiq/core/src/flows/index.ts"],
-      "@portiq/core/sync": ["../../node_modules/@portiq/core/src/sync/index.ts"]
+      "@portiq/core/sync": ["../../node_modules/@portiq/core/src/sync/index.ts"],
+      "@portiq/core/grpc": ["../../node_modules/@portiq/core/src/transport/grpc.ts"]
     }
   },
   "exclude": ["**/*.test.ts"]

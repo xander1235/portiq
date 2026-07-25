@@ -1,10 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { runRequest, type RunDeps } from "./runRequest";
 import type { HttpResult, RequestItem } from "@portiq/core";
+import type { GrpcSendResult } from "@portiq/core/grpc";
 
 const okResult: HttpResult = {
   status: 200, statusText: "OK", time: 5, duration: 5,
   headers: { "content-type": "application/json" }, body: '{"id":1}', json: { id: 1 }, httpVersion: "auto",
+};
+
+const grpcResult: GrpcSendResult = {
+  statusCode: 0, statusMessage: "OK", duration: 7, metadata: {}, trailers: {},
+  body: '{"message":"hi world"}', json: { message: "hi world" }, error: null, messages: [],
 };
 
 function deps(sendImpl: () => Promise<unknown>): RunDeps {
@@ -12,12 +18,24 @@ function deps(sendImpl: () => Promise<unknown>): RunDeps {
     transport: { send: vi.fn(sendImpl), cancel: vi.fn() } as unknown as RunDeps["transport"],
     sendGraphQL: vi.fn(async () => okResult) as unknown as RunDeps["sendGraphQL"],
     now: () => 0,
+    grpcTransport: { send: vi.fn(async () => grpcResult), cancel: vi.fn() } as unknown as RunDeps["grpcTransport"],
   };
 }
 
 const httpReq = (over: Partial<RequestItem> = {}): RequestItem => ({
   type: "request", id: "r1", name: "Get", description: "", tags: [],
   protocol: "http", method: "GET", url: "https://x/", bodyType: "none", ...over,
+});
+
+function grpcDeps(sendImpl: () => Promise<unknown>): RunDeps {
+  return { ...deps(async () => okResult), grpcTransport: { send: vi.fn(sendImpl), cancel: vi.fn() } as unknown as RunDeps["grpcTransport"] };
+}
+
+const grpcReq = (over: Partial<RequestItem> = {}): RequestItem => ({
+  type: "request", id: "g1", name: "Echo", description: "", tags: [],
+  protocol: "grpc", method: "", url: "grpc://127.0.0.1:50051",
+  grpcConfig: { service: "echo.EchoService", method: "Unary", requestBody: '{"message":"world"}', callType: "UNARY", tls: false, protoContent: 'x' },
+  ...over,
 });
 
 describe("runRequest", () => {
@@ -44,5 +62,27 @@ describe("runRequest", () => {
 
   it("rejects unsupported protocols with a RuntimeError", async () => {
     await expect(runRequest(httpReq({ protocol: "websocket" }), {}, deps(async () => okResult))).rejects.toThrow(/websocket/i);
+  });
+});
+
+describe("runRequest gRPC", () => {
+  it("dispatches a gRPC request and returns a normalized grpc result", async () => {
+    const outcome = await runRequest(grpcReq(), {}, grpcDeps(async () => grpcResult));
+    expect(outcome.error).toBeNull();
+    expect(outcome.response).toBeNull();
+    expect(outcome.grpc?.protocol).toBe("grpc");
+    expect(outcome.grpc?.json).toEqual({ message: "hi world" });
+    expect(outcome.request.protocol).toBe("grpc");
+    expect(outcome.request.method).toBe("UNARY");
+  });
+
+  it("surfaces a gRPC error status via the grpc result", async () => {
+    const outcome = await runRequest(grpcReq(), {}, grpcDeps(async () => ({ ...grpcResult, statusCode: 5, statusMessage: "NOT_FOUND", json: null, error: "nope" })));
+    expect(outcome.grpc?.statusCode).toBe(5);
+    expect(outcome.grpc?.error).toBe("nope");
+  });
+
+  it("still rejects websocket with a RuntimeError", async () => {
+    await expect(runRequest(grpcReq({ protocol: "websocket" }), {}, grpcDeps(async () => grpcResult))).rejects.toThrow(/websocket/i);
   });
 });

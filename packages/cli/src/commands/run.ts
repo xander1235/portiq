@@ -66,12 +66,18 @@ export const runCommand: CommandModule = {
           // single request
           const req = resolved.request!;
           if (flags.dryRun) {
+            if (req.protocol === "grpc") {
+              const { buildGrpcPayload } = await import("@portiq/core");
+              const payload = buildGrpcPayload(req, vars);
+              const output: CommandOutput = { kind: "entity", entity: { protocol: "grpc", service: payload.service, method: payload.method, url: payload.url, callType: payload.callType ?? "UNARY", body: JSON.stringify(payload.body) } };
+              return { output, failed: false };
+            }
             const { view } = resolveHttpPayload(req, vars, { timeoutMs: flags.timeout });
             const output: CommandOutput = { kind: "execution", request: view, response: null, error: null, tests: null };
             return { output, failed: false };
           }
           const outcome = await runRequest(req, vars, deps, { timeoutMs: flags.timeout });
-          const output: CommandOutput = { kind: "execution", request: outcome.request, response: outcome.response, error: outcome.error, tests: outcome.tests };
+          const output: CommandOutput = { kind: "execution", request: outcome.request, response: outcome.response, error: outcome.error, tests: outcome.tests, grpc: outcome.grpc };
           if (outcome.error) process.exitCode = 1;
           return { output, failed: hasFailures(outcome.tests) };
         });

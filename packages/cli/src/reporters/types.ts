@@ -1,4 +1,4 @@
-import type { HttpResult, TestSummary } from "@portiq/core";
+import type { HttpResult, TestSummary, NormalizedGrpcResponse } from "@portiq/core";
 
 export interface ExecRequestView {
   protocol: string;
@@ -18,6 +18,7 @@ export type CommandOutput =
       error: string | null;
       tests: TestSummary | null;
       steps?: unknown;
+      grpc?: NormalizedGrpcResponse | null;
     }
   | {
       kind: "suite";

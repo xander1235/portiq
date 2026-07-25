@@ -1,7 +1,9 @@
 import {
   HttpTransport, sendGraphQL as coreSendGraphQL, runSteps, summarizeTests, interpolate,
-  type GraphqlConfig, type HttpResult, type RequestItem, type RequestResponse, type ScriptStep, type TestEntry, type TestSummary,
+  buildGrpcPayload, normalizeGrpcResult,
+  type GraphqlConfig, type HttpResult, type RequestItem, type RequestResponse, type ScriptStep, type TestEntry, type TestSummary, type NormalizedGrpcResponse,
 } from "@portiq/core";
+import { GrpcTransport } from "@portiq/core/grpc";
 import { resolveHttpPayload } from "../resolve/httpPayload";
 import type { ExecRequestView } from "../reporters";
 import { RuntimeError } from "../errors";
@@ -11,16 +13,18 @@ export interface RunOutcome {
   response: HttpResult | null;
   error: string | null;
   tests: TestSummary | null;
+  grpc?: NormalizedGrpcResponse | null;
 }
 
 export interface RunDeps {
   transport: HttpTransport;
   sendGraphQL: typeof coreSendGraphQL;
   now: () => number;
+  grpcTransport: Pick<GrpcTransport, "send" | "cancel">;
 }
 
 export function defaultRunDeps(appVersion?: string): RunDeps {
-  return { transport: new HttpTransport({ appVersion }), sendGraphQL: coreSendGraphQL, now: () => Date.now() };
+  return { transport: new HttpTransport({ appVersion }), sendGraphQL: coreSendGraphQL, now: () => Date.now(), grpcTransport: new GrpcTransport() };
 }
 
 function isHttpResult(r: unknown): r is HttpResult {
@@ -34,8 +38,16 @@ export async function runRequest(
   opts: { timeoutMs?: number; runTests?: boolean } = {}
 ): Promise<RunOutcome> {
   const protocol = req.protocol || "http";
-  if (protocol === "websocket" || protocol === "grpc") {
+  if (protocol === "websocket") {
     throw new RuntimeError(`Protocol "${protocol}" is not supported via the CLI (interactive/experimental).`);
+  }
+  if (protocol === "grpc") {
+    const callType = req.grpcConfig?.callType || "UNARY";
+    const url = interpolate(req.url || "", vars);
+    const view: ExecRequestView = { protocol: "grpc", method: callType, url, headers: req.grpcConfig?.metadata ?? {} };
+    const raw = await deps.grpcTransport.send(buildGrpcPayload(req, vars));
+    const grpc = normalizeGrpcResult(raw, callType);
+    return { request: view, response: null, error: grpc.error, tests: null, grpc };
   }
   const runTests = opts.runTests !== false;
   const entries: TestEntry[] = [];
