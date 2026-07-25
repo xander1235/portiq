@@ -19,6 +19,15 @@ export interface KvStore {
   transaction<T>(fn: () => T): T;
   clear(): void;
   close(): void;
+  /**
+   * Global monotonic counter bumped on EVERY mutating op (set, a successful
+   * setIfVersion, deleteKey) — unlike per-key versions, it advances even when
+   * an existing entity row is edited in place. Used by the desktop watcher to
+   * detect external writes regardless of which key changed. Stored as a
+   * reserved row in kv_version (no corresponding kv row), so it is never
+   * returned by keys() and never observed by recomposeState/loadState.
+   */
+  globalWriteVersion(): number;
 }
 
 export function openKvStore(opts: ResolveDataDirOptions = {}): KvStore {
@@ -43,13 +52,33 @@ export function openKvStore(opts: ResolveDataDirOptions = {}): KvStore {
     return row ? row.version : 0;
   }
 
+  // Reserved kv_version-only key (no kv row) backing the global write counter.
+  // Not a valid app key (app keys are "appState", "ent:index", "ent:col:*",
+  // "ent:env:*", etc.), so it never collides and never leaks into keys()/state.
+  const WRITE_SEQ_KEY = "__writeseq__";
+
+  function bumpWriteSeq(): number {
+    const next = currentVersion(WRITE_SEQ_KEY) + 1;
+    upsertVersion.run(WRITE_SEQ_KEY, next);
+    return next;
+  }
+
   const writeTxn = db.transaction((key: string, value: string, expected: number | null): number => {
     const actual = currentVersion(key);
     if (expected !== null && expected !== actual) throw new ConflictError(key, expected, actual);
     const next = actual + 1;
     upsertValue.run(key, value);
     upsertVersion.run(key, next);
+    bumpWriteSeq();
     return next;
+  });
+
+  const deleteValue = db.prepare("DELETE FROM kv WHERE key = ?");
+  const deleteVersion = db.prepare("DELETE FROM kv_version WHERE key = ?");
+  const deleteTxn = db.transaction((key: string): void => {
+    deleteValue.run(key);
+    deleteVersion.run(key);
+    bumpWriteSeq();
   });
 
   return {
@@ -74,8 +103,7 @@ export function openKvStore(opts: ResolveDataDirOptions = {}): KvStore {
       return (rows as { key: string }[]).map((r) => r.key);
     },
     deleteKey(key) {
-      db.prepare("DELETE FROM kv WHERE key = ?").run(key);
-      db.prepare("DELETE FROM kv_version WHERE key = ?").run(key);
+      deleteTxn(key);
     },
     transaction(fn) {
       return db.transaction(fn)();
@@ -86,6 +114,9 @@ export function openKvStore(opts: ResolveDataDirOptions = {}): KvStore {
     },
     close() {
       db.close();
+    },
+    globalWriteVersion() {
+      return currentVersion(WRITE_SEQ_KEY);
     },
   };
 }

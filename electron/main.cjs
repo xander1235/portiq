@@ -124,15 +124,14 @@ app.whenReady().then(() => {
 
   // Watch appdata.sqlite for writes made by OTHER processes (CLI/MCP or a
   // second app instance) and live-reload the renderer. External-vs-self is
-  // decided by the "ent:index" row's version: entities.saveState() (which
-  // appStore.save() below delegates to) returns exactly this version as "the
-  // whole-state version" (see entityStore.ts), and it's the one kv key that
-  // both full UI saves AND fine-grained MCP/CLI entity writes bump — unlike
-  // the legacy "appState" blob key, which fine-grained entity writes never
-  // touch. Self-writes are suppressed via noteLocalWrite in db:saveState below.
+  // decided by the kvStore's global write counter, which bumps on EVERY
+  // mutating kv op (set/setIfVersion/deleteKey) — including in-place edits of
+  // an existing collection/environment/etc. — unlike the "ent:index" row,
+  // which only changes when a collection/environment is added or removed.
+  // Self-writes are suppressed via noteLocalWrite in db:saveState below.
   const dbPath = path.join(app.getPath("userData"), "appdata.sqlite");
   stateDetector = new core.StateChangeDetector({
-    readVersion: () => kvStore.getVersioned(core.INDEX_KEY).version,
+    readVersion: () => kvStore.globalWriteVersion(),
     onExternalChange: (version) => {
       BrowserWindow.getAllWindows().forEach((w) =>
         w.webContents.send("state:externalChange", { version })
@@ -250,12 +249,13 @@ ipcMain.handle("db:saveState", async (_event, key, value) => {
   if (key === "appState") {
     // Decompose into per-entity rows; the legacy blob is dual-written inside save()
     // so external/old readers keep working. Renderer contract (blob in) is unchanged.
-    const version = appStore.save(JSON.parse(value));
-    // Record the app's own write so the watcher (which reads the same
-    // "ent:index" version appStore.save() returns) never re-broadcasts it.
-    if (stateDetector) stateDetector.noteLocalWrite(version);
+    appStore.save(JSON.parse(value));
+    // Record the app's own write so the watcher (which reads the kvStore's
+    // global write counter) never re-broadcasts it as an external change.
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
   } else {
     kvStore.set(key, value);
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
   }
   return { ok: true };
 });

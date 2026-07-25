@@ -84,3 +84,81 @@ describe("openKvStore multi-key primitives", () => {
     s.close();
   });
 });
+
+describe("openKvStore globalWriteVersion", () => {
+  it("starts at 0 on a fresh store", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    expect(s.globalWriteVersion()).toBe(0);
+    s.close();
+  });
+
+  it("increments on set", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("a", "1");
+    expect(s.globalWriteVersion()).toBe(1);
+    s.set("a", "2");
+    expect(s.globalWriteVersion()).toBe(2);
+    s.close();
+  });
+
+  it("increments on a successful setIfVersion", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    const v1 = s.set("a", "1");
+    const afterSet = s.globalWriteVersion();
+    s.setIfVersion("a", "2", v1);
+    expect(s.globalWriteVersion()).toBe(afterSet + 1);
+    s.close();
+  });
+
+  it("does not increment on a failed setIfVersion (conflict)", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("a", "1");
+    const before = s.globalWriteVersion();
+    expect(() => s.setIfVersion("a", "2", 999)).toThrow(ConflictError);
+    expect(s.globalWriteVersion()).toBe(before);
+    s.close();
+  });
+
+  it("increments on deleteKey", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("a", "1");
+    const before = s.globalWriteVersion();
+    s.deleteKey("a");
+    expect(s.globalWriteVersion()).toBe(before + 1);
+    s.close();
+  });
+
+  it("is monotonic across mixed set/setIfVersion/deleteKey ops", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    const seen: number[] = [];
+    s.set("a", "1");
+    seen.push(s.globalWriteVersion());
+    const v = s.set("b", "1");
+    seen.push(s.globalWriteVersion());
+    s.setIfVersion("b", "2", v);
+    seen.push(s.globalWriteVersion());
+    s.deleteKey("a");
+    seen.push(s.globalWriteVersion());
+    for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThan(seen[i - 1]);
+    s.close();
+  });
+
+  it("is not returned by keys()", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("a", "1");
+    s.deleteKey("a"); // extra bump, still must not surface as a key
+    s.set("b", "2");
+    expect(s.keys()).toEqual(["b"]);
+    s.close();
+  });
+
+  it("resets to 0 after clear()", () => {
+    const s = openKvStore({ dataDir: tempDir() });
+    s.set("a", "1");
+    s.set("b", "2");
+    expect(s.globalWriteVersion()).toBeGreaterThan(0);
+    s.clear();
+    expect(s.globalWriteVersion()).toBe(0);
+    s.close();
+  });
+});
