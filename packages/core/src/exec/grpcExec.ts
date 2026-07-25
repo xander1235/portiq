@@ -25,7 +25,10 @@ export function buildGrpcPayload(
     metadata,
     callType: cfg.callType || "UNARY",
     deadline: cfg.deadline || 30000,
-    tls: cfg.tls,
+    // Explicit true/false always wins; only an unset tls falls back to scheme
+    // detection so a plaintext grpc:// target isn't silently forced onto TLS
+    // (GrpcProtocol.buildRequest itself defaults tls to true when undefined).
+    tls: cfg.tls !== undefined ? cfg.tls : /^grpcs:\/\//i.test(item.url ?? ""),
     protoContent: cfg.protoContent || "",
     protoPath: cfg.protoPath,
   });

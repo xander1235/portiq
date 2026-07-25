@@ -84,12 +84,12 @@ describe("exec tools gRPC", () => {
   beforeAll(async () => { grpcServer = await startEchoGrpcServer(); });
   afterAll(async () => { await grpcServer.close(); });
 
-  it("run_ad_hoc_request performs a unary gRPC call", async () => {
+  it("run_ad_hoc_request performs a unary gRPC call (tls omitted, derived from bare host:port target)", async () => {
     const c = await client();
     const out = await call(c, "run_ad_hoc_request", {
       protocol: "grpc", url: grpcServer.target, method: "Unary",
       service: "echo.EchoService", body: '{"message":"world"}',
-      protoContent: grpcServer.protoContent, tls: false, callType: "UNARY",
+      protoContent: grpcServer.protoContent, callType: "UNARY",
     });
     expect(out.response.protocol).toBe("grpc");
     expect(out.response.json).toEqual({ message: "hi world" });

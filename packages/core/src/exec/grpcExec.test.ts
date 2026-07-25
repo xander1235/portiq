@@ -34,6 +34,40 @@ describe("buildGrpcPayload", () => {
     expect(p.body).toEqual({});
     expect(p.deadline).toBe(30000);
   });
+
+  describe("tls resolution", () => {
+    it("derives tls=false from a grpc:// url when grpcConfig.tls is undefined", () => {
+      const p = buildGrpcPayload(
+        item({ url: "grpc://host:1", grpcConfig: { service: "S", method: "M", tls: undefined } }),
+        {}
+      );
+      expect(p.tls).toBe(false);
+    });
+
+    it("derives tls=true from a grpcs:// url when grpcConfig.tls is undefined", () => {
+      const p = buildGrpcPayload(
+        item({ url: "grpcs://host:1", grpcConfig: { service: "S", method: "M", tls: undefined } }),
+        {}
+      );
+      expect(p.tls).toBe(true);
+    });
+
+    it("respects an explicit tls:false even against a grpcs:// url", () => {
+      const p = buildGrpcPayload(
+        item({ url: "grpcs://host:1", grpcConfig: { service: "S", method: "M", tls: false } }),
+        {}
+      );
+      expect(p.tls).toBe(false);
+    });
+
+    it("respects an explicit tls:true even against a grpc:// url", () => {
+      const p = buildGrpcPayload(
+        item({ url: "grpc://host:1", grpcConfig: { service: "S", method: "M", tls: true } }),
+        {}
+      );
+      expect(p.tls).toBe(true);
+    });
+  });
 });
 
 describe("normalizeGrpcResult", () => {
