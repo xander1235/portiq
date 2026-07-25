@@ -12,6 +12,7 @@ import {
   inferRequestNameFromUrl,
   looksLikeCurl,
   parameterizeParsedCurl,
+  InvalidJsonBodyError,
   type ParsedCurl,
 } from "@portiq/core";
 
@@ -61,6 +62,7 @@ import { useTheme } from "./theme/useTheme";
 import { Sun, Moon, Monitor } from "lucide-react";
 import { applyBodyContentType } from "./utils/headers";
 import { computeAutoHeaders, type AutoHeader } from "./utils/autoHeaders";
+import { buildHttpSendPayload, type RendererHttpSendPayload } from "./utils/httpSend";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -2235,64 +2237,35 @@ function App() {
     setResponseSummary({ summary: "Sending request...", hints: [] });
     setError("");
     try {
-      const headers = parseHeaders();
-      if (headers === null) return;
-      let body = bodyType === "none" ? undefined : bodyText;
-      let multipartParts;
-      if (bodyType === "json") {
-        const strippedJson = stripJsonComments(interpolate(bodyText));
-        if (strippedJson.trim()) {
-          try {
-            body = JSON.stringify(JSON.parse(strippedJson));
-          } catch (err: any) {
-            setError(`Invalid JSON body: ${err.message}`);
-            setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
-            return;
-          }
-        } else {
-          body = "";
+      let payload: RendererHttpSendPayload;
+      try {
+        payload = buildHttpSendPayload(
+          {
+            protocol: "http",
+            method,
+            url,
+            headersText,
+            headersRows,
+            paramsRows,
+            authType,
+            authConfig,
+            authRows,
+            bodyType,
+            bodyText,
+            bodyRows,
+            httpVersion,
+            requestTimeoutMs
+          },
+          { env: getActiveEnv(), requestId }
+        );
+      } catch (err: any) {
+        if (err instanceof InvalidJsonBodyError) {
+          setError(err.message);
+          setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
+          return;
         }
+        throw err;
       }
-      if (bodyType === "form") {
-        const data = rowsToObject(bodyRows);
-        body = new URLSearchParams(data).toString();
-      }
-      if (bodyType === "multipart") {
-        multipartParts = (bodyRows || [])
-          .filter((row) => row.key && row.enabled !== false)
-          .map((row) => (
-            row.kind === "file"
-              ? {
-                  kind: "file",
-                  name: interpolate(row.key),
-                  filename: row.fileName || "upload.bin",
-                  contentType: row.mimeType || "application/octet-stream",
-                  dataBase64: row.fileBase64 || ""
-                }
-              : {
-                  kind: "text",
-                  name: interpolate(row.key),
-                  value: interpolate(row.value || "")
-                }
-          ));
-        body = undefined;
-      }
-      if (bodyType === "xml") {
-        body = interpolate(bodyText);
-      }
-      if (bodyType === "raw") {
-        body = interpolate(bodyText);
-      }
-      const payload = {
-        requestId,
-        method,
-        url: buildUrlWithParams(),
-        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
-        body,
-        multipartParts,
-        timeoutMs: requestTimeoutMs,
-        httpVersion
-      };
 
       const preOutput: any[] = [];
       const preContext = {
