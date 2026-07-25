@@ -74,6 +74,9 @@ declare global {
       // AI
       saveAiConfig?: (config: any) => Promise<any>;
 
+      // External DB change (live-reload)
+      onExternalStateChange?: (callback: (data: { version: number }) => void) => () => void;
+
       // Others
       onGithubAuth: (callback: (url: string) => void) => void;
     };

@@ -49,5 +49,12 @@ contextBridge.exposeInMainWorld("api", {
   getDataPath: () => ipcRenderer.invoke("db:getDataPath"),
 
   // ── AI ──
-  saveAiConfig: (config) => ipcRenderer.invoke("ai:saveConfig", config)
+  saveAiConfig: (config) => ipcRenderer.invoke("ai:saveConfig", config),
+
+  // ── External DB change (live-reload) ──
+  onExternalStateChange: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on("state:externalChange", handler);
+    return () => ipcRenderer.removeListener("state:externalChange", handler);
+  }
 });
