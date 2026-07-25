@@ -91,3 +91,21 @@ describe("normalizeGrpcResult", () => {
     expect(n.json).toBeNull();
   });
 });
+
+describe("buildGrpcPayload advanced fields", () => {
+  it("parses messages (JSON strings) and forwards reflection + auth", () => {
+    const p = buildGrpcPayload(item({
+      grpcConfig: {
+        service: "S", method: "M", callType: "CLIENT_STREAM",
+        messages: ['{"message":"a"}', '{"message":"b"}'],
+        useReflection: true,
+        tlsConfig: { rootCertsPem: "CA" },
+        callToken: "tok",
+      },
+    }), {});
+    expect(p.messages).toEqual([{ message: "a" }, { message: "b" }]);
+    expect(p.useReflection).toBe(true);
+    expect(p.tlsConfig).toEqual({ rootCertsPem: "CA" });
+    expect(p.callToken).toBe("tok");
+  });
+});

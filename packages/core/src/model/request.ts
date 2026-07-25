@@ -35,6 +35,10 @@ export interface GrpcConfig {
   tls?: boolean;
   protoContent?: string;
   protoPath?: string;
+  messages?: string[];
+  useReflection?: boolean;
+  tlsConfig?: { rootCertsPem?: string; clientCertPem?: string; clientKeyPem?: string };
+  callToken?: string;
 }
 
 export interface WsMessage {

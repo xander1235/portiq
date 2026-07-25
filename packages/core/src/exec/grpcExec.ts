@@ -32,7 +32,18 @@ export function buildGrpcPayload(
     protoContent: cfg.protoContent || "",
     protoPath: cfg.protoPath,
   });
-  return { ...built, requestId } as GrpcSendPayload;
+  const messages = (cfg.messages ?? []).map((m) => {
+    const s = interpolate(m, vars);
+    try { return JSON.parse(s) as unknown; } catch { return {}; }
+  });
+  return {
+    ...built,
+    requestId,
+    ...(messages.length ? { messages } : {}),
+    useReflection: cfg.useReflection,
+    tlsConfig: cfg.tlsConfig,
+    callToken: cfg.callToken ? interpolate(cfg.callToken, vars) : undefined,
+  } as GrpcSendPayload;
 }
 
 export interface NormalizedGrpcResponse {
