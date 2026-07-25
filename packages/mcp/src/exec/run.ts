@@ -36,6 +36,7 @@ export interface RunContext {
   grpcTransport?: GrpcTransport;
   env?: Environment | null;
   vars?: Record<string, string>;
+  hostGuard?: (url: string) => void;
 }
 
 export interface RunResult {
@@ -91,7 +92,9 @@ export async function runRequestItem(item: RequestItem, ctx: RunContext): Promis
 
   if (protocol === "grpc") {
     const transport = ctx.grpcTransport ?? new GrpcTransport();
-    const raw = await transport.send(buildGrpcPayload(item, vars));
+    const payload = buildGrpcPayload(item, vars);
+    ctx.hostGuard?.(payload.url);
+    const raw = await transport.send(payload);
     const callType = item.grpcConfig?.callType || "UNARY";
     return { response: normalizeGrpcResult(raw, callType), tests: summarizeTests([]) };
   }
@@ -99,11 +102,14 @@ export async function runRequestItem(item: RequestItem, ctx: RunContext): Promis
   let outcome: SendOutcome;
   if (protocol === "http" || protocol === "") {
     const payload = assembleRequest(item, { env: ctx.env, vars });
+    ctx.hostGuard?.(payload.url);
     outcome = await ctx.transport.send(payload);
   } else if (protocol === "graphql") {
     const gql = item.graphqlConfig;
+    const gqlUrl = interpolate(item.url ?? "", vars);
+    ctx.hostGuard?.(gqlUrl);
     outcome = await sendGraphQL({
-      url: interpolate(item.url ?? "", vars),
+      url: gqlUrl,
       headers: { ...compileGraphqlHeaders(item, vars) },
       query: interpolate(gql?.query ?? "", vars),
       variables: interpolate(gql?.variables ?? "", vars),

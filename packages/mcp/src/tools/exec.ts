@@ -6,6 +6,7 @@ import { jsonToolResult, errorToolResult } from "../util/mcpJson";
 import { runRequestItem } from "../exec/run";
 import { runSavedFlow } from "../exec/flow";
 import { resolveEnvironment } from "../exec/env";
+import { makeHostGuard } from "../hostPolicy";
 
 const EXECUTES = { readOnlyHint: false } as const;
 const varsSchema = z.record(z.string(), z.string()).optional();
@@ -25,6 +26,8 @@ function collectionRequests(ctx: ServerContext, collectionId: string): RequestIt
 }
 
 export function registerExecTools(server: McpServer, ctx: ServerContext): void {
+  const hostGuard = makeHostGuard(ctx.hostPolicy);
+
   server.registerTool(
     "run_request",
     {
@@ -37,7 +40,7 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
       const item = ctx.store.flattenRequests().find((r) => r.id === id);
       if (!item) return errorToolResult(`Request '${id}' not found`);
       try {
-        return jsonToolResult(await runRequestItem(item, { transport: ctx.transport, env: resolveEnvironment(ctx, env), vars }));
+        return jsonToolResult(await runRequestItem(item, { transport: ctx.transport, env: resolveEnvironment(ctx, env), vars, hostGuard }));
       } catch (err) {
         return errorToolResult((err as Error).message);
       }
@@ -101,7 +104,7 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
         item.grpcConfig = grpcConfig;
       }
       try {
-        return jsonToolResult(await runRequestItem(item, { transport: ctx.transport, env: resolveEnvironment(ctx, env), vars }));
+        return jsonToolResult(await runRequestItem(item, { transport: ctx.transport, env: resolveEnvironment(ctx, env), vars, hostGuard }));
       } catch (err) {
         return errorToolResult((err as Error).message);
       }
@@ -125,7 +128,7 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
       const totals = { passed: 0, failed: 0, errored: 0 };
       for (const item of requests) {
         try {
-          const { tests } = await runRequestItem(item, { transport: ctx.transport, env: environment, vars: shared });
+          const { tests } = await runRequestItem(item, { transport: ctx.transport, env: environment, vars: shared, hostGuard });
           totals.passed += tests.passed;
           totals.failed += tests.failed;
           totals.errored += tests.errored;
@@ -157,6 +160,7 @@ export function registerExecTools(server: McpServer, ctx: ServerContext): void {
           transport: ctx.transport,
           env: resolveVars(environment, vars),
           lookupRequest: (rid) => ctx.store.flattenRequests().find((r) => r.id === rid),
+          hostGuard,
         });
         return jsonToolResult(steps);
       } catch (err) {

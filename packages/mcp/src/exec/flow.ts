@@ -38,6 +38,7 @@ export interface FlowRunContext {
   transport: HttpTransport;
   env: Record<string, string>;
   lookupRequest: (id: string) => RequestItem | undefined;
+  hostGuard?: (url: string) => void;
 }
 
 export async function runSavedFlow(graph: DagGraph, ctx: FlowRunContext): Promise<StepsContext> {
@@ -48,6 +49,7 @@ export async function runSavedFlow(graph: DagGraph, ctx: FlowRunContext): Promis
       return item ? toFlowRequestConfig(item) : undefined;
     },
     sendRequest: async (payload): Promise<SendResult> => {
+      ctx.hostGuard?.(payload.url);
       const r = await ctx.transport.send({
         method: payload.method,
         url: payload.url,
