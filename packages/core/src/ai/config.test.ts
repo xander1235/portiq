@@ -1,10 +1,12 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openKvStore } from "@portiq/core";
 import { requireApiKey, redactKey, AiConfigError, AI_CONFIG_FILE } from "./config";
 import { resolveAiConfig, saveAiConfig, migrateAiKeystore } from "./configStore";
+import { KEYSTORE_FILE } from "../store/keystore";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -122,5 +124,41 @@ describe("AI credential encryption at rest", () => {
     kv2.close();
     expect(migrateAiKeystore({ dataDir: dir })).toBe(0); // idempotent
     expect(resolveAiConfig({ dataDir: dir, env: {} }).apiKey).toBe("plain");
+  });
+});
+
+describe("AI credential decryption robustness", () => {
+  it("degrades an undecryptable tagged key instead of throwing (lost/rotated keystore key)", () => {
+    const dir = tempDir();
+    const keyA = randomBytes(32).toString("base64");
+    const keyB = randomBytes(32).toString("base64");
+    // Encrypt with keyA...
+    saveAiConfig(
+      { provider: "openai", keys: { openai: "sk-plaintext-value" } },
+      { dataDir: dir, env: { PORTIQ_KEYSTORE_KEY: keyA } },
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // ...then read with a different key: GCM auth tag verification fails.
+    let cfg: ReturnType<typeof resolveAiConfig> | undefined;
+    expect(() => {
+      cfg = resolveAiConfig({ dataDir: dir, env: { PORTIQ_KEYSTORE_KEY: keyB } });
+    }).not.toThrow();
+    expect(cfg!.keys.openai).toBeUndefined(); // treated as absent, not surfaced
+    expect(cfg!.apiKey).toBeNull(); // no other precedence source available
+    expect(cfg!.source).toBe("none");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("openai");
+    expect(warn.mock.calls[0][0]).not.toContain("sk-plaintext-value"); // no key material logged
+    warn.mockRestore();
+  });
+
+  it("never materializes a keystore.key file when resolving an all-plaintext config", () => {
+    const dir = tempDir();
+    const kv = openKvStore({ dataDir: dir });
+    kv.set("aiSettings", JSON.stringify({ provider: "openai", keys: { openai: "legacy-plain" } }));
+    kv.close();
+    const cfg = resolveAiConfig({ dataDir: dir, env: {} });
+    expect(cfg.apiKey).toBe("legacy-plain");
+    expect(existsSync(join(dir, KEYSTORE_FILE))).toBe(false); // encryptor never resolved on a plaintext read
   });
 });

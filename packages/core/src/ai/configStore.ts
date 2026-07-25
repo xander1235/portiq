@@ -28,11 +28,24 @@ function resolveEncryptor(opts: AiConfigOptions): Encryptor {
   return createLocalEncryptor(opts);
 }
 
-function decryptKeys(keys: AiKeys | undefined, enc: Encryptor): AiKeys {
+// `getEnc` is only invoked when a value actually needs decrypting, so a fully
+// plaintext (legacy or empty) config on the READ path never resolves — and
+// thus never materializes — an encryptor (e.g. a local keystore.key file).
+function decryptKeys(keys: AiKeys | undefined, getEnc: () => Encryptor): AiKeys {
   const out: AiKeys = {};
   for (const [k, v] of Object.entries(keys ?? {})) {
     if (!v) continue;
-    out[k as keyof AiKeys] = isEncrypted(v) ? enc.decrypt(v) : v;
+    if (!isEncrypted(v)) {
+      out[k as keyof AiKeys] = v;
+      continue;
+    }
+    try {
+      out[k as keyof AiKeys] = getEnc().decrypt(v);
+    } catch {
+      // Lost/rotated keystore key or tampered ciphertext: degrade to "no usable
+      // key for this provider" instead of throwing and blocking every provider.
+      console.warn(`[ai-config] Failed to decrypt stored AI key for "${k}"; ignoring it.`);
+    }
   }
   return out;
 }
@@ -85,8 +98,11 @@ export function resolveAiConfig(opts: AiConfigOptions = {}): AiConfig {
   provider = provider ?? file.provider ?? kv.provider ?? null;
 
   // config-file keys outrank desktop-stored kv keys (file is a higher tier).
-  const enc = resolveEncryptor(opts);
-  const keys: AiKeys = { ...decryptKeys(kv.keys, enc), ...decryptKeys(file.keys, enc) };
+  // Resolve the encryptor lazily (only if some value is actually enc:v1:-tagged)
+  // so an all-plaintext config never triggers keystore materialization on read.
+  let cachedEnc: Encryptor | undefined;
+  const getEnc = (): Encryptor => (cachedEnc ??= resolveEncryptor(opts));
+  const keys: AiKeys = { ...decryptKeys(kv.keys, getEnc), ...decryptKeys(file.keys, getEnc) };
   const model = opts.model ?? env.PORTIQ_AI_MODEL ?? file.model ?? kv.model ?? null;
   const semanticSearchEnabled = Boolean(file.semanticSearchEnabled ?? kv.semanticSearchEnabled ?? false);
 
