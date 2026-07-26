@@ -11,7 +11,8 @@ const ROOT = process.cwd();
 const BIN = join(ROOT, "packages/mcp/dist/bin.js");
 
 let http: { url: string; close: () => Promise<void> };
-const cleanups: Array<() => void> = [];
+const clients: Client[] = [];
+const dirCleanups: Array<() => void> = [];
 
 beforeAll(async () => {
   execSync("npm run build:mcp", { cwd: ROOT, stdio: "inherit" });
@@ -19,13 +20,18 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-  while (cleanups.length) cleanups.pop()!();
+  // Close clients (killing their spawned MCP child processes) BEFORE removing
+  // the temp dirs, so the sqlite file is released first — Windows cannot unlink
+  // a file that is still open. rmSync retries (in withTempDataDir) ride out any
+  // residual handle-release lag after the child exits.
+  await Promise.allSettled(clients.map((c) => c.close()));
+  for (const rm of dirCleanups.splice(0)) rm();
   await http.close();
 });
 
 const seeded = (): { dir: string } => {
   const { dir, cleanup } = withTempDataDir();
-  cleanups.push(cleanup);
+  dirCleanups.push(cleanup);
   const state: AppState = {
     collections: [{ id: "c1", name: "API", items: [
       { type: "request", id: "r1", name: "Ping", description: "", tags: [], protocol: "http", method: "GET", url: `${http.url}/ping` },
@@ -43,7 +49,7 @@ async function spawnClient(args: string[]): Promise<Client> {
   const client = new Client({ name: "e2e", version: "0" });
   const transport = new StdioClientTransport({ command: process.execPath, args: [BIN, ...args], env: { ...process.env } as Record<string, string> });
   await client.connect(transport);
-  cleanups.push(() => { void client.close(); });
+  clients.push(client);
   return client;
 }
 
