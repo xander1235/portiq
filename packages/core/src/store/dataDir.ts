@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 
 export const APP_NAME = "Portiq";
 export const DB_FILE = "appdata.sqlite";
@@ -20,18 +20,25 @@ export function resolveDataDir(opts: ResolveDataDirOptions = {}): string {
 
   const platform = opts.platform ?? process.platform;
   const home = opts.home ?? homedir();
+  // Join with the target platform's separator, not the host's, so a resolver
+  // asked for a darwin/linux path while running on Windows (tests, or any
+  // cross-platform tooling) still returns POSIX paths. In production the
+  // platform is always the host, so this is a no-op there.
+  const p = platform === "win32" ? path.win32 : path.posix;
 
   if (platform === "darwin") {
-    return join(home, "Library", "Application Support", APP_NAME);
+    return p.join(home, "Library", "Application Support", APP_NAME);
   }
   if (platform === "win32") {
-    const base = env.APPDATA ?? join(home, "AppData", "Roaming");
-    return join(base, APP_NAME);
+    const base = env.APPDATA ?? p.join(home, "AppData", "Roaming");
+    return p.join(base, APP_NAME);
   }
-  const base = env.XDG_CONFIG_HOME ?? join(home, ".config");
-  return join(base, APP_NAME);
+  const base = env.XDG_CONFIG_HOME ?? p.join(home, ".config");
+  return p.join(base, APP_NAME);
 }
 
 export function resolveDbPath(opts: ResolveDataDirOptions = {}): string {
-  return join(resolveDataDir(opts), DB_FILE);
+  const platform = opts.platform ?? process.platform;
+  const p = platform === "win32" ? path.win32 : path.posix;
+  return p.join(resolveDataDir(opts), DB_FILE);
 }

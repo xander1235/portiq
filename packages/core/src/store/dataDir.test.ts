@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { join } from "node:path";
+import path from "node:path";
 import { resolveDataDir } from "./dataDir";
 
 describe("resolveDataDir", () => {
@@ -26,7 +26,7 @@ describe("resolveDataDir", () => {
   it("uses APPDATA on Windows", () => {
     const appdata = "C:\\Users\\u\\AppData\\Roaming";
     const result = resolveDataDir({ env: { APPDATA: appdata }, platform: "win32", home: "C:\\Users\\u" });
-    const expected = join(appdata, "Portiq");
-    expect(result).toBe(expected);
+    // win32 join regardless of host so this asserts the same value everywhere.
+    expect(result).toBe(path.win32.join(appdata, "Portiq"));
   });
 });

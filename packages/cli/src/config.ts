@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import path from "node:path";
 import { resolveDataDir } from "@portiq/core";
 
 export interface CliConfig {
@@ -18,7 +18,9 @@ export function resolveConfigPath(
   const stripped = { ...env };
   delete stripped.PORTIQ_DATA_DIR;
   const base = resolveDataDir({ env: stripped, platform, home });
-  return join(base, CONFIG_FILE);
+  // Join with the target platform's separator so cross-platform callers get a
+  // stable path (host-separator join would backslash a linux path on Windows).
+  return (platform === "win32" ? path.win32 : path.posix).join(base, CONFIG_FILE);
 }
 
 export function loadConfig(configPath: string): CliConfig {
@@ -30,7 +32,7 @@ export function loadConfig(configPath: string): CliConfig {
 }
 
 export function saveConfig(configPath: string, config: CliConfig): void {
-  mkdirSync(dirname(configPath), { recursive: true });
+  mkdirSync(path.dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 

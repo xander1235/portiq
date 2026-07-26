@@ -13,6 +13,7 @@ describe("portiq.bundle.cjs", () => {
     execFileSync("npm", ["--workspace", "@portiq/cli", "run", "bundle"], {
       cwd: resolve(__dirname, "..", "..", "..", ".."),
       stdio: "inherit",
+      shell: true, // Windows resolves `npm` -> `npm.cmd` only through a shell.
     });
   });
 

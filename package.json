@@ -22,7 +22,7 @@
     "pretest": "npm run build:core && npm --workspace @portiq/cli run build && npm --workspace @portiq/mcp run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bundle:bins": "npm --workspace @portiq/cli run bundle && npm --workspace @portiq/mcp run bundle",
+    "bundle:bins": "npm run build:core && npm --workspace @portiq/cli run bundle && npm --workspace @portiq/mcp run bundle",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "package": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --publish never",
     "package:desktop": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --mac --win --linux --publish never",
