@@ -4,7 +4,7 @@ import type { CliContext } from "../context";
 import { parseGlobalFlags, type CommandModule } from "../registry";
 import { resolveRef, resolveVars, listRequestsWithPaths } from "../resolve/refs";
 import { resolveHttpPayload } from "../resolve/httpPayload";
-import { runRequest, defaultRunDeps } from "../exec/runRequest";
+import { runRequest, defaultRunDeps, defaultHostGuard } from "../exec/runRequest";
 import { runSavedFlow } from "../exec/runFlow";
 import { withStateAsync } from "./store";
 import { emit } from "./emit";
@@ -57,7 +57,7 @@ export const runCommand: CommandModule = {
               return { output, failed: false };
             }
             const all = listRequestsWithPaths(state).map((r) => r.item);
-            const transport = new HttpTransport();
+            const transport = new HttpTransport({ hostGuard: defaultHostGuard() });
             const { steps, tests } = await runSavedFlow(resolved.request, all, vars, transport, flags.timeout);
             const output: CommandOutput = { kind: "execution", request: { protocol: "dag", method: "FLOW", url: resolved.request.name, headers: {} }, response: null, error: null, tests, steps };
             return { output, failed: hasFailures(tests) };

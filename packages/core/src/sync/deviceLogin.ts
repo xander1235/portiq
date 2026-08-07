@@ -85,8 +85,12 @@ export async function pollDeviceToken(device: DeviceCodeResult, opts: PollDevice
   const sleep = opts.sleep ?? defaultSleep;
   const clientId = opts.clientId ?? GITHUB_CLIENT_ID;
   let intervalMs = device.intervalSeconds * 1000;
+  const deadlineMs = Math.max(device.expiresInSeconds * 1000, 1);
+  const startedAt = Date.now();
 
   while (true) {
+    // RFC 8628: stop polling once the device code's lifetime has elapsed.
+    if (Date.now() - startedAt >= deadlineMs) throw new DeviceFlowExpiredError();
     await sleep(intervalMs);
 
     const res = await fetchFn(GITHUB_ACCESS_TOKEN_URL, {

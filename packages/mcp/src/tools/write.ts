@@ -46,6 +46,36 @@ const requestFields = {
   bodyType: z.string().optional(),
 };
 
+const PROTOTYPE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** Whitelisted patchable request fields — never a free-form record, so a
+ *  hostile `__proto__`/`constructor` key cannot pollute the item. */
+const requestPatchSchema = z
+  .object({
+    name: z.string().optional(),
+    method: z.string().optional(),
+    url: z.string().optional(),
+    protocol: z.string().optional(),
+    description: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    body: z.string().optional(),
+    bodyType: z.string().optional(),
+  })
+  .strict();
+
+function applyPatch(item: RequestItem, patch: unknown): void {
+  // zod's strict() strips unknown keys instead of failing, so reject dangerous
+  // keys on the raw input first (JSON wire payloads carry __proto__ as an own key).
+  if (patch && typeof patch === "object") {
+    for (const key of Object.keys(patch as object)) {
+      if (PROTOTYPE_KEYS.has(key)) throw new Error(`Disallowed patch key '${key}'`);
+    }
+  }
+  const clean = requestPatchSchema.parse(patch);
+  Object.assign(item, clean, { type: "request", id: item.id });
+}
+
 export function registerWriteTools(server: McpServer, ctx: ServerContext): void {
   const registered = [
     server.registerTool(
@@ -84,7 +114,7 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
               if (!fresh.collection) continue;
               const item = findRequest([fresh.collection], id);
               if (!item) continue;
-              Object.assign(item, patch, { type: "request", id });
+              applyPatch(item, patch);
               ctx.store.entities.upsertCollection(fresh.collection, fresh.version);
               updated = item;
               return;

@@ -43,21 +43,35 @@ function headerRows(headers: string[]): RequestRow[] {
 export function buildExecRequest(opts: ExecOptions): ResolvableRequest {
   if (opts.fromCurl) {
     const parsed = parseCurl(opts.fromCurl);
-    return {
-      protocol: "http", method: parsed.method, url: parsed.url,
-      headersRows: parsed.headersRows, paramsRows: parsed.paramsRows,
-      authType: parsed.authType, authConfig: parsed.authConfig,
-      bodyType: parsed.bodyType, bodyText: parsed.bodyText, bodyRows: parsed.bodyRows,
-    };
+    return applyTokenHeader(
+      {
+        protocol: "http", method: parsed.method, url: parsed.url,
+        headersRows: parsed.headersRows, paramsRows: parsed.paramsRows,
+        authType: parsed.authType, authConfig: parsed.authConfig,
+        bodyType: parsed.bodyType, bodyText: parsed.bodyText, bodyRows: parsed.bodyRows,
+      },
+      opts.token
+    );
   }
   if (!opts.url) throw new UsageError("exec requires a <url> or --from-curl");
   const method = opts.method ? opts.method.toUpperCase() : opts.data !== undefined ? "POST" : "GET";
-  return {
-    protocol: "http", method, url: opts.url,
-    headersRows: headerRows(opts.header),
-    bodyType: opts.data !== undefined ? "raw" : "none",
-    bodyText: opts.data,
-  };
+  return applyTokenHeader(
+    {
+      protocol: "http", method, url: opts.url,
+      headersRows: headerRows(opts.header),
+      bodyType: opts.data !== undefined ? "raw" : "none",
+      bodyText: opts.data,
+    },
+    opts.token
+  );
+}
+
+/** Map --token to an HTTP `Authorization: Bearer` header unless one is already set. */
+function applyTokenHeader(req: ResolvableRequest, token?: string): ResolvableRequest {
+  if (!token) return req;
+  const rows = req.headersRows ?? [];
+  if (rows.some((r) => r.key.toLowerCase() === "authorization")) return req;
+  return { ...req, headersRows: [...rows, { key: "Authorization", value: `Bearer ${token}`, comment: "", enabled: true }] };
 }
 
 export const execCommand: CommandModule = {
@@ -78,7 +92,7 @@ export const execCommand: CommandModule = {
       .option("--ca-cert <file>", "gRPC custom CA bundle (PEM)")
       .option("--client-cert <file>", "gRPC client certificate (PEM, for mTLS)")
       .option("--client-key <file>", "gRPC client private key (PEM, for mTLS)")
-      .option("--token <token>", "gRPC call-credential bearer token")
+      .option("--token <token>", "bearer token: gRPC call credential, or HTTP Authorization: Bearer header")
       .action(async (url: string | undefined, opts: Omit<ExecOptions, "url">, cmd: Command) => {
         const flags = parseGlobalFlags(cmd);
         const isGrpc = !!opts.grpc || !!opts.service || (!!url && /^grpcs?:\/\//i.test(url));

@@ -1,12 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { resolveVars, type FolderItem, type RequestItem, type GrpcConfig } from "@portiq/core";
+import { resolveVars, makeHostGuard, type FolderItem, type RequestItem, type GrpcConfig } from "@portiq/core";
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
 import { runRequestItem } from "../exec/run";
 import { runSavedFlow } from "../exec/flow";
 import { resolveEnvironment } from "../exec/env";
-import { makeHostGuard } from "../hostPolicy";
 
 const EXECUTES = { readOnlyHint: false } as const;
 const varsSchema = z.record(z.string(), z.string()).optional();

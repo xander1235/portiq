@@ -63,8 +63,31 @@ describe("entityStore round-trip", () => {
   it("saveState throws ConflictError on a stale whole-state version", () => {
     const s = openEntityStore({ dataDir: tempDir() });
     s.saveState(sample());       // version 1
-    s.saveState(sample());       // version 2
+    const changed = sample();
+    changed.collections[0].name = "API v2";
+    s.saveState(changed);        // version 2 (genuine change)
     expect(() => s.saveState(sample(), 1)).toThrow(ConflictError);
+    s.close();
+  });
+
+  it("no-op saveState does not bump the global write version (no autosave livelock)", () => {
+    const s = openEntityStore({ dataDir: tempDir() });
+    s.saveState(sample());
+    const before = s.raw.globalWriteVersion();
+    const v = s.saveState(sample());
+    expect(s.raw.globalWriteVersion()).toBe(before); // no row writes at all
+    expect(v).toBe(1);                               // whole-state version unchanged
+    s.close();
+  });
+
+  it("a genuine change still dual-writes the legacy blob and bumps the version", () => {
+    const s = openEntityStore({ dataDir: tempDir() });
+    s.saveState(sample());
+    const changed = sample();
+    changed.collections[0].name = "API v2";
+    const v = s.saveState(changed);
+    expect(v).toBe(2);
+    expect(JSON.parse(s.raw.get(LEGACY_BLOB_KEY)!).collections[0].name).toBe("API v2");
     s.close();
   });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { HttpTransport } from "./http";
+import { HttpTransport, scrubUrls } from "./http";
 
 let server: Server | null = null;
 function listen(handler: Parameters<typeof createServer>[0]): Promise<number> {
@@ -42,5 +42,62 @@ describe("HttpTransport", () => {
     const t = new HttpTransport({ appVersion: "test" });
     const r = await t.send({ method: "GET", url: `http://127.0.0.1:${port}/`, timeoutMs: 100, httpVersion: "1.1" });
     expect("timedOut" in r && r.timedOut).toBe(true);
+  });
+
+  it("re-checks the host policy on every redirect hop", async () => {
+    const target = createServer((_req, res) => res.end("target"));
+    const redirector = createServer((_req, res) => {
+      res.statusCode = 302;
+      res.setHeader("location", `http://127.0.0.1:${(target.address() as any).port}/`);
+      res.end();
+    });
+    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", () => resolve()));
+    await new Promise<void>((resolve) => redirector.listen(0, "127.0.0.1", () => resolve()));
+    try {
+      const redirectPort = (redirector.address() as any).port;
+      const blocked = new HttpTransport({
+        appVersion: "test",
+        hostGuard: (url) => {
+          if (new URL(url).port !== String(redirectPort)) throw new Error("redirect blocked");
+        },
+      });
+      const r = await blocked.send({ method: "GET", url: `http://127.0.0.1:${redirectPort}/`, httpVersion: "auto" });
+      expect("error" in r && r.error).toMatch(/redirect blocked/);
+
+      const allowed = new HttpTransport({ appVersion: "test" });
+      const ok = await allowed.send({ method: "GET", url: `http://127.0.0.1:${redirectPort}/`, httpVersion: "auto" });
+      expect("status" in ok && ok.status).toBe(200);
+      expect("body" in ok && ok.body).toBe("target");
+    } finally {
+      target.close();
+      redirector.close();
+    }
+  });
+
+  it("rejects the request when the initial URL fails the host policy", async () => {
+    const t = new HttpTransport({ appVersion: "test", hostGuard: () => { throw new Error("nope"); } });
+    const r = await t.send({ method: "GET", url: "http://127.0.0.1:1/", httpVersion: "auto" });
+    expect("error" in r && r.error).toBe("nope");
+  });
+
+  it("aborts responses whose declared content-length exceeds the cap", async () => {
+    const port = await listen((_req, res) => {
+      res.setHeader("content-length", String(60 * 1024 * 1024));
+      res.end("small");
+    });
+    const t = new HttpTransport({ appVersion: "test" });
+    const r = await t.send({ method: "GET", url: `http://127.0.0.1:${port}/`, httpVersion: "auto" });
+    expect("error" in r && r.error).toMatch(/maximum size/);
+  });
+
+  it("scrubUrls strips credentials and query strings from URLs in error messages", () => {
+    const scrubbed = scrubUrls(
+      "fetch failed: GET https://user:pass@api.example.com/x?token=secret&a=1 -> connect ECONNREFUSED"
+    );
+    expect(scrubbed).not.toContain("user");
+    expect(scrubbed).not.toContain("pass");
+    expect(scrubbed).not.toContain("token=secret");
+    expect(scrubbed).toContain("https://api.example.com/x");
+    expect(scrubUrls("plain message")).toBe("plain message");
   });
 });

@@ -148,6 +148,20 @@ jobs:
       - name: Build publishable bundles
         run: npm run bundle:bins
 
+      # Pin the published version to the tag itself (strip the leading "v"),
+      # so a tag like v0.6.2 always publishes exactly 0.6.2 no matter what
+      # packages/cli|mcp/package.json currently say. Refuses to run on a
+      # non-semver tag so we never publish an accidental version.
+      - name: Pin package versions to the git tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not a valid semver version; refusing to publish"
+            exit 1
+          fi
+          npm --workspace @portiq/cli version "$version" --no-git-tag-version --allow-same-version
+          npm --workspace @portiq/mcp version "$version" --no-git-tag-version --allow-same-version
+
       - name: Publish @portiq/cli and @portiq/mcp
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

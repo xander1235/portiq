@@ -63,6 +63,35 @@ describe("read tools", () => {
     expect(res.isError).toBe(true);
   });
 
+  it("get_environment masks secret var values but returns plain ones", async () => {
+    const c = await client();
+    const res = await call(c, "get_environment", { id: "e1" });
+    expect(res.vars[0]).toEqual({ key: "k", value: "v", comment: "", enabled: true });
+  });
+
+  it("get_environment redacts values for secret-flagged and secret-looking vars", async () => {
+    const { dir, cleanup } = withTempDataDir();
+    dirs.push(cleanup);
+    const state = sample();
+    state.environments = [{
+      id: "e2", name: "Prod",
+      vars: [
+        { key: "BASE_URL", value: "https://api", comment: "", enabled: true },
+        { key: "API_TOKEN", value: "s3cret", comment: "", enabled: true, secret: true },
+        { key: "password", value: "pw", comment: "", enabled: true },
+      ],
+    }];
+    seedStore(dir, state);
+    const ctx = buildContext({ dataDir: dir, allowWrites: false, appVersion: "test" });
+    dirs.push(() => ctx.close());
+    const cc = await connectInProcess(createMcpServer(ctx));
+    dirs.push(() => { void cc.close(); });
+    const res = await call(cc, "get_environment", { id: "e2" });
+    expect(res.vars.find((v: { key: string }) => v.key === "BASE_URL").value).toBe("https://api");
+    expect(res.vars.find((v: { key: string }) => v.key === "API_TOKEN").value).toBe("<SECRET>");
+    expect(res.vars.find((v: { key: string }) => v.key === "password").value).toBe("<SECRET>");
+  });
+
   it("search finds by name", async () => {
     const c = await client();
     const hits = await call(c, "search", { query: "create" });

@@ -1,6 +1,6 @@
 import {
   HttpTransport, sendGraphQL as coreSendGraphQL, runSteps, summarizeTests, interpolate,
-  buildGrpcPayload, normalizeGrpcResult,
+  buildGrpcPayload, normalizeGrpcResult, compileHostPolicy, makeHostGuard, splitHostList,
   type GraphqlConfig, type HttpResult, type RequestItem, type RequestResponse, type ScriptStep, type TestEntry, type TestSummary, type NormalizedGrpcResponse,
 } from "@portiq/core";
 import { GrpcTransport } from "@portiq/core/grpc";
@@ -21,14 +21,31 @@ export interface RunDeps {
   sendGraphQL: typeof coreSendGraphQL;
   now: () => number;
   grpcTransport: Pick<GrpcTransport, "send" | "cancel">;
+  hostGuard?: (url: string) => void;
 }
 
-export function defaultRunDeps(appVersion?: string): RunDeps {
-  return { transport: new HttpTransport({ appVersion }), sendGraphQL: coreSendGraphQL, now: () => Date.now(), grpcTransport: new GrpcTransport() };
+export function defaultHostGuard(): (url: string) => void {
+  const allow = splitHostList(process.env.PORTIQ_EXEC_ALLOW);
+  const deny = splitHostList(process.env.PORTIQ_EXEC_DENY);
+  if (allow.length === 0 && deny.length === 0) return () => {};
+  return makeHostGuard(compileHostPolicy(allow, deny));
 }
 
-function isHttpResult(r: unknown): r is HttpResult {
-  return !!r && typeof r === "object" && "status" in (r as object) && !("error" in (r as object) && (r as { status?: unknown }).status === undefined);
+export function defaultRunDeps(appVersion?: string, hostGuard?: (url: string) => void): RunDeps {
+  const guard = hostGuard ?? defaultHostGuard();
+  return {
+    transport: new HttpTransport({ appVersion, hostGuard: guard }),
+    sendGraphQL: (p) => coreSendGraphQL({ ...p, hostGuard: guard }),
+    now: () => Date.now(),
+    grpcTransport: new GrpcTransport(),
+    hostGuard: guard,
+  };
+}
+
+function compileGraphqlHeaders(cfg: GraphqlConfig, vars: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cfg.headers ?? {})) out[k] = interpolate(String(v), vars);
+  return out;
 }
 
 export async function runRequest(
@@ -45,7 +62,9 @@ export async function runRequest(
     const callType = req.grpcConfig?.callType || "UNARY";
     const url = interpolate(req.url || "", vars);
     const view: ExecRequestView = { protocol: "grpc", method: callType, url, headers: req.grpcConfig?.metadata ?? {} };
-    const raw = await deps.grpcTransport.send(buildGrpcPayload(req, vars));
+    const payload = buildGrpcPayload(req, vars);
+    deps.hostGuard?.(payload.url);
+    const raw = await deps.grpcTransport.send(payload);
     const grpc = normalizeGrpcResult(raw, callType);
     return { request: view, response: null, error: grpc.error, tests: null, grpc };
   }
@@ -61,10 +80,11 @@ export async function runRequest(
     const url = interpolate(req.url || "", env);
     const raw = await deps.sendGraphQL({
       url,
-      headers: cfg.headers,
+      headers: compileGraphqlHeaders(cfg, env),
       query: interpolate(cfg.query || "", env),
       variables: interpolate(cfg.variables || "", env),
       operationName: interpolate(cfg.operationName || "", env),
+      timeoutMs: opts.timeoutMs,
     });
     const view: ExecRequestView = { protocol, method: "POST", url, headers: cfg.headers ?? {} };
     if ("error" in raw) return { request: view, response: null, error: raw.error, tests: null };
@@ -96,5 +116,3 @@ export async function runRequest(
   }
   return { request: view, response, error: null, tests: runTests ? summarizeTests(entries) : null };
 }
-
-void isHttpResult;

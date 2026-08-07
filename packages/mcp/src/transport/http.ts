@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { ServerContext } from "../context";
@@ -23,6 +23,17 @@ function jsonError(res: ServerResponse, status: number, code: number, message: s
   res.end(JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }));
 }
 
+/** Constant-time bearer comparison so token length/prefix is not observable. */
+function safeBearerEqual(header: string, expected: string): boolean {
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) {
+    timingSafeEqual(b, b); // equalize timing for the length-mismatch path
+    return false;
+  }
+  return timingSafeEqual(a, b);
+}
+
 export async function startHttpServer(ctx: ServerContext, opts: HttpTransportOptions): Promise<HttpServerHandle> {
   const path = opts.path ?? "/mcp";
 
@@ -38,7 +49,7 @@ export async function startHttpServer(ctx: ServerContext, opts: HttpTransportOpt
 
       if (opts.authToken) {
         const header = req.headers.authorization ?? "";
-        if (header !== `Bearer ${opts.authToken}`) return jsonError(res, 401, -32001, "Unauthorized");
+        if (!safeBearerEqual(header, `Bearer ${opts.authToken}`)) return jsonError(res, 401, -32001, "Unauthorized");
       }
 
       try {

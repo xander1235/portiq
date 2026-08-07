@@ -1,7 +1,13 @@
 import type { TestSummary } from "@portiq/core";
 
+/** XML 1.0 forbids most control chars (allowed: tab, LF, CR); strip the rest. */
+function stripControlChars(s: string): string {
+  // eslint-disable-next-line no-control-regex -- intentionally stripping control chars
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
 function esc(s: unknown): string {
-  return String(s)
+  return stripControlChars(String(s))
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

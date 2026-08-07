@@ -48,6 +48,28 @@ describe("buildWorkspaceFiles", () => {
     expect(String(req.authConfig.bearer.token).startsWith("__PORTIQ_SECRET__:")).toBe(true);
   });
 
+  it("slugifies ids so hostile ids cannot escape the workspace tree", () => {
+    const evil: AppState = {
+      collections: [{
+        id: "../../evil", name: "C",
+        items: [
+          { type: "request", id: "../x", name: "R", description: "", tags: [], protocol: "http", method: "GET", url: "https://x" } as any,
+        ],
+      }],
+      activeCollectionId: "../../evil",
+      environments: [],
+      activeEnvId: null,
+      historyRetentionDays: 7,
+    };
+    const files = buildWorkspaceFiles(evil);
+    const collectionPaths = Object.keys(files).filter((p) => p.endsWith("/collection.json"));
+    expect(collectionPaths).toEqual(["workspace/collections/c__evil/collection.json"]);
+    expect(Object.keys(files).some((p) => p.startsWith("..") || p.includes("../"))).toBe(false);
+    const reqPath = Object.keys(files).find((p) => p.endsWith(".request.json"))!;
+    expect(reqPath.startsWith("workspace/collections/")).toBe(true);
+    expect(reqPath).toBe("workspace/collections/c__evil/r__x.request.json");
+  });
+
   it("masks env vars whose id is in the masked set", () => {
     const files = buildWorkspaceFiles(sample(), new Set(["e1::0"]));
     expect(files["workspace/environments/environments.json"][0].vars[0].value).toBe("<SECRET_STORED_LOCALLY>");

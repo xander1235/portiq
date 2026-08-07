@@ -1,11 +1,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { parseCurl, type FolderItem, type RequestItem } from "@portiq/core";
+import { parseCurl, type Environment, type FolderItem, type RequestItem } from "@portiq/core";
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
 import { searchLibrary } from "../search";
 
 const READ_ONLY = { readOnlyHint: true } as const;
+
+const SECRET_KEY_PATTERN = /secret|token|password|passwd|api[_-]?key|auth|cred|private[_-]?key|access[_-]?key|client[_-]?secret/i;
+
+function isSecretVar(v: { key?: string; secret?: boolean }): boolean {
+  return !!v.secret || SECRET_KEY_PATTERN.test(v.key ?? "");
+}
+
+/** Return an environment with secret-flagged var values masked so credentials
+ *  never land in the model's context/logs. */
+function maskEnvironment(env: Environment): Environment {
+  return {
+    ...env,
+    vars: (env.vars ?? []).map((v) => (isSecretVar(v) ? { ...v, value: "<SECRET>" } : v)),
+  };
+}
 
 interface FlatRequest {
   item: RequestItem;
@@ -86,7 +101,7 @@ export function registerReadTools(server: McpServer, ctx: ServerContext): void {
     { title: "Get environment", description: "Fetch a full environment by id.", inputSchema: { id: z.string() }, annotations: READ_ONLY },
     async ({ id }) => {
       const found = ctx.store.environments().find((e) => e.id === id);
-      return found ? jsonToolResult(found) : errorToolResult(`Environment '${id}' not found`);
+      return found ? jsonToolResult(maskEnvironment(found)) : errorToolResult(`Environment '${id}' not found`);
     }
   );
 

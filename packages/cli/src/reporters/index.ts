@@ -9,9 +9,38 @@ const DIM = "\x1b[2m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 
+const SENSITIVE_HEADERS = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|api_token|calltoken)$/i;
+
+function redactHeaders(headers: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!headers) return headers;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) out[k] = SENSITIVE_HEADERS.test(k) ? "<REDACTED>" : v;
+  return out;
+}
+
+function redactCommandOutput(out: CommandOutput): CommandOutput {
+  if (out.kind === "execution") {
+    return {
+      ...out,
+      request: out.request ? { ...out.request, headers: redactHeaders(out.request.headers) ?? {} } : out.request,
+      response: out.response ? { ...out.response, headers: redactHeaders(out.response.headers) ?? {} } : out.response,
+    };
+  }
+  if (out.kind === "suite") {
+    return {
+      ...out,
+      items: out.items.map((it) => ({
+        ...it,
+        response: it.response ? { ...it.response, headers: redactHeaders(it.response.headers) ?? {} } : it.response,
+      })),
+    };
+  }
+  return out;
+}
+
 export class JsonReporter implements Reporter {
   write(out: CommandOutput): string {
-    return JSON.stringify(out, null, 2);
+    return JSON.stringify(redactCommandOutput(out), null, 2);
   }
 }
 

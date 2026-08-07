@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveDataDir, type ResolveDataDirOptions } from "../store/dataDir";
 import { isEncrypted, type Encryptor } from "../store/keystoreTypes";
@@ -85,7 +85,9 @@ export function saveGitHubToken(token: string, opts: ResolveTokenOptions = {}): 
   writeFileSync(
     configPath,
     JSON.stringify({ ...existing, githubToken: enc.encrypt(token.trim()) }, null, 2) + "\n",
-    "utf8"
+    { encoding: "utf8", mode: 0o600 }
   );
+  // mode only applies on creation; tighten any pre-existing looser file too.
+  try { chmodSync(configPath, 0o600); } catch { /* ignore */ }
   return configPath;
 }

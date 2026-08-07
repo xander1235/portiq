@@ -38,9 +38,72 @@ export function resolveVars(
   return { ...getEnvVars(env), ...(overrides ?? {}) };
 }
 
-/** Faithful port of the renderer's stripJsonComments (src/App.tsx:1912-1916). */
+export interface JsonCommentRange {
+  from: number;
+  to: number;
+}
+
+/**
+ * Scans JSON text for comments that appear OUTSIDE double-quoted string
+ * literals and returns their [from, to) ranges. Line comments (two slashes)
+ * extend to the end of the line (the newline itself is NOT included, so
+ * stripping leaves the line structure intact); block comments (slash followed
+ * by star ... star followed by slash) cover the whole block. String escapes
+ * are respected (a backslash-quote or backslash-backslash does not close the
+ * string), so "//" or slash-star text inside string values (URLs, paths,
+ * regexes, ...) is never treated as a comment.
+ */
+export function findJsonCommentRanges(text: string): JsonCommentRange[] {
+  const ranges: JsonCommentRange[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "/") {
+      const start = i;
+      i += 2;
+      while (i < text.length && text[i] !== "\n") i++;
+      ranges.push({ from: start, to: i });
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      const start = i;
+      i += 2;
+      let end = text.length;
+      for (; i + 1 < text.length; i++) {
+        if (text[i] === "*" && text[i + 1] === "/") {
+          end = i + 2;
+          break;
+        }
+      }
+      ranges.push({ from: start, to: end });
+      i = end - 1;
+      continue;
+    }
+  }
+  return ranges;
+}
+
+/** Strips every comment reported by {@link findJsonCommentRanges}. */
 export function stripJsonComments(text: string): string {
-  return text.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  let out = "";
+  let cursor = 0;
+  for (const { from, to } of findJsonCommentRanges(text)) {
+    out += text.slice(cursor, from);
+    cursor = to;
+  }
+  out += text.slice(cursor);
+  return out;
 }
 
 /** Auth headers with RAW values, mirroring the renderer's

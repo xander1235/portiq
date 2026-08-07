@@ -1,4 +1,5 @@
 import type { StepsContext } from "./types";
+import { runSandboxed } from "../scripting/sandbox";
 
 export interface ResolveContext {
   steps: StepsContext;
@@ -26,12 +27,8 @@ function stringify(value: unknown): string {
 
 /** Evaluate a `{{= ... }}` JS expression against the resolve context. */
 function evalExpression(expr: string, ctx: ResolveContext): unknown {
-  try {
-    const fn = new Function("steps", "env", `"use strict"; return (${expr});`);
-    return fn(ctx.steps, ctx.env);
-  } catch {
-    return undefined;
-  }
+  const res = runSandboxed(`return (${expr});`, ["steps", "env"], [ctx.steps, ctx.env]);
+  return res.ok ? res.value : undefined;
 }
 
 /** Resolve a single token body (the text between {{ and }}). */

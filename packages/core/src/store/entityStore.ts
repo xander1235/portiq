@@ -92,26 +92,50 @@ export function openEntityStore(opts: ResolveDataDirOptions = {}, kv?: KvStore):
       if (expectedVersion !== undefined && expectedVersion !== version) {
         throw new ConflictError(INDEX_KEY, expectedVersion, version);
       }
+      let changed = false;
+
       const staleCols = new Set(prev?.collectionIds ?? []);
       for (const c of state.collections ?? []) {
         const encoded = JSON.stringify(c);
-        if (store.get(COL_PREFIX + c.id) !== encoded) store.set(COL_PREFIX + c.id, encoded);
+        const key = COL_PREFIX + c.id;
+        if (store.get(key) !== encoded) {
+          store.set(key, encoded);
+          changed = true;
+        }
         staleCols.delete(c.id);
       }
-      for (const id of staleCols) store.deleteKey(COL_PREFIX + id);
+      for (const id of staleCols) {
+        store.deleteKey(COL_PREFIX + id);
+        changed = true;
+      }
 
       const staleEnvs = new Set(prev?.environmentIds ?? []);
       for (const e of state.environments ?? []) {
         const encoded = JSON.stringify(e);
-        if (store.get(ENV_PREFIX + e.id) !== encoded) store.set(ENV_PREFIX + e.id, encoded);
+        const key = ENV_PREFIX + e.id;
+        if (store.get(key) !== encoded) {
+          store.set(key, encoded);
+          changed = true;
+        }
         staleEnvs.delete(e.id);
       }
-      for (const id of staleEnvs) store.deleteKey(ENV_PREFIX + id);
+      for (const id of staleEnvs) {
+        store.deleteKey(ENV_PREFIX + id);
+        changed = true;
+      }
 
-      // Dual-write the legacy blob so a downgraded/old binary keeps reading valid data.
+      const nextIndexJson = JSON.stringify(toEntityIndex(state));
+      const indexChanged = store.get(INDEX_KEY) !== nextIndexJson;
+
+      // No-op save (identical state): skip every write so __writeseq__ is not
+      // bumped and the desktop watcher does not reload → no autosave livelock.
+      if (!changed && !indexChanged) return version;
+
+      // Dual-write the legacy blob only on a genuine change so a downgraded/old
+      // binary keeps reading valid data. The index write bumps the whole-state
+      // version (preserves the ConflictError contract).
       store.set(LEGACY_BLOB_KEY, JSON.stringify(state));
-      // The index row's version IS the whole-state version (preserves the ConflictError contract).
-      return store.set(INDEX_KEY, JSON.stringify(toEntityIndex(state)));
+      return store.set(INDEX_KEY, nextIndexJson);
     });
   }
 

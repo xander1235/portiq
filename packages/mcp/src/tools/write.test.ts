@@ -82,4 +82,35 @@ describe("write mutation", () => {
     expect(env?.vars.find((v) => v.key === "token")?.value).toBe("abc");
     verify.close();
   });
+
+  it("update_request patches whitelisted fields only", async () => {
+    const { c, dir } = await client(true);
+    await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Old", method: "GET", url: "https://x" } });
+    const id = openAppStateStore({ dataDir: dir }).flattenRequests()[0].id;
+    const out = JSON.parse((await c.callTool({
+      name: "update_request",
+      arguments: { id, patch: { name: "New", url: "https://y" } },
+    })).content[0].text as string);
+    expect(out.name).toBe("New");
+    expect(out.url).toBe("https://y");
+    expect(out.id).toBe(id);
+    const verify = openAppStateStore({ dataDir: dir });
+    expect(verify.flattenRequests()[0].name).toBe("New");
+    verify.close();
+  });
+
+  it("update_request neutralizes prototype-pollution keys", async () => {
+    const { c, dir } = await client(true);
+    await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Old", method: "GET", url: "https://x" } });
+    const id = openAppStateStore({ dataDir: dir }).flattenRequests()[0].id;
+    // JSON.parse makes "__proto__" an own property, as an MCP wire payload would.
+    const patch = JSON.parse('{"__proto__": {"polluted": true}}');
+    await c.callTool({ name: "update_request", arguments: { id, patch } });
+    const verify = openAppStateStore({ dataDir: dir });
+    const item: any = verify.flattenRequests()[0];
+    expect(item.polluted).toBeUndefined();
+    expect(Object.getPrototypeOf(item)).toBe(Object.prototype);
+    expect(item.name).toBe("Old"); // the hostile key was not applied
+    verify.close();
+  });
 });

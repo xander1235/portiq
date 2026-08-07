@@ -47,10 +47,20 @@ export class StateChangeDetector {
 
   /** Compare on-disk version to last-known; fire onExternalChange on advance. */
   check(): void {
-    const current = this.opts.readVersion();
+    let current: number;
+    try {
+      current = this.opts.readVersion();
+    } catch {
+      return; // transient read failure (db locked/closed) — the poll retries
+    }
     if (current > this.lastKnownVersion) {
       this.lastKnownVersion = current;
-      this.opts.onExternalChange(current);
+      try {
+        this.opts.onExternalChange(current);
+      } catch {
+        // A throwing reload handler must never take down the host process; the
+        // version is already recorded so the change is not re-reported.
+      }
     }
   }
 

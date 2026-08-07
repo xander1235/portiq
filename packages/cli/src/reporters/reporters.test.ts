@@ -32,6 +32,38 @@ describe("JsonReporter", () => {
     expect(parsed.kind).toBe("table");
     expect(parsed.rows[0][0]).toBe("1");
   });
+
+  it("redacts sensitive headers in request and response", () => {
+    const out: CommandOutput = {
+      kind: "execution",
+      request: { protocol: "http", method: "GET", url: "https://x/", headers: { Authorization: "Bearer sekret", Cookie: "a=b", "X-Keep": "1" } },
+      response: {
+        status: 200, statusText: "OK", time: 1, duration: 1, httpVersion: "auto",
+        headers: { "set-cookie": "sid=abc", "content-type": "application/json" },
+        body: "{}", json: {},
+      },
+      error: null, tests: null,
+    };
+    const parsed = JSON.parse(new JsonReporter().write(out));
+    expect(parsed.request.headers.Authorization).toBe("<REDACTED>");
+    expect(parsed.request.headers.Cookie).toBe("<REDACTED>");
+    expect(parsed.request.headers["X-Keep"]).toBe("1");
+    expect(parsed.response.headers["set-cookie"]).toBe("<REDACTED>");
+  });
+
+  it("redacts headers inside suite items", () => {
+    const out: CommandOutput = {
+      kind: "suite",
+      label: "API",
+      items: [{ name: "Get", response: {
+        status: 200, statusText: "OK", time: 1, duration: 1, httpVersion: "auto",
+        headers: { "x-api-key": "abc123" }, body: "{}", json: {},
+      }, error: null }],
+      tests: { passed: 1, failed: 0, errored: 0, duration: 1, groups: [], console: [] },
+    };
+    const parsed = JSON.parse(new JsonReporter().write(out));
+    expect(parsed.items[0].response.headers["x-api-key"]).toBe("<REDACTED>");
+  });
 });
 
 describe("testSummaryToJUnit", () => {
@@ -40,6 +72,16 @@ describe("testSummaryToJUnit", () => {
     expect(xml).toContain('<testsuites tests="2" failures="1" errors="0"');
     expect(xml).toContain('name="has token"');
     expect(xml).toContain("<failure");
+  });
+
+  it("strips XML-invalid control characters from text", () => {
+    const xml = testSummaryToJUnit(
+      { ...summary, groups: [{ ...summary.groups[0], entries: [{ type: "fail", text: "bad\x01char\x7f", label: "post", group: "status", duration: 1, errorMessage: "err\x02" }] }] },
+      "run"
+    );
+    expect(xml).not.toContain("\x01");
+    expect(xml).not.toContain("\x7f");
+    expect(xml).not.toContain("\x02");
   });
 });
 

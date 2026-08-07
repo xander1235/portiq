@@ -114,6 +114,7 @@ export async function runRequestItem(item: RequestItem, ctx: RunContext): Promis
       query: interpolate(gql?.query ?? "", vars),
       variables: interpolate(gql?.variables ?? "", vars),
       operationName: gql?.operationName || undefined,
+      hostGuard: ctx.hostGuard,
     });
   } else {
     throw new Error(`Protocol '${protocol}' is not supported headlessly yet`);

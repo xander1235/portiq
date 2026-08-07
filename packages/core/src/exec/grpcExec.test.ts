@@ -67,6 +67,14 @@ describe("buildGrpcPayload", () => {
       );
       expect(p.tls).toBe(true);
     });
+
+    it("defaults a bare host:port target to TLS (parity with the renderer)", () => {
+      const p = buildGrpcPayload(
+        item({ url: "localhost:50051", grpcConfig: { service: "S", method: "M", tls: undefined } }),
+        {}
+      );
+      expect(p.tls).toBe(true);
+    });
   });
 });
 

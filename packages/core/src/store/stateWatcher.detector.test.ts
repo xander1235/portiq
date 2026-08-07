@@ -60,6 +60,27 @@ describe("StateChangeDetector", () => {
     d.check();
     expect(seen).toEqual([]);
   });
+
+  it("swallows a throwing readVersion without crashing the host process", () => {
+    const d = new StateChangeDetector({
+      readVersion: () => { throw new Error("db locked"); },
+      onExternalChange: () => {},
+      initialVersion: 5,
+    });
+    expect(() => d.check()).not.toThrow();
+  });
+
+  it("swallows a throwing onExternalChange and still records the new version", () => {
+    let disk = 5;
+    const d = new StateChangeDetector({
+      readVersion: () => disk,
+      onExternalChange: () => { throw new Error("reload failed"); },
+      initialVersion: 5,
+    });
+    disk = 6;
+    expect(() => d.check()).not.toThrow();
+    expect(d.version).toBe(6);
+  });
 });
 
 describe("debounce", () => {

@@ -147,4 +147,11 @@ describe("pollDeviceToken", () => {
     expect(parsed.device_code).toBe("d-123");
     expect(parsed.grant_type).toBe("urn:ietf:params:oauth:grant-type:device_code");
   });
+
+  it("stops polling once the device code's lifetime has elapsed", async () => {
+    const { fetch } = sequencedFetch([{ error: "authorization_pending" }]);
+    await expect(
+      pollDeviceToken({ ...device, expiresInSeconds: 0 }, { fetch, sleep: async () => {} })
+    ).rejects.toThrow(DeviceFlowExpiredError);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { runRequest, type RunDeps } from "./runRequest";
+import { runRequest, defaultHostGuard, type RunDeps } from "./runRequest";
 import type { HttpResult, RequestItem } from "@portiq/core";
 import type { GrpcSendResult } from "@portiq/core/grpc";
 
@@ -65,7 +65,32 @@ describe("runRequest", () => {
   });
 });
 
+describe("runRequest graphql", () => {
+  it("interpolates header values with env vars before sending", async () => {
+    const sendGraphQL = vi.fn(async () => okResult);
+    const d = { ...deps(async () => okResult), sendGraphQL: sendGraphQL as unknown as RunDeps["sendGraphQL"] };
+    const req = httpReq({
+      protocol: "graphql",
+      method: "POST",
+      graphqlConfig: { query: "{ hello }", headers: { Authorization: "Bearer {{token}}", "X-Name": "{{name}}" } },
+    });
+    await runRequest(req, { token: "abc", name: "portiq" }, d);
+    expect(sendGraphQL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: { Authorization: "Bearer abc", "X-Name": "portiq" },
+      })
+    );
+  });
+});
+
 describe("runRequest gRPC", () => {
+  it("checks the host guard against the resolved grpc url before dispatch", async () => {
+    const guard = vi.fn();
+    const d = { ...grpcDeps(async () => grpcResult), hostGuard: guard };
+    await runRequest(grpcReq(), {}, d);
+    expect(guard).toHaveBeenCalledWith("grpc://127.0.0.1:50051");
+  });
+
   it("dispatches a gRPC request and returns a normalized grpc result", async () => {
     const outcome = await runRequest(grpcReq(), {}, grpcDeps(async () => grpcResult));
     expect(outcome.error).toBeNull();
@@ -84,5 +109,41 @@ describe("runRequest gRPC", () => {
 
   it("still rejects websocket with a RuntimeError", async () => {
     await expect(runRequest(grpcReq({ protocol: "websocket" }), {}, grpcDeps(async () => grpcResult))).rejects.toThrow(/websocket/i);
+  });
+});
+
+describe("defaultHostGuard", () => {
+  it("enforces PORTIQ_EXEC_ALLOW / PORTIQ_EXEC_DENY from the environment", async () => {
+    const prevAllow = process.env.PORTIQ_EXEC_ALLOW;
+    const prevDeny = process.env.PORTIQ_EXEC_DENY;
+    try {
+      process.env.PORTIQ_EXEC_ALLOW = "example.com";
+      delete process.env.PORTIQ_EXEC_DENY;
+      const allowGuard = defaultHostGuard();
+      expect(() => allowGuard("https://example.com/x")).not.toThrow();
+      expect(() => allowGuard("https://evil.com/x")).toThrow(/allow-list/i);
+
+      process.env.PORTIQ_EXEC_ALLOW = "*";
+      process.env.PORTIQ_EXEC_DENY = "blocked.com";
+      const denyGuard = defaultHostGuard();
+      expect(() => denyGuard("https://ok.com/x")).not.toThrow();
+      expect(() => denyGuard("https://blocked.com/x")).toThrow(/deny-list|allow-list|not permitted/i);
+    } finally {
+      if (prevAllow === undefined) delete process.env.PORTIQ_EXEC_ALLOW; else process.env.PORTIQ_EXEC_ALLOW = prevAllow;
+      if (prevDeny === undefined) delete process.env.PORTIQ_EXEC_DENY; else process.env.PORTIQ_EXEC_DENY = prevDeny;
+    }
+  });
+
+  it("is a no-op when no policy env vars are set", () => {
+    const prevAllow = process.env.PORTIQ_EXEC_ALLOW;
+    const prevDeny = process.env.PORTIQ_EXEC_DENY;
+    try {
+      delete process.env.PORTIQ_EXEC_ALLOW;
+      delete process.env.PORTIQ_EXEC_DENY;
+      expect(defaultHostGuard()("https://anything.com/x")).toBeUndefined();
+    } finally {
+      if (prevAllow === undefined) delete process.env.PORTIQ_EXEC_ALLOW; else process.env.PORTIQ_EXEC_ALLOW = prevAllow;
+      if (prevDeny === undefined) delete process.env.PORTIQ_EXEC_DENY; else process.env.PORTIQ_EXEC_DENY = prevDeny;
+    }
   });
 });

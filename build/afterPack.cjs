@@ -37,10 +37,27 @@ exports.default = async function afterPack(context) {
   }
 };
 
+// POSIX-only: resolve the real directory of `$0` so the launcher keeps working
+// when it is reached through a symlink (e.g. `/usr/bin/portiq` → the app's
+// Resources/bin). Without this, `dirname $0` would be `/usr/bin` and the
+// relative references to the bundle / node_modules would break.
+const SYMLINK_BOOTSTRAP = `
+PRG="$0"
+while [ -h "$PRG" ]; do
+  ls="$(ls -ld "$PRG")"
+  link="$(expr "$ls" : '.*-> \\(.*\\)$')"
+  case "$link" in
+    /*) PRG="$link" ;;
+    *) PRG="$(dirname "$PRG")/$link" ;;
+  esac
+done
+DIR="$(cd "$(dirname "$PRG")" && pwd)"
+`;
+
 function shLaunchers(exeRel, nodePathRel) {
   const body = (bundle) =>
     `#!/bin/sh\n` +
-    `DIR="$(cd "$(dirname "$0")" && pwd)"\n` +
+    SYMLINK_BOOTSTRAP +
     `export ELECTRON_RUN_AS_NODE=1\n` +
     `export NODE_PATH="$DIR/${nodePathRel}"\n` +
     `exec "$DIR/${exeRel}" "$DIR/${bundle}" "$@"\n`;
@@ -61,3 +78,6 @@ function cmdLaunchers(exeRel, nodePathRel) {
     { name: "portiq-mcp.cmd", contents: body("portiq-mcp.bundle.cjs"), exec: false },
   ];
 }
+
+exports.shLaunchers = shLaunchers;
+exports.cmdLaunchers = cmdLaunchers;

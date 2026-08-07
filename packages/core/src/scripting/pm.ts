@@ -1,6 +1,7 @@
 import type { RequestResponse } from "../model";
 import { createTestHarness, type TestEntry } from "./testRunner";
 import type { ScriptStep } from "../model";
+import { runSandboxed } from "./sandbox";
 
 export interface PmContext {
   request: any;
@@ -157,6 +158,8 @@ export function buildPm(ctx: PmContext, output: TestEntry[]): Pm {
   return pm;
 }
 
+const SCRIPT_TIMEOUT_MS = 10000;
+
 export async function runScript(code: string, ctx: PmContext): Promise<TestEntry[]> {
   const output: TestEntry[] = [];
   if (!code || !code.trim()) return output;
@@ -165,20 +168,45 @@ export async function runScript(code: string, ctx: PmContext): Promise<TestEntry
   const request = ctx.request || {};
   const response = ctx.response || {};
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const fn = new AsyncFunction("context", "api", "pm", "output", code);
-  try {
-    await fn({ request, response }, undefined, pm, output);
-  } catch (err: any) {
+  const pushError = (err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
     output.push({
       type: "error",
-      text: `Script Error: ${err.message}`,
+      text: `Script Error: ${message}`,
       label: ctx.label ?? "script",
       group: ctx.group,
-      errorType: err.name,
-      errorMessage: err.message
+      errorType: err instanceof Error ? err.name : typeof err,
+      errorMessage: message
     });
+  };
+
+  // Run the script as an async IIFE so top-level `await` keeps working, inside
+  // the sandbox (node:vm on Node; new Function in the browser).
+  const body = `return (async () => {\n${code}\n})();`;
+  const res = runSandboxed(body, ["context", "api", "pm", "output"], [{ request, response }, undefined, pm, output], {
+    timeoutMs: SCRIPT_TIMEOUT_MS,
+  });
+  if (!res.ok) {
+    pushError(new Error(res.error ?? "Script execution failed"));
+    return output;
+  }
+  try {
+    const value = res.value as unknown;
+    if (value && typeof (value as PromiseLike<unknown>).then === "function") {
+      // The vm-timeout above covers synchronous spin; guard the async
+      // continuation with a wall-clock race so a never-resolving script
+      // cannot hang the caller indefinitely. The guard timer is unref'd so it
+      // never keeps a one-shot process (CLI) alive after the script settles.
+      await Promise.race([
+        value as PromiseLike<unknown>,
+        new Promise<never>((_resolve, reject) => {
+          const t = setTimeout(() => reject(new Error(`Script timed out after ${SCRIPT_TIMEOUT_MS}ms`)), SCRIPT_TIMEOUT_MS);
+          t.unref();
+        }),
+      ]);
+    }
+  } catch (err) {
+    pushError(err);
   }
   return output;
 }

@@ -9,6 +9,9 @@ import { buildMultipartBody, type MultipartPart } from "../exec/multipart";
 const ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const MAX_URL_LENGTH = 8192;
 const MAX_BODY_LENGTH = 50 * 1024 * 1024; // 50 MB
+const MAX_RESPONSE_BODY_LENGTH = 50 * 1024 * 1024; // 50 MB
+const MAX_REDIRECTS = 10;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
 
 export interface HttpSendPayload {
@@ -46,6 +49,27 @@ function validateString(val: unknown, maxLen: number, label: string): void {
   }
 }
 
+/** Strip credentials and secret query/hash fragments from any URL in an error
+ *  message so failed requests never leak tokens into MCP/CLI output. */
+export function scrubUrls(input: string): string {
+  if (!input) return input;
+  return input.replace(/https?:\/\/[^\s"'`<>)]+/gi, (url) => {
+    try {
+      const u = new URL(url);
+      if (u.username || u.password || u.search || u.hash) {
+        u.username = "";
+        u.password = "";
+        u.search = "";
+        u.hash = "";
+        return u.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  });
+}
+
 function formatErrorMessage(err: any): string {
   let errorMsg = err?.message || String(err);
   if (err?.name === "AggregateError" && err.errors) {
@@ -57,15 +81,56 @@ function formatErrorMessage(err: any): string {
       errorMsg += `: ${err.cause.message || String(err.cause)}`;
     }
   }
-  return errorMsg;
+  return scrubUrls(errorMsg);
+}
+
+/** Size-capped response body reader. Throws when the body exceeds `maxBytes`. */
+export async function readResponseText(response: Response, maxBytes: number): Promise<string> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Response body exceeds maximum size of ${maxBytes} bytes`);
+  }
+  if (!response.body) return response.text();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`Response body exceeds maximum size of ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 export class HttpTransport {
   private pending = new Map<string, { cancel: () => void }>();
   private appVersion: string;
+  private hostGuard?: (url: string) => void;
 
-  constructor(opts: { appVersion?: string } = {}) {
+  constructor(opts: { appVersion?: string; hostGuard?: (url: string) => void } = {}) {
     this.appVersion = opts.appVersion ?? "";
+    this.hostGuard = opts.hostGuard;
+  }
+
+  private guardUrl(url: string): void {
+    if (!this.hostGuard) return;
+    try {
+      this.hostGuard(url);
+    } catch (err: any) {
+      throw new Error(err?.message || String(err));
+    }
   }
 
   async send(payload: HttpSendPayload): Promise<SendResult> {
@@ -100,6 +165,7 @@ export class HttpTransport {
     }
 
     try {
+      this.guardUrl(url);
       const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30000;
       const normalizedVersion = httpVersion || "auto";
       let requestBody: string | Buffer | undefined = body;
@@ -184,28 +250,54 @@ export class HttpTransport {
     }
 
     try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: METHODS_WITHOUT_BODY.has(method) ? undefined : (body as any),
-        signal: controller.signal,
-      });
+      let currentUrl = url;
+      let currentMethod = method;
+      let currentBody = body;
 
-      const text = await response.text();
-      const duration = Date.now() - startedAt;
-      const headersObj: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        headersObj[key] = value;
-      });
+      for (let hops = 0; ; hops++) {
+        const response = await fetch(currentUrl, {
+          method: currentMethod,
+          headers,
+          body: METHODS_WITHOUT_BODY.has(currentMethod) ? undefined : (currentBody as any),
+          signal: controller.signal,
+          redirect: "manual",
+        });
 
-      return buildHttpResult({
-        status: response.status,
-        statusText: response.statusText,
-        headers: headersObj,
-        body: text,
-        duration,
-        httpVersion: "auto",
-      });
+        const location = response.headers.get("location");
+        if (REDIRECT_STATUSES.has(response.status) && location !== null) {
+          if (hops >= MAX_REDIRECTS) {
+            await response.body?.cancel().catch(() => {});
+            return { error: `Too many redirects (max ${MAX_REDIRECTS})` };
+          }
+          const nextUrl = new URL(location, currentUrl).toString();
+          this.guardUrl(nextUrl); // re-check every hop against the host policy
+          await response.body?.cancel().catch(() => {});
+          // 301/302/303 switch to GET and drop the body (except GET/HEAD on 301/302);
+          // 307/308 preserve method + body.
+          if (response.status === 303 || (response.status !== 307 && response.status !== 308 && !METHODS_WITHOUT_BODY.has(currentMethod))) {
+            currentMethod = "GET";
+            currentBody = undefined;
+          }
+          currentUrl = nextUrl;
+          continue;
+        }
+
+        const text = await readResponseText(response, MAX_RESPONSE_BODY_LENGTH);
+        const duration = Date.now() - startedAt;
+        const headersObj: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          headersObj[key] = value;
+        });
+
+        return buildHttpResult({
+          status: response.status,
+          statusText: response.statusText,
+          headers: headersObj,
+          body: text,
+          duration,
+          httpVersion: "auto",
+        });
+      }
     } catch (err: any) {
       const aborted = buildAbortResult(abortReason || "");
       if (aborted) return aborted;
@@ -233,17 +325,29 @@ export class HttpTransport {
 
       let settled = false;
       let abortReason: string | null = null;
+      let deadlineHandle: ReturnType<typeof setTimeout> | null = null;
 
       const finish = (result: SendResult) => {
         if (settled) return;
         settled = true;
+        if (deadlineHandle) clearTimeout(deadlineHandle);
         if (requestId) this.pending.delete(requestId);
         resolve(result);
       };
 
       const req = client.request(requestOptions, (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        let total = 0;
+        res.on("data", (chunk) => {
+          if (settled) return;
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += buf.length;
+          if (total > MAX_RESPONSE_BODY_LENGTH) {
+            req.destroy(new Error(`Response body exceeds maximum size of ${MAX_RESPONSE_BODY_LENGTH} bytes`));
+            return;
+          }
+          chunks.push(buf);
+        });
         res.on("end", () => {
           const bodyText = Buffer.concat(chunks).toString("utf8");
           const headersObj: Record<string, string> = Object.fromEntries(
@@ -271,14 +375,14 @@ export class HttpTransport {
           finish(aborted);
           return;
         }
-        finish({ error: err.message || String(err) });
+        finish({ error: scrubUrls(err.message || String(err)) });
       });
 
       if (timeoutMs > 0) {
-        req.setTimeout(timeoutMs, () => {
+        deadlineHandle = setTimeout(() => {
           abortReason = "timeout";
           req.destroy(new Error("Request timeout"));
-        });
+        }, timeoutMs);
       }
 
       if (requestId) {
@@ -347,6 +451,7 @@ export class HttpTransport {
       const responseHeaders: Record<string, string> = {};
       let responseStatus = 0;
       const chunks: Buffer[] = [];
+      let total = 0;
 
       stream.on("response", (headersMap) => {
         responseStatus = Number(headersMap[":status"] || 0);
@@ -358,7 +463,19 @@ export class HttpTransport {
       });
 
       stream.on("data", (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        if (settled) return;
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        total += buf.length;
+        if (total > MAX_RESPONSE_BODY_LENGTH) {
+          try {
+            stream.close();
+          } catch {
+            /* ignore */
+          }
+          finish({ error: `Response body exceeds maximum size of ${MAX_RESPONSE_BODY_LENGTH} bytes` });
+          return;
+        }
+        chunks.push(buf);
       });
 
       stream.on("end", () => {
@@ -380,7 +497,7 @@ export class HttpTransport {
           finish(aborted);
           return;
         }
-        finish({ error: err.message || String(err) });
+        finish({ error: scrubUrls(err.message || String(err)) });
       });
 
       session.on("error", (err: any) => {
@@ -389,7 +506,7 @@ export class HttpTransport {
           finish(aborted);
           return;
         }
-        finish({ error: err.message || String(err) });
+        finish({ error: scrubUrls(err.message || String(err)) });
       });
 
       if (timeoutMs > 0) {

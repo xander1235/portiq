@@ -5,7 +5,7 @@ import { xml as xmlLang } from '@codemirror/lang-xml';
 import { lintGutter } from '@codemirror/lint';
 
 import { xmlLinter } from "../../../utils/codemirror/xmlExtensions";
-import { customJsonLinter } from "../../../utils/codemirror/jsonExtensions";
+import { customJsonLinter, jsonCommentHighlight } from "../../../utils/codemirror/jsonExtensions";
 import { envVarHighlightPlugin, createEnvAutoComplete, createEnvHoverTooltip } from "../../../utils/codemirror/environmentExtensions";
 import { search } from '@codemirror/search';
 import { createCustomSearchPanel, customSearchKeymap } from "../../../utils/codemirror/customSearchPanel";
@@ -18,6 +18,7 @@ const searchWithReplace = () => [
 import { TableEditor, EnvInput } from "../../TableEditor";
 import { FullScreenModal } from "../../Modals/FullScreenModal";
 import { prettifyXml } from "../../../services/format";
+import { stripJsonComments } from "@portiq/core";
 import styles from "../RequestEditor.module.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cmTheme, indentGuides } from "../../../theme/codemirrorTheme";
@@ -130,8 +131,7 @@ export function BodyTab({
                     onClick={() => {
                         try {
                             if (bodyType === "json") {
-                                const stripComments = (str: string) => str.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
-                                const parsed = JSON.parse(stripComments(bodyText));
+                                const parsed = JSON.parse(stripJsonComments(bodyText));
                                 setBodyText(JSON.stringify(parsed, null, 2));
                             } else if (bodyType === "xml") {
                                 setBodyText(prettifyXml(bodyText));
@@ -176,8 +176,7 @@ export function BodyTab({
                     onClick={() => {
                         try {
                             if (bodyType === "json") {
-                                const stripComments = (str: string) => str.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
-                                const parsed = JSON.parse(stripComments(bodyText));
+                                const parsed = JSON.parse(stripJsonComments(bodyText));
                                 setBodyText(JSON.stringify(parsed, null, 2));
                             } else if (bodyType === "xml") {
                                 setBodyText(prettifyXml(bodyText));
@@ -216,7 +215,7 @@ export function BodyTab({
                             theme={cmTheme(theme)}
                             extensions={
                                 bodyType === "json"
-                                    ? [json(), customJsonLinter, lintGutter(), indentGuides, envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
+                                    ? [json(), customJsonLinter, jsonCommentHighlight, lintGutter(), indentGuides, envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                     : bodyType === "xml"
                                         ? [xmlLang(), xmlLinter, lintGutter(), indentGuides, envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]
                                         : [envAutoComplete, envVarHighlightPlugin, envHoverTooltip, ...searchWithReplace()]

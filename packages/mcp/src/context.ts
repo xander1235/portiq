@@ -1,6 +1,12 @@
-import { openAppStateStore, HttpTransport, type AppStateStore } from "@portiq/core";
+import {
+  openAppStateStore,
+  HttpTransport,
+  compileHostPolicy,
+  makeHostGuard,
+  type AppStateStore,
+  type HostPolicy,
+} from "@portiq/core";
 import type { ServerConfig } from "./config";
-import { compileHostPolicy, type HostPolicy } from "./hostPolicy";
 
 export interface ServerContext {
   config: ServerConfig;
@@ -12,8 +18,8 @@ export interface ServerContext {
 
 export function buildContext(config: ServerConfig): ServerContext {
   const store = openAppStateStore({ dataDir: config.dataDir });
-  const transport = new HttpTransport({ appVersion: config.appVersion });
   const hostPolicy = compileHostPolicy(config.execAllow ?? [], config.execDeny ?? []);
+  const transport = new HttpTransport({ appVersion: config.appVersion, hostGuard: makeHostGuard(hostPolicy) });
   return {
     config,
     store,

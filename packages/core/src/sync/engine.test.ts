@@ -66,7 +66,9 @@ describe("syncPullToStore optimistic concurrency", () => {
       collections: racing.collections, environments: racing.environments,
       flattenRequests: racing.flattenRequests, close: racing.close,
     };
-    racing.save(sample()); // underlying now version 2
+    const concurrent = sample();
+    concurrent.collections[0].name = "Concurrent edit";
+    racing.save(concurrent); // genuine change → underlying now version 2
     await expect(syncPullToStore(remote, {}, conflicting as any)).rejects.toBeInstanceOf(SyncConflictError);
     racing.close();
     store.close();

@@ -44,13 +44,13 @@ export function maskEnvironments(environments: any[], maskedVarIds: Set<string>)
 export function serializeCollectionItems(items: any[], basePath: string, files: Record<string, any>): void {
   (items || []).forEach((item: any, index: number) => {
     if (item.type === "folder") {
-      const folderDir = `${basePath}/${slugify(item.name)}__${item.id}`;
+      const folderDir = `${basePath}/${slugify(item.name)}__${slugify(item.id)}`;
       files[`${folderDir}/folder.json`] = { id: item.id, type: "folder", name: item.name, sortOrder: index };
       serializeCollectionItems(item.items || [], `${folderDir}/items`, files);
       return;
     }
     if (item.type === "request") {
-      const requestPath = `${basePath}/${slugify(item.name)}__${item.id}.request.json`;
+      const requestPath = `${basePath}/${slugify(item.name)}__${slugify(item.id)}.request.json`;
       files[requestPath] = { ...sanitizeRequestSecrets(item, `request:${item.id}`), sortOrder: index };
     }
   });
@@ -111,7 +111,7 @@ export function buildWorkspaceFiles(appState: AppState, maskedVarIds: Set<string
   files[`${WORKSPACE_ROOT}/environments/environments.json`] = environments;
 
   collections.forEach((collection: any, index: number) => {
-    const collectionDir = `${WORKSPACE_ROOT}/collections/${slugify(collection.name)}__${collection.id}`;
+    const collectionDir = `${WORKSPACE_ROOT}/collections/${slugify(collection.name)}__${slugify(collection.id)}`;
     files[`${collectionDir}/collection.json`] = {
       id: collection.id,
       type: "collection",
@@ -170,7 +170,7 @@ export function buildHistoryFiles(history: any[], collections: any[]): Record<st
       WORKSPACE_ROOT,
       "history",
       day,
-      `${slugify(collectionName)}__${entry.request?.collectionId || indexedMeta?.collectionId || "unassigned"}`,
+      `${slugify(collectionName)}__${slugify(entry.request?.collectionId || indexedMeta?.collectionId || "unassigned")}`,
       ...normalizedFolderPath,
     ];
 

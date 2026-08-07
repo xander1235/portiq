@@ -16,6 +16,7 @@ export * from "./exec/autoHeaders";
 export * from "./exec/multipart";
 export * from "./exec/assembleRequest";
 export * from "./exec/grpcExec";
+export * from "./exec/hostPolicy";
 export * from "./import/curlParser";
 export * from "./import/types";
 export * from "./import/ids";

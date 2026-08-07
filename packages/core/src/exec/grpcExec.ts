@@ -25,10 +25,10 @@ export function buildGrpcPayload(
     metadata,
     callType: cfg.callType || "UNARY",
     deadline: cfg.deadline || 30000,
-    // Explicit true/false always wins; only an unset tls falls back to scheme
-    // detection so a plaintext grpc:// target isn't silently forced onto TLS
-    // (GrpcProtocol.buildRequest itself defaults tls to true when undefined).
-    tls: cfg.tls !== undefined ? cfg.tls : /^grpcs:\/\//i.test(item.url ?? ""),
+    // Explicit true/false always wins; an unset tls falls back to scheme
+    // detection: grpc:// means plaintext, anything else (grpcs:// or a bare
+    // host:port target) defaults to TLS for parity with the renderer.
+    tls: cfg.tls !== undefined ? cfg.tls : !/^grpc:\/\//i.test(item.url ?? ""),
     protoContent: cfg.protoContent || "",
     protoPath: cfg.protoPath,
   });

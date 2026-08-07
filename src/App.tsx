@@ -13,6 +13,7 @@ import {
   looksLikeCurl,
   parameterizeParsedCurl,
   InvalidJsonBodyError,
+  stripJsonComments,
   type ParsedCurl,
 } from "@portiq/core";
 
@@ -1960,12 +1961,6 @@ function App() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, bodyType, bodyText, bodyRows, headersText, headersRows, url, paramsRows, appVersion]);
-
-  function stripJsonComments(text: string) {
-    return text
-      .replace(/\/\/.*$/gm, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-  }
 
   function buildUrlWithParams(interpolateValues = true) {
     const val = (v: string) => interpolateValues ? interpolate(v) : v;

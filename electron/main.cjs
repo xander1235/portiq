@@ -65,16 +65,46 @@ function initDb() {
   const dbPath = path.join(dir, "appdata.sqlite");
 
   // One-time migration: older dev builds used a lowercase "portiq" userData dir.
+  // Copy atomically (tmp + rename in the same directory) so a crash mid-copy
+  // can never leave a partially-written appdata.sqlite behind.
   const legacyDir = path.join(path.dirname(dir), "portiq");
   const legacyDb = path.join(legacyDir, "appdata.sqlite");
   if (!fs.existsSync(dbPath) && fs.existsSync(legacyDb)) {
-    fs.copyFileSync(legacyDb, dbPath);
+    const tmpDb = dbPath + ".migrate.tmp";
+    fs.copyFileSync(legacyDb, tmpDb);
+    fs.renameSync(tmpDb, dbPath);
   }
 
   kvStore = core.openKvStore({ dataDir: dir });
   // Normalized per-entity store; shares the same kv handle so the migration and
   // dual-written legacy blob stay consistent within the process.
   appStore = core.openAppStateStore({ dataDir: dir }, kvStore);
+}
+
+// ── IPC sender trust ──
+// Every handler is gated on the invocation coming from the top-level frame of
+// one of our own windows, serving our own app content. Anything else (a stray
+// webContents, a subframe, a navigation to remote content) is rejected so
+// privileged IPC can never be reached by untrusted code.
+function isTrustedIpcSender(event) {
+  try {
+    if (!event || !event.sender) return false;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+    const frame = event.senderFrame;
+    if (!frame || frame !== event.sender.mainFrame) return false;
+    const url = event.sender.getURL();
+    if (isDev) return url.startsWith("http://localhost:5173");
+    return url.startsWith("file://");
+  } catch {
+    return false;
+  }
+}
+
+function requireTrustedSender(event) {
+  if (!isTrustedIpcSender(event)) {
+    throw new Error("Untrusted IPC sender");
+  }
 }
 
 function createWindow() {
@@ -97,6 +127,15 @@ function createWindow() {
       return { action: "deny" };
     }
     return { action: "allow" };
+  });
+
+  // Prevent the app window itself from ever navigating away from our own
+  // content (a link click, location change, or drive-by redirect to a remote
+  // or unexpected file:// target). The only navigation allowed is the initial
+  // load below.
+  win.webContents.on("will-navigate", (event, url) => {
+    const allowed = isDev ? url.startsWith("http://localhost:5173") : url.startsWith("file://");
+    if (!allowed) event.preventDefault();
   });
 
   if (isDev) {
@@ -160,17 +199,23 @@ app.on("before-quit", () => {
   }
 });
 
-ipcMain.handle("app:ping", async () => "pong");
+ipcMain.handle("app:ping", async (event) => {
+  requireTrustedSender(event);
+  return "pong";
+});
 
-ipcMain.handle("app:getVersion", async () => {
+ipcMain.handle("app:getVersion", async (event) => {
+  requireTrustedSender(event);
   try { return app.getVersion(); } catch { return ""; }
 });
 
-ipcMain.handle("http:sendRequest", async (_event, payload) => {
+ipcMain.handle("http:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
   return httpTransport.send(payload);
 });
 
-ipcMain.handle("http:cancelRequest", async (_event, payload) => {
+ipcMain.handle("http:cancelRequest", async (event, payload) => {
+  requireTrustedSender(event);
   try {
     return httpTransport.cancel(payload?.requestId);
   } catch (err) {
@@ -179,12 +224,14 @@ ipcMain.handle("http:cancelRequest", async (_event, payload) => {
 });
 
 // ── GraphQL request handler (HTTP POST with GraphQL payload) ──
-ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
+ipcMain.handle("graphql:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
   return core.sendGraphQL(payload);
 });
 
 // ── gRPC request handler (native transport via @grpc/grpc-js) ──
-ipcMain.handle("grpc:sendRequest", async (_event, payload) => {
+ipcMain.handle("grpc:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
   try {
     return await grpcTransport.send(payload);
   } catch (err) {
@@ -202,7 +249,8 @@ ipcMain.handle("grpc:sendRequest", async (_event, payload) => {
   }
 });
 
-ipcMain.handle("grpc:cancelRequest", async (_event, payload) => {
+ipcMain.handle("grpc:cancelRequest", async (event, payload) => {
+  requireTrustedSender(event);
   try {
     return grpcTransport.cancel(payload && payload.requestId);
   } catch (err) {
@@ -211,40 +259,49 @@ ipcMain.handle("grpc:cancelRequest", async (_event, payload) => {
 });
 
 // ── WebSocket connection manager ──
-ipcMain.handle("ws:connect", async (_event, payload) => {
+ipcMain.handle("ws:connect", async (event, payload) => {
+  requireTrustedSender(event);
   return wsManager.connect(payload);
 });
 
-ipcMain.handle("ws:send", async (_event, payload) => {
+ipcMain.handle("ws:send", async (event, payload) => {
+  requireTrustedSender(event);
   return wsManager.sendMessage(payload);
 });
 
-ipcMain.handle("ws:disconnect", async (_event, payload) => {
+ipcMain.handle("ws:disconnect", async (event, payload) => {
+  requireTrustedSender(event);
   return wsManager.disconnect(payload);
 });
 
-ipcMain.handle("ws:getMessages", async (_event, payload) => {
+ipcMain.handle("ws:getMessages", async (event, payload) => {
+  requireTrustedSender(event);
   return wsManager.getMessages(payload);
 });
 
 // ── Mock Server Manager ──
-ipcMain.handle("mock:start", async (_event, payload) => {
+ipcMain.handle("mock:start", async (event, payload) => {
+  requireTrustedSender(event);
   return mockManager.start(payload);
 });
 
-ipcMain.handle("mock:stop", async (_event, payload) => {
+ipcMain.handle("mock:stop", async (event, payload) => {
+  requireTrustedSender(event);
   return mockManager.stop(payload);
 });
 
-ipcMain.handle("mock:list", async () => {
+ipcMain.handle("mock:list", async (event) => {
+  requireTrustedSender(event);
   return mockManager.list();
 });
 
-ipcMain.handle("mock:updateRoutes", async (_event, payload) => {
+ipcMain.handle("mock:updateRoutes", async (event, payload) => {
+  requireTrustedSender(event);
   return mockManager.updateRoutes(payload);
 });
 
-ipcMain.handle("db:saveState", async (_event, key, value) => {
+ipcMain.handle("db:saveState", async (event, key, value) => {
+  requireTrustedSender(event);
   if (!kvStore) initDb();
   if (key === "appState") {
     // Decompose into per-entity rows; the legacy blob is dual-written inside save()
@@ -260,7 +317,8 @@ ipcMain.handle("db:saveState", async (_event, key, value) => {
   return { ok: true };
 });
 
-ipcMain.handle("db:loadState", async (_event, key) => {
+ipcMain.handle("db:loadState", async (event, key) => {
+  requireTrustedSender(event);
   if (!kvStore) initDb();
   if (key === "appState") {
     const { state } = appStore.load();
@@ -269,7 +327,8 @@ ipcMain.handle("db:loadState", async (_event, key) => {
   return kvStore.get(key);
 });
 
-ipcMain.handle("db:clearAll", async () => {
+ipcMain.handle("db:clearAll", async (event) => {
+  requireTrustedSender(event);
   try {
     if (!kvStore) initDb();
     kvStore.clear();
@@ -282,13 +341,19 @@ ipcMain.handle("db:clearAll", async () => {
   }
 });
 
-ipcMain.handle("db:getDataPath", async () => {
+ipcMain.handle("db:getDataPath", async (event) => {
+  requireTrustedSender(event);
   return app.getPath("userData");
 });
 
-ipcMain.handle("ai:saveConfig", (_event, config) => {
+ipcMain.handle("ai:saveConfig", (event, config) => {
+  requireTrustedSender(event);
   try {
     aiCore.saveAiConfig(config || {}, { encryptor: getAiEncryptor() });
+    // saveAiConfig writes the AI settings row through its own kv handle on the
+    // same database; record the write so the file watcher does not treat it as
+    // an external change and reload the renderer.
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };
@@ -304,19 +369,22 @@ function shimSourceDir() {
   return path.join(process.resourcesPath, "bin");
 }
 // Guards against clobbering/deleting a file that isn't ours: true only if
-// `targetPath` is a symlink whose resolved target lives under our own
-// Resources/bin (`shimSrcDir`). Any other file/symlink there is left alone.
+// `targetPath` is a symlink whose DIRECT target (readlink, not the resolved
+// chain) points into our own Resources/bin (`shimSrcDir`). Any other file,
+// symlink, or symlink-to-symlink there is left alone.
 function isOwnPortiqShim(targetPath, shimSrcDir) {
   try {
     const st = fs.lstatSync(targetPath);
     if (!st.isSymbolicLink()) return false;
-    const dest = fs.realpathSync(targetPath);
-    return dest.startsWith(shimSrcDir);
+    const dest = fs.readlinkSync(targetPath);
+    const resolved = path.resolve(path.dirname(targetPath), dest);
+    return resolved.startsWith(shimSrcDir + path.sep);
   } catch {
     return false;
   }
 }
-ipcMain.handle("cli:installShims", async () => {
+ipcMain.handle("cli:installShims", async (event) => {
+  requireTrustedSender(event);
   if (process.platform === "win32") {
     return { error: "On Windows the installer manages PATH automatically." };
   }
@@ -353,7 +421,8 @@ ipcMain.handle("cli:installShims", async () => {
     return { error: err && err.message ? err.message : String(err) };
   }
 });
-ipcMain.handle("cli:uninstallShims", async () => {
+ipcMain.handle("cli:uninstallShims", async (event) => {
+  requireTrustedSender(event);
   if (process.platform === "win32") return { ok: true };
   const src = shimSourceDir();
   for (const name of ["portiq", "portiq-mcp"]) {

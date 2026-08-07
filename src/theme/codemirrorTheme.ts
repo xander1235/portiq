@@ -8,13 +8,14 @@ import type { Theme } from "./theme";
 type Palette = {
   bg: string; text: string; caret: string; selection: string;
   gutterBg: string; gutterText: string; border: string;
-  key: string; str: string; num: string; bool: string; nul: string; punct: string;
+  key: string; str: string; num: string; bool: string; nul: string; punct: string; comment: string;
 };
 
 const DARK: Palette = {
   bg: "#0c0e13", text: "#c9d1e0", caret: "#ff7a59", selection: "#2a3346",
   gutterBg: "#0a0c10", gutterText: "#5a6478", border: "#222839",
   key: "#2ed3c6", str: "#8fe3a1", num: "#ff9d73", bool: "#b79cff", nul: "#b79cff", punct: "#5f6a80",
+  comment: "#7a8499",
 };
 // Syntax/gutter colors darkened to meet WCAG AA (>=4.5:1) on the white bg —
 // the previous values (key 3.97, str 4.33, num 4.03, punct 2.57, gutter 1.88)
@@ -23,6 +24,7 @@ const LIGHT: Palette = {
   bg: "#ffffff", text: "#2b3240", caret: "#d15a2c", selection: "#dbeafe",
   gutterBg: "#fafbfc", gutterText: "#6b7280", border: "#eceef2",
   key: "#0a6b64", str: "#1f6b38", num: "#a8410f", bool: "#6b4fd0", nul: "#6b4fd0", punct: "#5c6472",
+  comment: "#6b7280",
 };
 
 function build(p: Palette, dark: boolean): Extension {
@@ -37,6 +39,7 @@ function build(p: Palette, dark: boolean): Extension {
       ".cm-gutters": { backgroundColor: p.gutterBg, color: p.gutterText, border: "none", borderRight: `1px solid ${p.border}` },
       ".cm-activeLineGutter": { backgroundColor: "transparent" },
       ".cm-activeLine": { backgroundColor: "transparent" },
+      ".cm-content .cm-json-comment": { color: p.comment, fontStyle: "italic" },
     },
     { dark }
   );

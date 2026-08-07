@@ -3,6 +3,7 @@ import { resolveStepConfig } from "./linkResolve";
 import { buildSendPayload } from "./buildRequest";
 import { resolveTemplate, type ResolveContext } from "./resolver";
 import { descendants, ancestors } from "./traverse";
+import { evalConditionSandboxed, runSandboxed } from "../scripting/sandbox";
 
 export interface SendResult {
   status: number; statusText?: string; headers?: Record<string, string>;
@@ -42,10 +43,9 @@ export function topoSort(graph: DagGraph): string[] {
 
 function evalCondition(expr: string, ctx: ResolveContext): boolean {
   if (!expr || !expr.trim()) return true;
-  try {
-    const fn = new Function("steps", "env", `"use strict"; return (${expr});`);
-    return !!fn(ctx.steps, ctx.env);
-  } catch { return false; }
+  const res = evalConditionSandboxed(expr, ctx.steps, ctx.env);
+  if (!res.ok) return false;
+  return res.value;
 }
 
 function activeNodeSet(graph: DagGraph, mode: RunMode, targetId?: string): Set<string> {
@@ -123,14 +123,13 @@ export async function runFlow(graph: DagGraph, deps: RunDeps, options: RunOption
       const script = (node.data as { script: string }).script || "";
       const emissions: unknown[] = [];
       const emit = (d: unknown) => emissions.push(d);
-      try {
-        const fn = new Function("steps", "env", "emit", `"use strict"; ${script}`);
-        fn(steps, deps.env, emit);
+      const res = runSandboxed(script, ["steps", "env", "emit"], [steps, deps.env, emit]);
+      if (res.ok) {
         const data = emissions.length <= 1 ? emissions[0] : emissions;
         steps[node.name] = { response: { status: 200, data, body: data } };
         node.status = "success"; deps.onStatus(id, "success", { result: steps[node.name] });
-      } catch (err) {
-        steps[node.name] = { response: { status: 0, error: (err as Error).message } };
+      } else {
+        steps[node.name] = { response: { status: 0, error: res.error ?? "Transform script failed" } };
         node.status = "error"; deps.onStatus(id, "error", { result: steps[node.name] });
       }
       continue;

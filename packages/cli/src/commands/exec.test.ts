@@ -33,6 +33,17 @@ describe("buildExecRequest", () => {
   it("throws UsageError when neither url nor --from-curl is given", () => {
     expect(() => buildExecRequest({ header: [] })).toThrow();
   });
+
+  it("maps --token to an Authorization: Bearer header for HTTP requests", () => {
+    const req = buildExecRequest({ url: "https://x/", header: [], token: "s3cr3t" });
+    expect(req.headersRows?.some((r) => r.key === "Authorization" && r.value === "Bearer s3cr3t")).toBe(true);
+  });
+
+  it("does not override an explicit Authorization header", () => {
+    const req = buildExecRequest({ url: "https://x/", header: ["Authorization: Basic dXNlcg=="], token: "s3cr3t" });
+    expect(req.headersRows?.filter((r) => r.key.toLowerCase() === "authorization")).toHaveLength(1);
+    expect(req.headersRows?.[0].value).toBe("Basic dXNlcg==");
+  });
 });
 
 function run(args: string[]): Promise<{ out: string; code: number | undefined }> {
