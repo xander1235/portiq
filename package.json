@@ -100,7 +100,9 @@
         "AppImage",
         "deb",
         "rpm"
-      ],
+      ]
+    },
+    "deb": {
       "afterInstall": "build/linux-after-install.sh",
       "afterRemove": "build/linux-after-remove.sh"
     }
