@@ -124,8 +124,10 @@ portiq exec grpc://localhost:50051 --service pkg.UserService -X GetUser --reflec
 ```
 
 HTTP flags: `-X, --method <method>`, `-H, --header <header>` (repeatable,
-`"Key: Value"`), `-d, --data <body>`, `--from-curl <command>`. Requires a
-`<url>` or `--from-curl`.
+`"Key: Value"`), `-d, --data <body>`, `--from-curl <command>`, `--token <token>`
+(sets `Authorization: Bearer <token>` — only applied when no `Authorization`
+header is already present, via `-H` or the curl import). Requires a `<url>` or
+`--from-curl`.
 
 gRPC flags (gRPC mode is triggered by `--grpc`, `--service`, or a
 `grpc://`/`grpcs://` URL scheme): `--grpc`, `--service <name>` (required),
@@ -220,6 +222,26 @@ portiq mock "API" --port 8080
 Flags: `--port <number>` (default `3000`; `0` picks an OS-assigned ephemeral
 port; range `0`–`65535`). Press `Ctrl-C` to stop.
 
+## Host guard (SSRF protection)
+
+`exec`, `run`, `mcp exec`, and the core HTTP/GraphQL transports enforce an
+allow/deny host policy before dialing. Configure it with environment variables:
+
+- `PORTIQ_EXEC_ALLOW` — comma-separated list of allowed host targets (e.g.
+  `api.example.com,*.internal.corp`). When set to a non-empty list, only listed
+  hosts are reachable.
+- `PORTIQ_EXEC_DENY` — comma-separated deny-list (e.g. `169.254.169.169` for
+  the cloud metadata IP). Denied hosts are blocked even if also allow-listed
+  (deny wins).
+
+If neither is set, no restriction is applied. Host targets accept wildcards
+(`*` matches any host) and IPv4/IPv6/hostnames; port is optional (`:443`).
+Every redirect hop is re-checked against the policy, so a response cannot be
+used to bounce the request to an unvetted host. `run` on saved requests
+inherits the same guard for HTTP, gRPC, and GraphQL.
+
+## Reporters
+
 ### `sync login | push | pull | status`
 
 Sync your workspace with a git remote (GitHub or a local bare/working repo).
@@ -259,6 +281,11 @@ redaction — do not push to shared or untrusted remotes.
 - `pretty` (default on a TTY) — colorized human-readable output; `--no-color` disables ANSI.
 - `json` (default when piped) — `JSON.stringify` of the structured command output.
 - `junit` — JUnit XML for `run`'s test results (CI-friendly).
+
+The `json` reporter redacts sensitive response headers (`authorization`,
+`proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`,
+`api_token`, `calltoken`) as `<REDACTED>` so secrets don't leak into piped
+output or log files.
 
 `-o, --output <file>` writes the chosen reporter's output to a file instead of stdout.
 

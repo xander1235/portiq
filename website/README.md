@@ -9,6 +9,10 @@ This is a standalone static website for Portiq. It is intentionally separate fro
 - `assets/portiq-logo.png` - local logo used by the site
 - `screenshots/` - product screenshots used in the gallery
 
+The landing page also highlights Portiq's local-first security features — sandboxed
+scripting, an SSRF host guard (env-configurable in the CLI via
+`PORTIQ_EXEC_ALLOW` / `PORTIQ_EXEC_DENY`), and a shared core engine with the CLI.
+
 ## Free Hosting Options
 
 - GitHub Pages
