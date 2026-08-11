@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Use Node.js 20
         uses: actions/setup-node@v5
@@ -88,7 +88,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Pull the human-written highlights for this tag out of CHANGELOG.md
       # (matches the "## <version>" heading; empty if none is written yet).
