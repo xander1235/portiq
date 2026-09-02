@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
-import type { ParsedCurl } from "../../services/curlParser";
-import { collectTemplateVars, findParameterizableVars } from "../../services/curlParser";
+import type { ParsedCurl } from "@portiq/core";
+import { collectTemplateVars, findParameterizableVars } from "@portiq/core";
 
 interface CurlImportModalProps {
   parsed: ParsedCurl;

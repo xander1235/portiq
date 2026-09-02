@@ -1,95 +1,16 @@
 import { useLocalStorage } from "./useLocalStorage";
-import type { DagGraph } from "../components/ProtocolPanes/dag/types";
-import { ScriptStep, toSteps } from "../services/scriptSteps";
+import type { DagGraph } from "@portiq/core/flows";
+import { ScriptStep, toSteps } from "@portiq/core";
+import { parsePostmanCollection, looksLikePostman, parseOpenApi, looksLikeOpenApi } from "@portiq/core";
 
-export interface RequestRow {
-    key: string;
-    value: string;
-    comment: string;
-    enabled: boolean;
-    kind?: "text" | "file";
-    fileName?: string;
-    mimeType?: string;
-    fileBase64?: string;
-}
-
-export interface AuthConfig {
-    bearer: { token: string };
-    basic: { username: string; password: string };
-    api_key: { key: string; value: string; add_to: "header" | "query" };
-}
-
-export interface GraphqlConfig {
-    query: string;
-    variables: string;
-    operationName: string;
-    headers: Record<string, string>;
-}
-
-export interface WsMessage {
-    type: "sent" | "received";
-    text: string;
-    timestamp: number;
-}
-
-export interface WsConfig {
-    headersText: string;
-    headersRows: RequestRow[];
-    headersMode: "table" | "raw";
-    protocolsText: string;
-    protocolRows: RequestRow[];
-    autoReconnect: boolean;
-    reconnectInterval: number;
-    connectTimeout: number;
-    messageType: "text" | "json";
-    messages: WsMessage[];
-}
-
-export interface RequestItem {
-    type: "request";
-    id: string;
-    name: string;
-    description: string;
-    tags: string[];
-    protocol: string;
-    method: string;
-    url: string;
-    headersText?: string;
-    bodyText?: string;
-    testsPreText?: string;   // deprecated: migrated to testsPreSteps
-    testsPostText?: string;  // deprecated: migrated to testsPostSteps
-    testsPreSteps?: ScriptStep[];
-    testsPostSteps?: ScriptStep[];
-    vizScriptText?: string;
-    testsInputText?: string;
-    httpVersion?: string;
-    requestTimeoutMs?: number;
-    bodyType?: string;
-    paramsRows?: RequestRow[];
-    headersRows?: RequestRow[];
-    authRows?: RequestRow[];
-    authType?: string;
-    authConfig?: AuthConfig;
-    bodyRows?: RequestRow[];
-    graphqlConfig?: GraphqlConfig;
-    wsConfig?: WsConfig;
-    dagGraph?: DagGraph;
-    paneLayout?: { topHeight?: number; rightWidth?: number };
-}
-
-export interface FolderItem {
-    type: "folder";
-    id: string;
-    name: string;
-    items: (FolderItem | RequestItem)[];
-}
-
-export interface Collection {
-    id: string;
-    name: string;
-    items: (FolderItem | RequestItem)[];
-    variables?: Record<string, string>;
-}
+export type {
+    RequestRow, AuthConfig, GraphqlConfig, WsMessage, WsConfig,
+    RequestItem, FolderItem, Collection,
+} from "@portiq/core";
+import type {
+    RequestRow, AuthConfig, GraphqlConfig, WsMessage, WsConfig,
+    RequestItem, FolderItem, Collection,
+} from "@portiq/core";
 
 export function useRequestState() {
     const genId = (prefix: string) =>
@@ -838,106 +759,12 @@ export function useRequestState() {
 
                 currentItems.push(parsedReq);
             });
-        } else if (imported.info && imported.info.schema && imported.info.schema.includes("postman.com/json/collection/v2.1.0")) {
-            const colId = genId("col");
-            collection = {
-                id: colId,
-                name: imported.info.name || "Postman Import",
-                items: []
-            };
-
-            const parsePostmanItem = (pmItem: any): FolderItem | RequestItem | null => {
-                if (pmItem.item) {
-                    return {
-                        type: "folder",
-                        id: genId("fld"),
-                        name: pmItem.name || "Imported Folder",
-                        items: pmItem.item.map(parsePostmanItem).filter(Boolean)
-                    };
-                } else if (pmItem.request) {
-                    const pmReq = pmItem.request;
-                    const parsedReq: RequestItem = {
-                        type: "request",
-                        id: genId("req"),
-                        name: pmItem.name || "Imported Request",
-                        description: "",
-                        tags: [],
-                        protocol: "http",
-                        method: pmReq.method || "GET",
-                        url: typeof pmReq.url === 'string' ? pmReq.url : (pmReq.url?.raw || ""),
-                        headersRows: (pmReq.header || []).map((h: any) => ({ key: h.key, value: h.value, comment: "", enabled: true })),
-                        paramsRows: (pmReq.url?.query || []).map((q: any) => ({ key: q.key, value: q.value, comment: "", enabled: true })),
-                        authRows: [{ key: "", value: "", comment: "", enabled: false }],
-                        httpVersion: "auto",
-                        requestTimeoutMs: 30000,
-                        bodyRows: [{ key: "", value: "", comment: "", enabled: true }],
-                        authType: "none",
-                        authConfig: {
-                            bearer: { token: "" },
-                            basic: { username: "", password: "" },
-                            api_key: { key: "", value: "", add_to: "header" }
-                        }
-                    };
-
-                    // Extract Postman auth settings
-                    const pmAuth = pmReq.auth;
-                    if (pmAuth) {
-                        const authType = pmAuth.type;
-                        if (authType === "bearer") {
-                            const tokenEntry = (pmAuth.bearer || []).find((e: any) => e.key === "token");
-                            parsedReq.authType = "bearer";
-                            parsedReq.authConfig = {
-                                ...parsedReq.authConfig!,
-                                bearer: { token: tokenEntry?.value || "" }
-                            };
-                        } else if (authType === "basic") {
-                            const userEntry = (pmAuth.basic || []).find((e: any) => e.key === "username");
-                            const passEntry = (pmAuth.basic || []).find((e: any) => e.key === "password");
-                            parsedReq.authType = "basic";
-                            parsedReq.authConfig = {
-                                ...parsedReq.authConfig!,
-                                basic: { username: userEntry?.value || "", password: passEntry?.value || "" }
-                            };
-                        } else if (authType === "apikey") {
-                            const keyEntry = (pmAuth.apikey || []).find((e: any) => e.key === "key");
-                            const valEntry = (pmAuth.apikey || []).find((e: any) => e.key === "value");
-                            const inEntry = (pmAuth.apikey || []).find((e: any) => e.key === "in");
-                            parsedReq.authType = "api_key";
-                            parsedReq.authConfig = {
-                                ...parsedReq.authConfig!,
-                                api_key: {
-                                    key: keyEntry?.value || "",
-                                    value: valEntry?.value || "",
-                                    add_to: (inEntry?.value === "query") ? "query" : "header"
-                                }
-                            };
-                        }
-                    }
-
-                    if (pmReq.body) {
-                        const mode = pmReq.body.mode;
-                        if (mode === 'raw') {
-                            parsedReq.bodyType = "json";
-                            parsedReq.bodyText = pmReq.body.raw || "";
-                        } else if (mode === 'urlencoded') {
-                            parsedReq.bodyType = "form";
-                            parsedReq.bodyRows = (pmReq.body.urlencoded || []).map((p: any) => ({ key: p.key, value: p.value, comment: "", enabled: true }));
-                        } else if (mode === 'formdata') {
-                            parsedReq.bodyType = "multipart";
-                            parsedReq.bodyRows = (pmReq.body.formdata || []).map((p: any) => ({ key: p.key, value: p.value, comment: "", enabled: true }));
-                        }
-                    }
-
-                    if (!parsedReq.headersRows || parsedReq.headersRows.length === 0) parsedReq.headersRows = [{ key: "", value: "", comment: "", enabled: true }];
-                    if (!parsedReq.paramsRows || parsedReq.paramsRows.length === 0) parsedReq.paramsRows = [{ key: "", value: "", comment: "", enabled: true }];
-
-                    return parsedReq;
-                }
-                return null;
-            };
-
-            collection.items = (imported.item || []).map(parsePostmanItem).filter(Boolean);
-
+        } else if (looksLikePostman(imported)) {
+            const lib = parsePostmanCollection(imported, { newId: genId });
+            collection = lib.collections[0] ?? null;
+        } else if (looksLikeOpenApi(imported)) {
+            const lib = parseOpenApi(imported, { newId: genId });
+            collection = lib.collections[0] ?? null;
         } else if (imported.id) {
             imported.id = genId("col");
             collection = imported;

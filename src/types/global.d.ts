@@ -46,6 +46,10 @@ declare global {
       // GraphQL
       sendGraphQL: (payload: any) => Promise<any>;
 
+      // gRPC
+      sendGrpc: (payload: any) => Promise<any>;
+      cancelGrpc: (payload: any) => Promise<any>;
+
       // WebSocket
       wsConnect: (payload: any) => Promise<any>;
       wsSend: (payload: any) => Promise<any>;
@@ -66,6 +70,16 @@ declare global {
       loadState: (key: string) => Promise<any>;
       clearAllData: () => Promise<any>;
       getDataPath: () => Promise<string>;
+
+      // AI
+      saveAiConfig?: (config: any) => Promise<any>;
+
+      // External DB change (live-reload)
+      onExternalStateChange?: (callback: (data: { version: number }) => void) => () => void;
+
+      // CLI PATH commands
+      installCliShims: () => Promise<{ ok: true; paths: string[] } | { error: string }>;
+      uninstallCliShims: () => Promise<{ ok: true } | { error: string }>;
 
       // Others
       onGithubAuth: (callback: (url: string) => void) => void;

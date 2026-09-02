@@ -13,7 +13,7 @@ import { HeadersTab } from "./tabs/HeadersTab";
 import { TestsTab } from "./tabs/TestsTab";
 import type { Theme } from "../../theme/theme";
 import type { AutoHeader } from "../../utils/autoHeaders";
-import { ScriptStep } from "../../services/scriptSteps";
+import { ScriptStep } from "@portiq/core";
 
 interface RequestEditorProps {
     editingMainRequestName: boolean;

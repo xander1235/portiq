@@ -5,19 +5,18 @@ import "@xyflow/react/dist/style.css";
 import type {
   DagGraph, DagEdge, DagNode, DagNodeType, DagPosition, RequestNodeData,
   PayloadNodeData, ConditionNodeData, TransformNodeData, StepResult, StepsContext, NodeStatus, RunMode,
-} from "./dag/types";
-import { EMPTY_REQUEST_CONFIG } from "./dag/types";
+  SendResult,
+} from "@portiq/core/flows";
+import {
+  EMPTY_REQUEST_CONFIG, autoLayout, resolveStepConfig, savedRequestToConfig,
+  slugify, uniqueName, runFlow, descendants, ancestors,
+} from "@portiq/core/flows";
 import { RequestNode } from "./dag/nodes/RequestNode";
 import { PayloadNode } from "./dag/nodes/PayloadNode";
 import { ConditionNode } from "./dag/nodes/ConditionNode";
 import { TransformNode } from "./dag/nodes/TransformNode";
-import { autoLayout } from "./dag/layout";
-import { resolveStepConfig, savedRequestToConfig } from "./dag/linkResolve";
-import { slugify, uniqueName } from "./dag/migrate";
 import { Inspector } from "./dag/Inspector";
 import { AddStepPicker } from "./dag/AddStepPicker";
-import { runFlow, type SendResult } from "./dag/engine";
-import { descendants, ancestors } from "./dag/traverse";
 
 const NODE_TYPES = { request: RequestNode, payload: PayloadNode, condition: ConditionNode, transform: TransformNode };
 

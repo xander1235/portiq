@@ -1,13 +1,62 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const Database = require("better-sqlite3");
-const http = require("http");
-const https = require("https");
-const http2 = require("http2");
+const core = require("@portiq/core");
+const aiCore = require("@portiq/core/ai");
+const { createSafeStorageEncryptor } = require("./keystore.cjs");
+const { createTrustGuard } = require("./trustGuard.cjs");
+// gRPC is deliberately NOT part of the "@portiq/core" barrel (it pulls in
+// @grpc/grpc-js / @grpc/proto-loader, which must never reach the renderer bundle
+// — see packages/core/src/index.ts). Import it from the Node-only subpath instead.
+const { GrpcTransport } = require("@portiq/core/grpc");
 
 const isDev = !app.isPackaged;
-let db = null;
+
+// Pin the app name and userData dir so packaged/dev builds share the same
+// canonical data directory regardless of Electron's default productName
+// resolution, and migrate the legacy lowercase "portiq" dir below.
+app.setName("Portiq");
+try {
+  app.setPath("userData", core.resolveDataDir());
+} catch {
+  // fall back to Electron's default userData path
+}
+
+let kvStore = null;
+let appStore = null;
+let stateDetector = null;
+let stateWatchHandle = null;
+
+// Lazily constructed: `safeStorage.isEncryptionAvailable()` is only reliable
+// after `app.whenReady()`, so the encryptor is built on first use rather than
+// at module load time.
+let aiEncryptor = null;
+function getAiEncryptor() {
+  if (!aiEncryptor) aiEncryptor = createSafeStorageEncryptor();
+  return aiEncryptor;
+}
+
+// `app.getVersion()` isn't reliable until Electron signals `ready`, so the
+// HttpTransport (which stamps the User-Agent header with it) is constructed
+// lazily inside `app.whenReady()` below rather than at module load time.
+let httpTransport = null;
+
+const wsManager = new core.WsManager();
+const mockManager = core.createMockManager();
+const grpcTransport = new GrpcTransport();
+
+// Forward WsManager events to every renderer window, mirroring the
+// `BrowserWindow.webContents.send` push the old inline WS code performed.
+wsManager.on("message", (evt) => {
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("ws:message", evt));
+});
+wsManager.on("closed", (evt) => {
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("ws:closed", evt));
+});
+// Mandatory: Node's EventEmitter throws if an "error" event has no listener.
+wsManager.on("error", (evt) => {
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("ws:error", evt));
+});
 
 function initDb() {
   const dir = app.getPath("userData");
@@ -15,9 +64,34 @@ function initDb() {
     fs.mkdirSync(dir, { recursive: true });
   }
   const dbPath = path.join(dir, "appdata.sqlite");
-  db = new Database(dbPath);
-  db.prepare("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)").run();
+
+  // One-time migration: older dev builds used a lowercase "portiq" userData dir.
+  // Copy atomically (tmp + rename in the same directory) so a crash mid-copy
+  // can never leave a partially-written appdata.sqlite behind.
+  const legacyDir = path.join(path.dirname(dir), "portiq");
+  const legacyDb = path.join(legacyDir, "appdata.sqlite");
+  if (!fs.existsSync(dbPath) && fs.existsSync(legacyDb)) {
+    const tmpDb = dbPath + ".migrate.tmp";
+    fs.copyFileSync(legacyDb, tmpDb);
+    fs.renameSync(tmpDb, dbPath);
+  }
+
+  kvStore = core.openKvStore({ dataDir: dir });
+  // Normalized per-entity store; shares the same kv handle so the migration and
+  // dual-written legacy blob stay consistent within the process.
+  appStore = core.openAppStateStore({ dataDir: dir }, kvStore);
 }
+
+// ── IPC sender trust ──
+// Every handler is gated on the invocation coming from the top-level frame of
+// one of our own windows, serving our own app content. Anything else (a stray
+// webContents, a subframe, a navigation to remote content) is rejected so
+// privileged IPC can never be reached by untrusted code. The guard itself is
+// a pure helper (trustGuard.cjs) so it is unit-testable without Electron.
+const { isTrustedIpcSender, requireTrustedSender } = createTrustGuard({
+  isDev,
+  fromWebContents: (wc) => BrowserWindow.fromWebContents(wc),
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -41,6 +115,15 @@ function createWindow() {
     return { action: "allow" };
   });
 
+  // Prevent the app window itself from ever navigating away from our own
+  // content (a link click, location change, or drive-by redirect to a remote
+  // or unexpected file:// target). The only navigation allowed is the initial
+  // load below.
+  win.webContents.on("will-navigate", (event, url) => {
+    const allowed = isDev ? url.startsWith("http://localhost:5173") : url.startsWith("file://");
+    if (!allowed) event.preventDefault();
+  });
+
   if (isDev) {
     win.loadURL("http://localhost:5173");
     win.webContents.openDevTools({ mode: "detach" });
@@ -50,8 +133,37 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  httpTransport = new core.HttpTransport({ appVersion: app.getVersion() });
   initDb();
+
+  // One-time, idempotent: encrypt any plaintext AI credentials left over from
+  // before this encryptor was wired up. A migration failure must not block
+  // app startup — log and continue with plaintext (still functional).
+  try {
+    aiCore.migrateAiKeystore({ encryptor: getAiEncryptor() });
+  } catch (err) {
+    console.error("AI keystore migration failed:", err);
+  }
+
   createWindow();
+
+  // Watch appdata.sqlite for writes made by OTHER processes (CLI/MCP or a
+  // second app instance) and live-reload the renderer. External-vs-self is
+  // decided by the kvStore's global write counter, which bumps on EVERY
+  // mutating kv op (set/setIfVersion/deleteKey) — including in-place edits of
+  // an existing collection/environment/etc. — unlike the "ent:index" row,
+  // which only changes when a collection/environment is added or removed.
+  // Self-writes are suppressed via noteLocalWrite in db:saveState below.
+  const dbPath = path.join(app.getPath("userData"), "appdata.sqlite");
+  stateDetector = new core.StateChangeDetector({
+    readVersion: () => kvStore.globalWriteVersion(),
+    onExternalChange: (version) => {
+      BrowserWindow.getAllWindows().forEach((w) =>
+        w.webContents.send("state:externalChange", { version })
+      );
+    },
+  });
+  stateWatchHandle = core.watchStateFile({ dbPath, detector: stateDetector });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -66,838 +178,245 @@ app.on("window-all-closed", () => {
   }
 });
 
-// ── Input Validation Helpers ──────────────────────────────────────────────
-const ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
-const MAX_URL_LENGTH = 8192;
-const MAX_BODY_LENGTH = 50 * 1024 * 1024; // 50 MB
-const MAX_HEADER_COUNT = 100;
-const MAX_KEY_LENGTH = 1024;
-const MAX_VALUE_LENGTH = 10 * 1024 * 1024; // 10 MB per value
-const pendingHttpRequests = new Map();
-
-function validateString(val, maxLen, label) {
-  if (val !== undefined && val !== null && typeof val !== "string") {
-    throw new Error(`${label} must be a string`);
+app.on("before-quit", () => {
+  if (stateWatchHandle) {
+    stateWatchHandle.close();
+    stateWatchHandle = null;
   }
-  if (typeof val === "string" && val.length > maxLen) {
-    throw new Error(`${label} exceeds maximum length of ${maxLen}`);
-  }
-}
+});
 
-function validateHeaders(headers) {
-  if (!headers || typeof headers !== "object") return {};
-  const keys = Object.keys(headers);
-  if (keys.length > MAX_HEADER_COUNT) {
-    throw new Error(`Too many headers (max ${MAX_HEADER_COUNT})`);
-  }
-  const sanitized = {};
-  for (const key of keys) {
-    validateString(key, MAX_KEY_LENGTH, "Header key");
-    validateString(headers[key], MAX_VALUE_LENGTH, `Header value for "${key}"`);
-    sanitized[key] = String(headers[key]);
-  }
-  return sanitized;
-}
+ipcMain.handle("app:ping", async (event) => {
+  requireTrustedSender(event);
+  return "pong";
+});
 
-function buildHttpResult({ status, statusText, headers, body, duration, httpVersion }) {
-  let json;
-  try {
-    json = JSON.parse(body);
-  } catch {
-    json = null;
-  }
-
-  return {
-    status,
-    statusText,
-    time: duration,
-    duration,
-    headers,
-    body,
-    json,
-    httpVersion
-  };
-}
-
-function buildMultipartBody(parts) {
-  const boundary = `----PortiqBoundary${Date.now().toString(16)}`;
-  const buffers = [];
-
-  for (const part of parts || []) {
-    if (!part?.name) continue;
-    if (part.kind === "file") {
-      const fileBuffer = Buffer.from(part.dataBase64 || "", "base64");
-      buffers.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="${part.name}"; filename="${part.filename || "upload.bin"}"\r\n` +
-        `Content-Type: ${part.contentType || "application/octet-stream"}\r\n\r\n`
-      ));
-      buffers.push(fileBuffer);
-      buffers.push(Buffer.from("\r\n"));
-      continue;
-    }
-
-    buffers.push(Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="${part.name}"\r\n\r\n${part.value || ""}\r\n`
-    ));
-  }
-
-  buffers.push(Buffer.from(`--${boundary}--\r\n`));
-  return {
-    boundary,
-    body: Buffer.concat(buffers)
-  };
-}
-
-function buildAbortResult(reason) {
-  if (reason === "cancelled") {
-    return { cancelled: true, error: "Request cancelled" };
-  }
-  if (reason === "timeout") {
-    return { timedOut: true, error: "Request timeout" };
-  }
-  return null;
-}
-
-async function sendAutoHttpRequest({ requestId, method, url, headers, body, timeoutMs }) {
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  let abortReason = null;
-  let timeoutHandle = null;
-
-  if (requestId) {
-    pendingHttpRequests.set(requestId, {
-      cancel: () => {
-        abortReason = "cancelled";
-        controller.abort();
-      }
-    });
-  }
-
-  if (timeoutMs > 0) {
-    timeoutHandle = setTimeout(() => {
-      abortReason = "timeout";
-      controller.abort();
-    }, timeoutMs);
-  }
-
-  try {
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: ["GET", "HEAD"].includes(method) ? undefined : body,
-      signal: controller.signal
-    });
-
-    const text = await response.text();
-    const duration = Date.now() - startedAt;
-    const headersObj = {};
-    response.headers.forEach((value, key) => {
-      headersObj[key] = value;
-    });
-
-    return buildHttpResult({
-      status: response.status,
-      statusText: response.statusText,
-      headers: headersObj,
-      body: text,
-      duration,
-      httpVersion: "auto"
-    });
-  } catch (err) {
-    const aborted = buildAbortResult(abortReason);
-    if (aborted) return aborted;
-
-    let errorMsg = err.message || String(err);
-    if (err.name === "AggregateError" && err.errors) {
-      errorMsg += `: ${err.errors.map(e => e.message || String(e)).join(", ")}`;
-    } else if (err.cause) {
-      if (err.cause.name === "AggregateError" && err.cause.errors) {
-        errorMsg += `: ${err.cause.errors.map(e => e.message || String(e)).join(", ")}`;
-      } else {
-        errorMsg += `: ${err.cause.message || String(err.cause)}`;
-      }
-    }
-    return { error: errorMsg };
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-    if (requestId) pendingHttpRequests.delete(requestId);
-  }
-}
-
-function sendHttp1Request({ requestId, method, url, headers, body, timeoutMs }) {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const parsedUrl = new URL(url);
-    const client = parsedUrl.protocol === "https:" ? https : http;
-    const requestOptions = {
-      protocol: parsedUrl.protocol,
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || undefined,
-      path: `${parsedUrl.pathname}${parsedUrl.search}`,
-      method,
-      headers
-    };
-
-    let settled = false;
-    let abortReason = null;
-
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      if (requestId) pendingHttpRequests.delete(requestId);
-      resolve(result);
-    };
-
-    const req = client.request(requestOptions, (res) => {
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-      res.on("end", () => {
-        const bodyText = Buffer.concat(chunks).toString("utf8");
-        const headersObj = Object.fromEntries(
-          Object.entries(res.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")])
-        );
-        finish(buildHttpResult({
-          status: res.statusCode || 0,
-          statusText: res.statusMessage || http.STATUS_CODES[res.statusCode] || "",
-          headers: headersObj,
-          body: bodyText,
-          duration: Date.now() - startedAt,
-          httpVersion: `HTTP/${res.httpVersion || "1.1"}`
-        }));
-      });
-    });
-
-    req.on("error", (err) => {
-      const aborted = buildAbortResult(abortReason);
-      if (aborted) {
-        finish(aborted);
-        return;
-      }
-      finish({ error: err.message || String(err) });
-    });
-
-    if (timeoutMs > 0) {
-      req.setTimeout(timeoutMs, () => {
-        abortReason = "timeout";
-        req.destroy(new Error("Request timeout"));
-      });
-    }
-
-    if (requestId) {
-      pendingHttpRequests.set(requestId, {
-        cancel: () => {
-          abortReason = "cancelled";
-          req.destroy(new Error("Request cancelled"));
-        }
-      });
-    }
-
-    if (!["GET", "HEAD"].includes(method) && body !== undefined && body !== null) {
-      req.write(body);
-    }
-    req.end();
-  });
-}
-
-function sendHttp2Request({ requestId, method, url, headers, body, timeoutMs }) {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const parsedUrl = new URL(url);
-    const session = http2.connect(parsedUrl.origin);
-    let settled = false;
-    let abortReason = null;
-    let timeoutHandle = null;
-
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      if (requestId) pendingHttpRequests.delete(requestId);
-      try { session.close(); } catch { /* ignore */ }
-      resolve(result);
-    };
-
-    const disallowedHeaders = new Set(["connection", "host", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"]);
-    const requestHeaders = {
-      ":method": method,
-      ":path": `${parsedUrl.pathname}${parsedUrl.search}`,
-      ":scheme": parsedUrl.protocol.replace(":", ""),
-      ":authority": parsedUrl.host
-    };
-
-    Object.entries(headers || {}).forEach(([key, value]) => {
-      const normalizedKey = String(key).toLowerCase();
-      if (!disallowedHeaders.has(normalizedKey)) {
-        requestHeaders[normalizedKey] = String(value);
-      }
-    });
-
-    const stream = session.request(requestHeaders);
-
-    const responseHeaders = {};
-    let responseStatus = 0;
-    const chunks = [];
-
-    stream.on("response", (headersMap) => {
-      responseStatus = Number(headersMap[":status"] || 0);
-      Object.entries(headersMap).forEach(([key, value]) => {
-        if (!key.startsWith(":")) {
-          responseHeaders[key] = Array.isArray(value) ? value.join(", ") : String(value ?? "");
-        }
-      });
-    });
-
-    stream.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-
-    stream.on("end", () => {
-      finish(buildHttpResult({
-        status: responseStatus,
-        statusText: http.STATUS_CODES[responseStatus] || "",
-        headers: responseHeaders,
-        body: Buffer.concat(chunks).toString("utf8"),
-        duration: Date.now() - startedAt,
-        httpVersion: "HTTP/2"
-      }));
-    });
-
-    stream.on("error", (err) => {
-      const aborted = buildAbortResult(abortReason);
-      if (aborted) {
-        finish(aborted);
-        return;
-      }
-      finish({ error: err.message || String(err) });
-    });
-
-    session.on("error", (err) => {
-      const aborted = buildAbortResult(abortReason);
-      if (aborted) {
-        finish(aborted);
-        return;
-      }
-      finish({ error: err.message || String(err) });
-    });
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        abortReason = "timeout";
-        try { stream.close(); } catch { /* ignore */ }
-        finish(buildAbortResult("timeout"));
-      }, timeoutMs);
-    }
-
-    if (requestId) {
-      pendingHttpRequests.set(requestId, {
-        cancel: () => {
-          abortReason = "cancelled";
-          try { stream.close(); } catch { /* ignore */ }
-          finish(buildAbortResult("cancelled"));
-        }
-      });
-    }
-
-    if (!["GET", "HEAD"].includes(method) && body !== undefined && body !== null) {
-      stream.end(body);
-    } else {
-      stream.end();
-    }
-  });
-}
-
-ipcMain.handle("app:ping", async () => "pong");
-
-ipcMain.handle("app:getVersion", async () => {
+ipcMain.handle("app:getVersion", async (event) => {
+  requireTrustedSender(event);
   try { return app.getVersion(); } catch { return ""; }
 });
 
-const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
-
-function hasHeader(headers, name) {
-  const lower = name.toLowerCase();
-  return Object.keys(headers).some((key) => key.toLowerCase() === lower);
-}
-
-/**
- * Adds the client's auto-generated headers when the caller has not set them.
- * Host and Connection are left to Node's http/http2 stack. Accept-Encoding is
- * intentionally NOT added because responses are read without decompression.
- */
-function applyAutoHeaders(headers, { method, body, hasMultipart }) {
-  if (!hasHeader(headers, "user-agent")) {
-    let version = "";
-    try { version = app.getVersion(); } catch { version = ""; }
-    headers["User-Agent"] = `Portiq/${version || "dev"}`;
-  }
-  if (!hasHeader(headers, "accept")) {
-    headers["Accept"] = "*/*";
-  }
-  const carriesBody = !METHODS_WITHOUT_BODY.has(method) && !hasMultipart && typeof body === "string" && body.length > 0;
-  if (carriesBody && !hasHeader(headers, "content-length")) {
-    headers["Content-Length"] = String(Buffer.byteLength(body));
-  }
-  return headers;
-}
-
-ipcMain.handle("http:sendRequest", async (_event, payload) => {
-  const { requestId, method, url, headers, body, timeoutMs, httpVersion, multipartParts } = payload || {};
-
-  // ── Validate inputs ──
-  if (!url || typeof url !== "string") {
-    return { error: "Missing or invalid URL" };
-  }
-  if (url.length > MAX_URL_LENGTH) {
-    return { error: `URL exceeds maximum length of ${MAX_URL_LENGTH}` };
-  }
-  const upperMethod = (method || "GET").toUpperCase();
-  if (!ALLOWED_METHODS.includes(upperMethod)) {
-    return { error: `Invalid HTTP method: ${method}` };
-  }
-  let sanitizedHeaders;
-  try {
-    sanitizedHeaders = validateHeaders(headers);
-  } catch (err) {
-    return { error: err.message };
-  }
-  if (body !== undefined && body !== null) {
-    validateString(body, MAX_BODY_LENGTH, "Request body");
-  }
-  if (multipartParts !== undefined && !Array.isArray(multipartParts)) {
-    return { error: "Multipart parts must be an array" };
-  }
-
-  try {
-    const normalizedTimeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30000;
-    const normalizedVersion = httpVersion || "auto";
-    let requestBody = body;
-    const hasMultipart = Array.isArray(multipartParts) && multipartParts.length > 0;
-    if (hasMultipart) {
-      const multipart = buildMultipartBody(multipartParts);
-      sanitizedHeaders["Content-Type"] = `multipart/form-data; boundary=${multipart.boundary}`;
-      sanitizedHeaders["Content-Length"] = String(multipart.body.length);
-      requestBody = multipart.body;
-    }
-
-    applyAutoHeaders(sanitizedHeaders, { method: upperMethod, body: requestBody, hasMultipart });
-
-    if (normalizedVersion === "1.1") {
-      return await sendHttp1Request({
-        requestId,
-        method: upperMethod,
-        url,
-        headers: sanitizedHeaders,
-        body: requestBody,
-        timeoutMs: normalizedTimeout
-      });
-    }
-
-    if (normalizedVersion === "2") {
-      return await sendHttp2Request({
-        requestId,
-        method: upperMethod,
-        url,
-        headers: sanitizedHeaders,
-        body: requestBody,
-        timeoutMs: normalizedTimeout
-      });
-    }
-
-    return await sendAutoHttpRequest({
-      requestId,
-      method: upperMethod,
-      url,
-      headers: sanitizedHeaders,
-      body: requestBody,
-      timeoutMs: normalizedTimeout
-    });
-  } catch (err) {
-    let errorMsg = err.message || String(err);
-    if (err.name === 'AggregateError' && err.errors) {
-      errorMsg += `: ${err.errors.map(e => e.message || String(e)).join(', ')}`;
-    } else if (err.cause) {
-      if (err.cause.name === 'AggregateError' && err.cause.errors) {
-        errorMsg += `: ${err.cause.errors.map(e => e.message || String(e)).join(', ')}`;
-      } else {
-        errorMsg += `: ${err.cause.message || String(err.cause)}`;
-      }
-    }
-    return { error: errorMsg };
-  }
+ipcMain.handle("http:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
+  return httpTransport.send(payload);
 });
 
-ipcMain.handle("http:cancelRequest", async (_event, payload) => {
-  const { requestId } = payload || {};
-  if (!requestId) return { error: "Missing request ID" };
-  const pending = pendingHttpRequests.get(requestId);
-  if (!pending) return { ok: true };
+ipcMain.handle("http:cancelRequest", async (event, payload) => {
+  requireTrustedSender(event);
   try {
-    pending.cancel?.();
-    return { ok: true };
+    return httpTransport.cancel(payload?.requestId);
   } catch (err) {
-    return { error: err.message || String(err) };
+    return { error: err && err.message ? err.message : String(err) };
   }
 });
 
 // ── GraphQL request handler (HTTP POST with GraphQL payload) ──
-ipcMain.handle("graphql:sendRequest", async (_event, payload) => {
-  const { url, headers, query, variables, operationName } = payload || {};
-  const startedAt = Date.now();
+ipcMain.handle("graphql:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
+  return core.sendGraphQL(payload);
+});
 
-  if (!url || typeof url !== "string") {
-    return { error: "Missing or invalid URL" };
-  }
-  if (!query || typeof query !== "string") {
-    return { error: "Missing GraphQL query" };
-  }
-
-  let sanitizedHeaders;
+// ── gRPC request handler (native transport via @grpc/grpc-js) ──
+ipcMain.handle("grpc:sendRequest", async (event, payload) => {
+  requireTrustedSender(event);
   try {
-    sanitizedHeaders = validateHeaders(headers);
+    return await grpcTransport.send(payload);
   } catch (err) {
-    return { error: err.message };
-  }
-  sanitizedHeaders["Content-Type"] = "application/json";
-
-  let parsedVariables = variables;
-  if (typeof variables === "string" && variables.trim()) {
-    try {
-      parsedVariables = JSON.parse(variables);
-    } catch {
-      return { error: "GraphQL variables must be valid JSON" };
-    }
-  }
-
-  const graphqlBody = JSON.stringify({
-    query,
-    variables: parsedVariables || undefined,
-    operationName: operationName || undefined
-  });
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: sanitizedHeaders,
-      body: graphqlBody
-    });
-
-    const text = await response.text();
-    const duration = Date.now() - startedAt;
-
-    const headersObj = {};
-    response.headers.forEach((value, key) => {
-      headersObj[key] = value;
-    });
-
-    let json = null;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
-    }
-
     return {
-      status: response.status,
-      statusText: response.statusText,
-      time: duration,
-      duration,
-      headers: headersObj,
-      body: text,
-      json
+      statusCode: 2,
+      statusMessage: "UNKNOWN",
+      duration: 0,
+      metadata: {},
+      trailers: {},
+      body: "",
+      json: null,
+      error: err && err.message ? err.message : String(err),
+      messages: []
     };
+  }
+});
+
+ipcMain.handle("grpc:cancelRequest", async (event, payload) => {
+  requireTrustedSender(event);
+  try {
+    return grpcTransport.cancel(payload && payload.requestId);
   } catch (err) {
-    return { error: err.message || String(err) };
+    return { error: err && err.message ? err.message : String(err) };
   }
 });
 
 // ── WebSocket connection manager ──
-const wsConnections = new Map();
-
-ipcMain.handle("ws:connect", async (_event, payload) => {
-  const { id, url, headers, protocols, timeoutMs } = payload || {};
-  if (!url || typeof url !== "string") return { error: "Missing or invalid URL" };
-  if (!id) return { error: "Missing connection ID" };
-
-  // Close existing connection with same ID
-  if (wsConnections.has(id)) {
-    try { wsConnections.get(id).close(); } catch { /* ignore */ }
-    wsConnections.delete(id);
-  }
-
-  return new Promise((resolve) => {
-    try {
-      const WebSocket = require("ws");
-      const ws = new WebSocket(url, protocols || [], {
-        headers: headers || {}
-      });
-
-      const connectionData = { ws, messages: [], status: "connecting", connectedAt: null, cancelled: false };
-      wsConnections.set(id, connectionData);
-      let settled = false;
-      let timeoutHandle = null;
-
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-          timeoutHandle = null;
-        }
-        resolve(result);
-      };
-
-      ws.on("open", () => {
-        connectionData.status = "connected";
-        connectionData.connectedAt = Date.now();
-        finish({ status: "connected", connectedAt: connectionData.connectedAt });
-      });
-
-      ws.on("message", (data, isBinary) => {
-        const normalized = Buffer.isBuffer(data) ? data : Buffer.from(data);
-        const msg = {
-          timestamp: Date.now(),
-          direction: "incoming",
-          data: isBinary ? normalized.toString("base64") : normalized.toString(),
-          size: normalized.length,
-          encoding: isBinary ? "base64" : "text"
-        };
-        connectionData.messages.push(msg);
-        // Keep last 1000 messages only
-        if (connectionData.messages.length > 1000) {
-          connectionData.messages = connectionData.messages.slice(-1000);
-        }
-        // Notify the renderer
-        const windows = BrowserWindow.getAllWindows();
-        windows.forEach(win => {
-          win.webContents.send("ws:message", { id, message: msg });
-        });
-      });
-
-      ws.on("close", (code, reason) => {
-        connectionData.status = "disconnected";
-        connectionData.connectedAt = null;
-        const windows = BrowserWindow.getAllWindows();
-        windows.forEach(win => {
-          win.webContents.send("ws:closed", { id, code, reason: reason?.toString() });
-        });
-        wsConnections.delete(id);
-        if (!settled) {
-          finish(connectionData.cancelled
-            ? { cancelled: true, error: "Connection cancelled" }
-            : { error: "Connection closed" });
-        }
-      });
-
-      ws.on("error", (err) => {
-        connectionData.status = "error";
-        const windows = BrowserWindow.getAllWindows();
-        windows.forEach(win => {
-          win.webContents.send("ws:error", { id, error: err.message });
-        });
-        finish({ error: err.message });
-      });
-
-      // Timeout for connection
-      timeoutHandle = setTimeout(() => {
-        if (connectionData.status === "connecting") {
-          connectionData.cancelled = false;
-          ws.close();
-          finish({ error: "Connection timeout" });
-        }
-      }, Number(timeoutMs) > 0 ? Number(timeoutMs) : 10000);
-    } catch (err) {
-      resolve({ error: err.message || String(err) });
-    }
-  });
+ipcMain.handle("ws:connect", async (event, payload) => {
+  requireTrustedSender(event);
+  return wsManager.connect(payload);
 });
 
-ipcMain.handle("ws:send", async (_event, payload) => {
-  const { id, data, encoding } = payload || {};
-  const conn = wsConnections.get(id);
-  if (!conn || !conn.ws) return { error: "No active WebSocket connection" };
-  if (conn.ws.readyState !== 1) return { error: "WebSocket is not open" };
-
-  try {
-    const payloadData = encoding === "base64" ? Buffer.from(data || "", "base64") : data;
-    conn.ws.send(payloadData);
-    const normalized = Buffer.isBuffer(payloadData) ? payloadData : Buffer.from(String(payloadData ?? ""));
-    const msg = {
-      timestamp: Date.now(),
-      direction: "outgoing",
-      data: encoding === "base64" ? normalized.toString("base64") : normalized.toString(),
-      size: normalized.length,
-      encoding: encoding === "base64" ? "base64" : "text"
-    };
-    conn.messages.push(msg);
-    return { ok: true, message: msg };
-  } catch (err) {
-    return { error: err.message };
-  }
+ipcMain.handle("ws:send", async (event, payload) => {
+  requireTrustedSender(event);
+  return wsManager.sendMessage(payload);
 });
 
-ipcMain.handle("ws:disconnect", async (_event, payload) => {
-  const { id } = payload || {};
-  const conn = wsConnections.get(id);
-  if (!conn || !conn.ws) return { ok: true };
-
-  try {
-    conn.cancelled = conn.status === "connecting";
-    conn.ws.close();
-    wsConnections.delete(id);
-    return { ok: true };
-  } catch (err) {
-    return { error: err.message };
-  }
+ipcMain.handle("ws:disconnect", async (event, payload) => {
+  requireTrustedSender(event);
+  return wsManager.disconnect(payload);
 });
 
-ipcMain.handle("ws:getMessages", async (_event, payload) => {
-  const { id } = payload || {};
-  const conn = wsConnections.get(id);
-  if (!conn) return { messages: [], status: "disconnected", connectedAt: null };
-  return { messages: conn.messages, status: conn.status, connectedAt: conn.connectedAt || null };
+ipcMain.handle("ws:getMessages", async (event, payload) => {
+  requireTrustedSender(event);
+  return wsManager.getMessages(payload);
 });
 
 // ── Mock Server Manager ──
-let mockServers = new Map();
-ipcMain.handle("mock:start", async (_event, payload) => {
-  const { id, port, routes } = payload || {};
-  if (!id) return { error: "Missing server ID" };
-  if (!port || port < 1 || port > 65535) return { error: "Invalid port number" };
-  if (!Array.isArray(routes)) return { error: "Routes must be an array" };
+ipcMain.handle("mock:start", async (event, payload) => {
+  requireTrustedSender(event);
+  return mockManager.start(payload);
+});
 
-  // Stop existing server with same ID
-  if (mockServers.has(id)) {
-    try { mockServers.get(id).server.close(); } catch { /* ignore */ }
-    mockServers.delete(id);
+ipcMain.handle("mock:stop", async (event, payload) => {
+  requireTrustedSender(event);
+  return mockManager.stop(payload);
+});
+
+ipcMain.handle("mock:list", async (event) => {
+  requireTrustedSender(event);
+  return mockManager.list();
+});
+
+ipcMain.handle("mock:updateRoutes", async (event, payload) => {
+  requireTrustedSender(event);
+  return mockManager.updateRoutes(payload);
+});
+
+ipcMain.handle("db:saveState", async (event, key, value) => {
+  requireTrustedSender(event);
+  if (!kvStore) initDb();
+  if (key === "appState") {
+    // Decompose into per-entity rows; the legacy blob is dual-written inside save()
+    // so external/old readers keep working. Renderer contract (blob in) is unchanged.
+    appStore.save(JSON.parse(value));
+    // Record the app's own write so the watcher (which reads the kvStore's
+    // global write counter) never re-broadcasts it as an external change.
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
+  } else {
+    kvStore.set(key, value);
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
   }
-
-  return new Promise((resolve) => {
-    try {
-      const server = http.createServer((req, res) => {
-        const url = new URL(req.url, `http://localhost:${port}`);
-        const matchedRoute = routes.find(r =>
-          r.method.toUpperCase() === req.method.toUpperCase() &&
-          matchPath(r.path, url.pathname)
-        );
-
-        // CORS headers
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "*");
-
-        if (req.method === "OPTIONS") {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
-        if (!matchedRoute) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "No matching mock route", path: url.pathname, method: req.method }));
-          return;
-        }
-
-        const statusCode = matchedRoute.statusCode || 200;
-        const responseHeaders = { "Content-Type": "application/json", ...(matchedRoute.headers || {}) };
-        const responseBody = typeof matchedRoute.body === "string"
-          ? matchedRoute.body
-          : JSON.stringify(matchedRoute.body || {});
-
-        // Simulate delay if configured
-        const delay = matchedRoute.delay || 0;
-        setTimeout(() => {
-          res.writeHead(statusCode, responseHeaders);
-          res.end(responseBody);
-        }, delay);
-      });
-
-      server.listen(port, "127.0.0.1", () => {
-        mockServers.set(id, { server, port, routes });
-        resolve({ ok: true, port });
-      });
-
-      server.on("error", (err) => {
-        resolve({ error: err.message });
-      });
-    } catch (err) {
-      resolve({ error: err.message });
-    }
-  });
-});
-
-ipcMain.handle("mock:stop", async (_event, payload) => {
-  const { id } = payload || {};
-  const entry = mockServers.get(id);
-  if (!entry) return { ok: true };
-
-  return new Promise((resolve) => {
-    entry.server.close(() => {
-      mockServers.delete(id);
-      resolve({ ok: true });
-    });
-  });
-});
-
-ipcMain.handle("mock:list", async () => {
-  const servers = [];
-  mockServers.forEach((value, key) => {
-    servers.push({ id: key, port: value.port, routeCount: value.routes.length });
-  });
-  return servers;
-});
-
-ipcMain.handle("mock:updateRoutes", async (_event, payload) => {
-  const { id, routes } = payload || {};
-  const entry = mockServers.get(id);
-  if (!entry) return { error: "Server not found" };
-  if (!Array.isArray(routes)) return { error: "Routes must be an array" };
-  entry.routes = routes;
-  mockServers.set(id, entry);
   return { ok: true };
 });
 
-function matchPath(pattern, pathname) {
-  // Support path parameters like /users/:id
-  const patternParts = pattern.split("/");
-  const pathParts = pathname.split("/");
-  if (patternParts.length !== pathParts.length) return false;
-  return patternParts.every((part, i) => part.startsWith(":") || part === pathParts[i]);
-}
-
-ipcMain.handle("db:saveState", async (_event, key, value) => {
-  if (!db) initDb();
-  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    .run(key, value);
-  return { ok: true };
+ipcMain.handle("db:loadState", async (event, key) => {
+  requireTrustedSender(event);
+  if (!kvStore) initDb();
+  if (key === "appState") {
+    const { state } = appStore.load();
+    return state ? JSON.stringify(state) : null;
+  }
+  return kvStore.get(key);
 });
 
-ipcMain.handle("db:loadState", async (_event, key) => {
-  if (!db) initDb();
-  const row = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
-  return row ? row.value : null;
-});
-
-ipcMain.handle("db:clearAll", async () => {
-  const dir = app.getPath("userData");
-  const dbPath = path.join(dir, "appdata.sqlite");
+ipcMain.handle("db:clearAll", async (event) => {
+  requireTrustedSender(event);
   try {
-    if (db) {
-      db.close();
-      db = null;
-    }
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-    }
-    // Also remove WAL/SHM files if they exist
-    if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
-    if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
-    initDb();
+    if (!kvStore) initDb();
+    kvStore.clear();
+    // clear() resets kv_version (and therefore ent:index) to 0; re-sync so
+    // the detector doesn't misread the reset as an external change.
+    if (stateDetector) stateDetector.reset(0);
     return { ok: true };
   } catch (err) {
     return { error: err.message };
   }
 });
 
-ipcMain.handle("db:getDataPath", async () => {
+ipcMain.handle("db:getDataPath", async (event) => {
+  requireTrustedSender(event);
   return app.getPath("userData");
+});
+
+ipcMain.handle("ai:saveConfig", (event, config) => {
+  requireTrustedSender(event);
+  try {
+    aiCore.saveAiConfig(config || {}, { encryptor: getAiEncryptor() });
+    // saveAiConfig writes the AI settings row through its own kv handle on the
+    // same database; record the write so the file watcher does not treat it as
+    // an external change and reload the renderer.
+    if (stateDetector) stateDetector.noteLocalWrite(kvStore.globalWriteVersion());
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+});
+
+// ── Install/uninstall the `portiq` / `portiq-mcp` commands on PATH ──
+// Symlinks the app's Resources/bin launchers into /usr/local/bin (macOS/Linux).
+// Windows PATH is handled by the NSIS installer, so this is a no-op there.
+const PATH_TARGET_DIR = "/usr/local/bin";
+function shimSourceDir() {
+  // process.resourcesPath = .../Contents/Resources (mac) or .../resources (linux/win)
+  return path.join(process.resourcesPath, "bin");
+}
+// Guards against clobbering/deleting a file that isn't ours: true only if
+// `targetPath` is a symlink whose DIRECT target (readlink, not the resolved
+// chain) points into our own Resources/bin (`shimSrcDir`). Any other file,
+// symlink, or symlink-to-symlink there is left alone.
+function isOwnPortiqShim(targetPath, shimSrcDir) {
+  try {
+    const st = fs.lstatSync(targetPath);
+    if (!st.isSymbolicLink()) return false;
+    const dest = fs.readlinkSync(targetPath);
+    const resolved = path.resolve(path.dirname(targetPath), dest);
+    return resolved.startsWith(shimSrcDir + path.sep);
+  } catch {
+    return false;
+  }
+}
+ipcMain.handle("cli:installShims", async (event) => {
+  requireTrustedSender(event);
+  if (process.platform === "win32") {
+    return { error: "On Windows the installer manages PATH automatically." };
+  }
+  try {
+    const src = shimSourceDir();
+    const made = [];
+    for (const name of ["portiq", "portiq-mcp"]) {
+      const from = path.join(src, name);
+      const to = path.join(PATH_TARGET_DIR, name);
+      // Use lstat (not existsSync) so a broken symlink — which existsSync
+      // reports as absent but which still occupies the path — is detected.
+      let alreadyExists = false;
+      try {
+        fs.lstatSync(to);
+        alreadyExists = true;
+      } catch {
+        alreadyExists = false;
+      }
+      if (alreadyExists && !isOwnPortiqShim(to, src)) {
+        return {
+          error: `${to} already exists and is not a Portiq shim; refusing to overwrite`,
+          made
+        };
+      }
+      if (alreadyExists) {
+        try { fs.unlinkSync(to); } catch { /* not present */ }
+      }
+      fs.symlinkSync(from, to);
+      made.push(to);
+    }
+    return { ok: true, paths: made };
+  } catch (err) {
+    // EACCES on /usr/local/bin is expected without admin rights.
+    return { error: err && err.message ? err.message : String(err) };
+  }
+});
+ipcMain.handle("cli:uninstallShims", async (event) => {
+  requireTrustedSender(event);
+  if (process.platform === "win32") return { ok: true };
+  const src = shimSourceDir();
+  for (const name of ["portiq", "portiq-mcp"]) {
+    const to = path.join(PATH_TARGET_DIR, name);
+    if (isOwnPortiqShim(to, src)) {
+      try { fs.unlinkSync(to); } catch { /* absent */ }
+    }
+    // else: absent, or not ours — leave it alone.
+  }
+  return { ok: true };
 });

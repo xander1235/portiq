@@ -1,0 +1,35 @@
+{
+  "name": "@portiq/cli",
+  "version": "0.1.0",
+  "private": false,
+  "type": "commonjs",
+  "description": "Portiq CLI — run saved API requests, collections, and flows from the terminal.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xander1235/portiq.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "portiq": "dist/portiq.bundle.cjs"
+  },
+  "main": "dist/portiq.bundle.cjs",
+  "files": [
+    "dist/portiq.bundle.cjs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.build.json",
+    "bundle": "npm run build && esbuild dist/index.js --bundle --platform=node --format=cjs --target=node20 --external:better-sqlite3 --outfile=dist/portiq.bundle.cjs && node -e \"require('fs').chmodSync('dist/portiq.bundle.cjs', 0o755)\"",
+    "prepack": "npm run bundle"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "commander": "^12.1.0"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@portiq/mcp",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "dist/portiq-mcp.bundle.cjs",
+  "types": "src/index.ts",
+  "description": "Portiq MCP server (stdio) — let AI agents browse and run your Portiq API library.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xander1235/portiq.git",
+    "directory": "packages/mcp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "portiq-mcp": "dist/portiq-mcp.bundle.cjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/portiq-mcp.bundle.cjs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\"",
+    "bundle": "npm run build && esbuild dist/bin.js --bundle --platform=node --format=cjs --target=node20 --external:better-sqlite3 --outfile=dist/portiq-mcp.bundle.cjs && node -e \"require('fs').chmodSync('dist/portiq-mcp.bundle.cjs', 0o755)\"",
+    "prepack": "npm run bundle"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.0.0"
+  }
+}

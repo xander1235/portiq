@@ -19,9 +19,17 @@ const removeCrossorigin = () => {
 export default defineConfig({
   base: './',
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    // Array form so the @portiq/core entries can exact-match via RegExp; a
+    // plain string alias would prefix-match and wrongly capture subpaths like
+    // @portiq/core/flows. The renderer must load the renderer-safe barrels
+    // (index.browser.ts), NOT the full "." / "./ai" barrels which re-export
+    // Node-only modules (store → better-sqlite3/node:os, transport senders,
+    // mock, configStore) that crash a Chromium bundle at module init.
+    alias: [
+      { find: /^@portiq\/core$/, replacement: path.resolve(__dirname, "./packages/core/src/index.browser.ts") },
+      { find: /^@portiq\/core\/ai$/, replacement: path.resolve(__dirname, "./packages/core/src/ai/index.browser.ts") },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
   plugins: [react(), tailwindcss(), removeCrossorigin()],
   build: {

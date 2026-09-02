@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
-import { GrpcProtocol } from "../../protocols/grpc";
+import { GrpcProtocol } from "@portiq/core";
 
 /**
  * GrpcPane - Request editor for gRPC calls with proto file support.
@@ -16,6 +16,7 @@ export interface GrpcPaneProps {
   config: any;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   onSend: () => void;
+  onCancel?: () => void;
   isSending: boolean;
   response?: any;
 }
@@ -26,6 +27,7 @@ export function GrpcPane({
   config,
   setConfig,
   onSend,
+  onCancel,
   isSending,
   response
 }: GrpcPaneProps) {
@@ -54,7 +56,12 @@ export function GrpcPane({
     }
   }, [protoContent]);
 
-  // Sync local state to config
+  const currentService = (parsedProto.services as any[]).find((s: any) => s.name === selectedService);
+  const currentMethod = (currentService?.methods as any[] || []).find((m: any) => m.name === selectedMethod);
+
+  // Sync local state to config. `callType` comes from the parsed proto's method
+  // definition (falling back to whatever was already in config) so server-streaming
+  // methods actually get dispatched as SERVER_STREAM instead of always UNARY.
   useEffect(() => {
     setConfig?.({
       ...config,
@@ -63,12 +70,10 @@ export function GrpcPane({
       method: selectedMethod,
       requestBody,
       metadata: (() => { try { return JSON.parse(metadata); } catch { return {}; } })(),
-      deadline
+      deadline,
+      callType: currentMethod?.callType || config?.callType || "UNARY"
     });
-  }, [protoContent, selectedService, selectedMethod, requestBody, metadata, deadline]);
-
-  const currentService = (parsedProto.services as any[]).find((s: any) => s.name === selectedService);
-  const currentMethod = (currentService?.methods as any[] || []).find((m: any) => m.name === selectedMethod);
+  }, [protoContent, selectedService, selectedMethod, requestBody, metadata, deadline, currentMethod]);
 
   const handleGenerateSample = useCallback(() => {
     if (currentMethod) {
@@ -125,14 +130,23 @@ export function GrpcPane({
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <button
-          className="primary"
-          onClick={handleSend}
-          disabled={isSending}
-          style={{ flexShrink: 0, padding: "8px 20px" }}
-        >
-          {isSending ? "Calling..." : "Invoke"}
-        </button>
+        {isSending ? (
+          <button
+            className="primary"
+            onClick={() => onCancel?.()}
+            style={{ flexShrink: 0, padding: "8px 20px", background: "var(--danger)", color: "#fff" }}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            className="primary"
+            onClick={handleSend}
+            style={{ flexShrink: 0, padding: "8px 20px" }}
+          >
+            Invoke
+          </button>
+        )}
       </div>
 
       {/* Service / Method selector */}

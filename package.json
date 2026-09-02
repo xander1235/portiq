@@ -2,23 +2,34 @@
   "name": "portiq",
   "version": "0.6.2",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
+    "predev": "npm run build:core",
     "dev": "concurrently \"vite\" \"electron .\"",
     "dev:nix": "env -u ELECTRON_RUN_AS_NODE concurrently \"vite\" \"electron .\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "build:core": "npm --workspace @portiq/core run build",
+    "build:mcp": "npm run build:core && npm --workspace @portiq/mcp run build",
+    "build:cli": "npm --workspace @portiq/cli run build",
     "build": "vite build",
     "preview": "vite preview",
+    "smoke:renderer": "node scripts/smoke-renderer.mjs",
     "lint": "eslint .",
+    "pretest": "npm run build:core && npm --workspace @portiq/cli run build && npm --workspace @portiq/mcp run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "vite build && electron-builder build --publish never",
-    "package:desktop": "vite build && electron-builder build --mac --win --linux --publish never",
-    "package:mac": "vite build && electron-builder build --mac dmg zip --publish never",
-    "package:win": "vite build && electron-builder build --win nsis portable --publish never",
-    "package:linux": "vite build && electron-builder build --linux AppImage deb rpm --publish never",
-    "package:release": "vite build && electron-builder build --publish never"
+    "bundle:bins": "npm run build:core && npm --workspace @portiq/cli run bundle && npm --workspace @portiq/mcp run bundle",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "package": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --publish never",
+    "package:desktop": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --mac --win --linux --publish never",
+    "package:mac": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --mac dmg zip --publish never",
+    "package:win": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --win nsis portable --publish never",
+    "package:linux": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --linux AppImage deb rpm --publish never",
+    "package:release": "npm run build:core && npm run build:cli && npm run build:mcp && npm run bundle:bins && vite build && electron-builder build --publish never"
   },
   "description": "Portiq - The modern AI-powered API client",
   "license": "AGPL-3.0-only",
@@ -39,8 +50,23 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/@portiq/core/dist/**/*",
+      "node_modules/@portiq/core/package.json",
+      "!node_modules/@portiq/core/src/**",
+      "!node_modules/@portiq/core/node_modules/**"
     ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/bindings/**",
+      "**/node_modules/file-uri-to-path/**",
+      "**/*.node"
+    ],
+    "extraResources": [
+      { "from": "packages/cli/dist/portiq.bundle.cjs", "to": "bin/portiq.bundle.cjs" },
+      { "from": "packages/mcp/dist/portiq-mcp.bundle.cjs", "to": "bin/portiq-mcp.bundle.cjs" }
+    ],
+    "afterPack": "build/afterPack.cjs",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -63,7 +89,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": true,
+      "include": "build/installer.nsh"
     },
     "linux": {
       "icon": "src/assets/logo.png",
@@ -74,9 +101,14 @@
         "deb",
         "rpm"
       ]
+    },
+    "deb": {
+      "afterInstall": "build/linux-after-install.sh",
+      "afterRemove": "build/linux-after-remove.sh"
     }
   },
   "dependencies": {
+    "@portiq/core": "*",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/lang-json": "^6.0.2",

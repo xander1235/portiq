@@ -1,19 +1,14 @@
 import { useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import {
+    getEnvVars as coreGetEnvVars,
+    getSecretVars,
+    interpolate as coreInterpolate,
+    redactSecrets as coreRedactSecrets,
+} from "@portiq/core";
 
-export interface EnvVar {
-    key: string;
-    value: string;
-    comment: string;
-    enabled: boolean;
-    secret?: boolean;
-}
-
-export interface Environment {
-    id: string;
-    name: string;
-    vars: EnvVar[];
-}
+export type { EnvVar, Environment } from "@portiq/core";
+import type { EnvVar, Environment } from "@portiq/core";
 
 export function useEnvironmentState() {
     const [environments, setEnvironments] = useLocalStorage<Environment[]>("ui_environments", [
@@ -38,11 +33,7 @@ export function useEnvironmentState() {
     }
 
     function getEnvVars(): Record<string, string> {
-        const env = getActiveEnv();
-        if (!env) return {};
-        return env.vars
-            .filter((row) => row.key && row.enabled !== false)
-            .reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+        return coreGetEnvVars(getActiveEnv());
     }
 
     function handleUpdateEnvVar(key: string, newValue: string) {
@@ -61,27 +52,11 @@ export function useEnvironmentState() {
     }
 
     function interpolate(value: string | any): string | any {
-        if (typeof value !== "string") return value;
-        const vars = getEnvVars();
-        return value.replace(/\{\{(.*?)\}\}/g, (_match, key) => {
-            const trimmed = String(key).trim();
-            return Object.prototype.hasOwnProperty.call(vars, trimmed) ? vars[trimmed] : "";
-        });
+        return coreInterpolate(value, getEnvVars());
     }
 
     function redactSecrets(value: string | any): string | any {
-        if (typeof value !== "string") return value;
-        const env = getActiveEnv();
-        if (!env || !env.vars) return value;
-        let redacted = value;
-        env.vars.forEach(v => {
-            if (v.secret && v.enabled && v.value) {
-                // Replace any occurrence of the secret value with its placeholder
-                const escapedValue = v.value.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
-                redacted = redacted.replace(new RegExp(escapedValue, 'g'), `{{${v.key}}}`);
-            }
-        });
-        return redacted;
+        return coreRedactSecrets(value, getSecretVars(getActiveEnv()));
     }
 
     return {

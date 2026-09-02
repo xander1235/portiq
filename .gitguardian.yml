@@ -1,0 +1,14 @@
+# GitGuardian (ggshield) ignore list.
+#
+# The TLS keys under packages/core/src/transport/fixtures/tls are generated
+# throwaway fixtures used only by gRPC/TLS transport unit tests — they are not
+# (and never were) real credentials, and they protect nothing. Ignore them so
+# secret scans do not flag the repo.
+version: 2
+matches-ignore:
+  - name: gRPC TLS test fixture private keys
+    match: |
+      -----BEGIN PRIVATE KEY-----
+    paths:
+      - "packages/core/src/transport/fixtures/tls/**"
+    comment: Generated throwaway keys for transport test fixtures; never used outside tests.

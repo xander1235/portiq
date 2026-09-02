@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld("api", {
   // ── GraphQL ──
   sendGraphQL: (payload) => ipcRenderer.invoke("graphql:sendRequest", payload),
 
+  // ── gRPC ──
+  sendGrpc: (payload) => ipcRenderer.invoke("grpc:sendRequest", payload),
+  cancelGrpc: (payload) => ipcRenderer.invoke("grpc:cancelRequest", payload),
+
   // ── WebSocket ──
   wsConnect: (payload) => ipcRenderer.invoke("ws:connect", payload),
   wsSend: (payload) => ipcRenderer.invoke("ws:send", payload),
@@ -42,5 +46,19 @@ contextBridge.exposeInMainWorld("api", {
   saveState: (key, value) => ipcRenderer.invoke("db:saveState", key, value),
   loadState: (key) => ipcRenderer.invoke("db:loadState", key),
   clearAllData: () => ipcRenderer.invoke("db:clearAll"),
-  getDataPath: () => ipcRenderer.invoke("db:getDataPath")
+  getDataPath: () => ipcRenderer.invoke("db:getDataPath"),
+
+  // ── AI ──
+  saveAiConfig: (config) => ipcRenderer.invoke("ai:saveConfig", config),
+
+  // ── External DB change (live-reload) ──
+  onExternalStateChange: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on("state:externalChange", handler);
+    return () => ipcRenderer.removeListener("state:externalChange", handler);
+  },
+
+  // ── CLI PATH commands ──
+  installCliShims: () => ipcRenderer.invoke("cli:installShims"),
+  uninstallCliShims: () => ipcRenderer.invoke("cli:uninstallShims")
 });

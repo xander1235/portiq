@@ -73,12 +73,77 @@ Portiq is multi-protocol, but not every protocol has the same maturity yet.
 | SSE / Socket | Available | Stream viewer support |
 | Mock Server | Available | Local mock server configuration and route generation |
 | DAG Flow | Available | Visual multi-step flow editor with reference-based data passing and payload injection |
-| MCP | Available | MCP server connection and prompt/resource browsing |
+| MCP (client) | Available | Connect to external MCP servers from inside the app; browse their prompts/resources |
 | gRPC | Experimental | UI exists, native transport is not fully enabled yet |
 
 > **Notes**
 > - GraphQL subscriptions are not yet handled as a first-class GraphQL-over-WebSocket flow inside the GraphQL pane.
 > - gRPC currently needs additional native transport work before it should be treated as production-ready.
+> - The "MCP" row above is Portiq acting as an MCP *client*. Portiq also ships its own MCP *server* (`portiq-mcp`) so AI agents can browse and run your library — see **CLI & MCP Server** below.
+
+## ⌨️ CLI & MCP Server
+
+Alongside the desktop app, Portiq ships a terminal client and an MCP server —
+both built on the same `@portiq/core` engine, reading the same shared store:
+
+- **`portiq`** (`@portiq/cli`) — list/inspect/search your library, run saved
+  requests/collections/flows with tests, send ad-hoc requests, import/export,
+  start a mock server, and sync to a git remote. Full command reference:
+  [`packages/cli/README.md`](packages/cli/README.md).
+- **`portiq-mcp`** (`@portiq/mcp`) — a stdio (or streamable-HTTP) [MCP](https://modelcontextprotocol.io)
+  server so AI agents (Claude Code, Claude Desktop, etc.) can browse, run, and
+  (opt-in) mutate your API library. Full reference:
+  [`packages/mcp/README.md`](packages/mcp/README.md).
+
+**Install**
+
+Both packages are publishable (`"private": false`, `publishConfig.access:
+"public"`, real `portiq`/`portiq-mcp` bins) but have not been published to the
+npm registry yet — publishing is gated on a tagged release (and an npm org).
+Once published, the intended usage is:
+
+```bash
+npx -y @portiq/cli ls
+npx -y @portiq/mcp
+# or, installed globally
+npm install -g @portiq/cli @portiq/mcp
+portiq ls
+portiq-mcp
+```
+
+Until then, run either from a checkout of this repository:
+
+```bash
+npm install
+npm run build:cli && npm run build:mcp
+node packages/cli/dist/index.js ls
+node packages/mcp/dist/bin.js
+```
+
+or link them onto your `PATH` locally:
+
+```bash
+cd packages/cli && npm link   # portiq
+cd packages/mcp && npm link   # portiq-mcp
+```
+
+**MCP host config**
+
+Drop `portiq-mcp` into any MCP-compatible host's config. Once published, a
+host that shells out via `npx`:
+
+```json
+{ "mcpServers": { "portiq": { "command": "npx", "args": ["-y", "@portiq/mcp"] } } }
+```
+
+or, if installed globally (or linked) so the `portiq-mcp` binary is on `PATH`:
+
+```json
+{ "mcpServers": { "portiq": { "command": "portiq-mcp", "args": [] } } }
+```
+
+See [`packages/mcp/README.md`](packages/mcp/README.md) for the `--allow-writes`
+write-tool gate, the streamable-HTTP transport, and the execute allow/deny-list.
 
 ## 🧩 Features
 
@@ -390,9 +455,17 @@ If native module bindings mismatch on your machine, run `npm run rebuild`. If yo
 npm run dev            # run renderer + Electron in development
 npm run dev:nix        # same, for Nix environments
 npm run build          # build the renderer
+npm run build:core     # build the @portiq/core workspace package
+npm run build:cli      # build the @portiq/cli workspace package (portiq)
+npm run build:mcp      # build the @portiq/mcp workspace package (portiq-mcp)
 npm run preview        # preview the built renderer
+npm test               # run the full vitest suite (builds core/cli/mcp first, then core + cli + mcp + renderer tests)
+npm run test:watch     # run vitest in watch mode
 npm run lint           # lint the codebase
-npm run rebuild        # rebuild native modules
+npm run rebuild        # rebuild native modules for the Electron ABI
+npm run bundle:bins    # bundle portiq + portiq-mcp into self-contained CJS binaries (dist/portiq.bundle.cjs, dist/portiq-mcp.bundle.cjs)
+npm run smoke:renderer # headless-Chromium smoke test of the built renderer bundle
+npm run smoke:packaged # smoke test that @portiq/core is bundled correctly into a packaged Electron build
 npm run package        # package a desktop build
 npm run package:desktop # package all desktop targets
 npm run package:mac    # package macOS artifacts
@@ -472,6 +545,10 @@ Build output is written to `release/`.
 ## 🗂️ Repository Structure
 
 ```text
+packages/
+  core/
+  cli/
+  mcp/
 src/
   components/
   hooks/
@@ -491,6 +568,9 @@ Key areas:
 - `src/services/` - AI, formatting, sync, mock server, and data helpers
 - `src/protocols/` - protocol-specific request/response adapters
 - `electron/` - Electron main and preload processes
+- `packages/core/` - `@portiq/core`, framework-free business logic shared by the app, CLI, and MCP server
+- `packages/cli/` - `@portiq/cli`, the `portiq` terminal client ([README](packages/cli/README.md))
+- `packages/mcp/` - `@portiq/mcp`, the `portiq-mcp` stdio/HTTP MCP server ([README](packages/mcp/README.md))
 
 ## 🤝 Contributing
 

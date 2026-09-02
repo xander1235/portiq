@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'release', 'test_snippet.*', 'vitest.config.ts'] },
+  { ignores: ['**/dist', 'node_modules', 'release', 'test_snippet.*', 'vitest.config.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -25,6 +25,20 @@ export default tseslint.config(
     },
   },
   {
+    // Node ESM scripts (e.g. scripts/smoke-renderer.mjs). Node globals plus
+    // browser globals for code serialized into a page via Playwright.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        ...globals.es2020,
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,
@@ -34,7 +48,7 @@ export default tseslint.config(
         ...globals.es2020,
       },
       parserOptions: {
-        project: ['./tsconfig.json'],
+        project: ['./tsconfig.json', './packages/core/tsconfig.json', './packages/mcp/tsconfig.json', './packages/cli/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },

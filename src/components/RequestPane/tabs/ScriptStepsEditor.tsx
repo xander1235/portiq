@@ -6,7 +6,7 @@ import { createCustomSearchPanel, customSearchKeymap } from "../../../utils/code
 import styles from "../RequestEditor.module.css";
 import { cmTheme } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
-import { ScriptStep, emptyStep } from "../../../services/scriptSteps";
+import { ScriptStep, emptyStep } from "@portiq/core";
 
 const searchWithReplace = () => [
     search({ top: true, createPanel: createCustomSearchPanel }),

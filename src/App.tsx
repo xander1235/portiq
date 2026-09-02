@@ -3,8 +3,7 @@ import styles from "./App.module.css";
 import logo from "./assets/logo_bg.png";
 import CodeMirror from '@uiw/react-codemirror';
 import { generateRequestFromPrompt, summarizeResponse, fetchModels } from "./services/ai";
-import { createTestHarness } from "./services/testRunner";
-import { ScriptStep, toSteps, emptyStep } from "./services/scriptSteps";
+import { createTestHarness, ScriptStep, toSteps, emptyStep, GrpcProtocol, GraphQLProtocol } from "@portiq/core";
 import { jsonToCsv, jsonToXml, xmlToJson } from "./services/format";
 import { applyDerivedFields, filterRows, sortRows } from "./services/table";
 import { normalizeVizSpec, type VizSpec } from "./services/visualize";
@@ -13,8 +12,10 @@ import {
   inferRequestNameFromUrl,
   looksLikeCurl,
   parameterizeParsedCurl,
+  InvalidJsonBodyError,
+  stripJsonComments,
   type ParsedCurl,
-} from "./services/curlParser";
+} from "@portiq/core";
 
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useEnvironmentState } from "./hooks/useEnvironmentState";
@@ -24,6 +25,7 @@ import { flattenCollections } from "./utils/fuzzySearch";
 import { get, set } from "idb-keyval";
 import { resolvePaneLayout, clampTopHeight, clampRightWidth, type PaneDefaults } from "./utils/paneLayout";
 import { buildSearchEntities, searchEntities, type SearchEntity, type RevealTarget } from "./utils/searchIndex";
+import { computeExternalReloadAction } from "./utils/externalReload";
 
 import { EnvironmentModal } from "./components/Modals/EnvironmentModal";
 import { CurlImportModal } from "./components/Modals/CurlImportModal";
@@ -56,14 +58,13 @@ import { MockServerPane } from "./components/ProtocolPanes/MockServerPane";
 import { SseSocketPane } from "./components/ProtocolPanes/SseSocketPane";
 import { McpPane } from "./components/ProtocolPanes/McpPane";
 import { DagFlowPane } from "./components/ProtocolPanes/DagFlowPane";
-import { migrateV1 } from "./components/ProtocolPanes/dag/migrate";
-import type { DagGraph } from "./components/ProtocolPanes/dag/types";
-import { GrpcProtocol } from "./protocols/index"; // register all built-in protocols
-import { GraphQLProtocol } from "./protocols/graphql";
+import { migrateV1 } from "@portiq/core/flows";
+import type { DagGraph } from "@portiq/core/flows";
 import { useTheme } from "./theme/useTheme";
 import { Sun, Moon, Monitor } from "lucide-react";
 import { applyBodyContentType } from "./utils/headers";
 import { computeAutoHeaders, type AutoHeader } from "./utils/autoHeaders";
+import { buildHttpSendPayload, type RendererHttpSendPayload } from "./utils/httpSend";
 
 const responseTabs = ["Pretty", "Raw", "XML", "Table", "Visualize", "Headers"];
 const requestTabs = ["Params", "Headers", "Auth", "Body", "Tests"];
@@ -297,6 +298,11 @@ function App() {
   // from the on-disk snapshot.
   const [hydrated, setHydrated] = useState(false);
 
+  // True while a debounced autosave is armed but not yet flushed — the signal
+  // for "unsaved local edits" that gates live-reload (see utils/externalReload).
+  const pendingSaveRef = useRef(false);
+  const [externalReloadPrompt, setExternalReloadPrompt] = useState(false);
+
   // One-time migration of the legacy global DAG Flow graph (Task 10, keyed by
   // "portiq_dag_flow_state_v1") into the new per-request `dagGraph` field.
   // Guarded so it can only ever run once per install (portiq_dag_flow_migrated_v2)
@@ -388,6 +394,19 @@ function App() {
   const [aiApiKeyGemini, setAiApiKeyGemini] = useLocalStorage("ui_aiApiKeyGemini", "");
   const [aiSemanticSearchEnabled, setAiSemanticSearchEnabled] = useLocalStorage("ui_aiSemanticSearchEnabled", false);
   const [semanticProgress, setSemanticProgress] = useState<string | null>(null);
+
+  // Mirror the renderer's localStorage-backed AI settings into the shared
+  // store so headless CLI/MCP surfaces can discover desktop-configured
+  // provider/model/keys (the lowest-precedence "desktop-stored" tier).
+  useEffect(() => {
+    window.api?.saveAiConfig?.({
+      provider: aiProvider,
+      model: activeModel,
+      keys: { openai: aiApiKeyOpenAI, anthropic: aiApiKeyAnthropic, gemini: aiApiKeyGemini },
+      semanticSearchEnabled: aiSemanticSearchEnabled,
+    });
+  }, [aiProvider, activeModel, aiApiKeyOpenAI, aiApiKeyAnthropic, aiApiKeyGemini, aiSemanticSearchEnabled]);
+
   useEffect(() => {
     let isMounted = true;
     const fetchAvail = async () => {
@@ -452,6 +471,7 @@ function App() {
   const [graphqlResponse, setGraphqlResponse] = useState<any>(null);
   const [grpcConfig, setGrpcConfig] = useState<any>({});
   const [grpcResponse, setGrpcResponse] = useState<any>(null);
+  const [activeGrpcRequestId, setActiveGrpcRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (showRightRail && chatEndRef.current) {
@@ -1103,9 +1123,11 @@ function App() {
       headersMode,
       testsMode
     };
+    pendingSaveRef.current = true;
     const timer = setTimeout(() => {
       const value = JSON.stringify(payload);
       savePersisted(value);
+      pendingSaveRef.current = false;
     }, 200);
     return () => clearTimeout(timer);
   }, [
@@ -1147,6 +1169,34 @@ function App() {
     headersMode,
     testsMode
   ]);
+
+  // Live-reload when another process (CLI/MCP or a second instance) writes the
+  // shared appState. Reload silently when nothing local is pending; otherwise
+  // show a non-destructive banner instead of clobbering local edits.
+  const reloadFromDisk = useCallback(async () => {
+    const value = await loadPersisted();
+    if (value) {
+      try {
+        applyPersistedState(JSON.parse(value));
+      } catch {
+        // ignore corrupt state
+      }
+    }
+    setExternalReloadPrompt(false);
+  }, [applyPersistedState]);
+
+  useEffect(() => {
+    if (!window.api?.onExternalStateChange) return;
+    const unsubscribe = window.api.onExternalStateChange(() => {
+      const action = computeExternalReloadAction({ hasPendingLocalEdits: pendingSaveRef.current });
+      if (action === "prompt") {
+        setExternalReloadPrompt(true);
+        return;
+      }
+      void reloadFromDisk();
+    });
+    return unsubscribe;
+  }, [reloadFromDisk]);
 
   const handleGitHubSyncStateChange = useCallback((nextState: any) => {
     setGitHubSyncState(nextState || { status: "idle", label: "", detail: "" });
@@ -1912,12 +1962,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, bodyType, bodyText, bodyRows, headersText, headersRows, url, paramsRows, appVersion]);
 
-  function stripJsonComments(text: string) {
-    return text
-      .replace(/\/\/.*$/gm, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-  }
-
   function buildUrlWithParams(interpolateValues = true) {
     const val = (v: string) => interpolateValues ? interpolate(v) : v;
     let base = val(url || "");
@@ -2211,6 +2255,11 @@ function App() {
     await window.api.cancelRequest({ requestId: activeHttpRequestId });
   }
 
+  async function handleCancelGrpcSend() {
+    if (!activeGrpcRequestId || !window.api?.cancelGrpc) return;
+    await window.api.cancelGrpc({ requestId: activeGrpcRequestId });
+  }
+
   async function handleSend() {
     setIsSending(true);
     const requestId = `http-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2219,64 +2268,35 @@ function App() {
     setResponseSummary({ summary: "Sending request...", hints: [] });
     setError("");
     try {
-      const headers = parseHeaders();
-      if (headers === null) return;
-      let body = bodyType === "none" ? undefined : bodyText;
-      let multipartParts;
-      if (bodyType === "json") {
-        const strippedJson = stripJsonComments(interpolate(bodyText));
-        if (strippedJson.trim()) {
-          try {
-            body = JSON.stringify(JSON.parse(strippedJson));
-          } catch (err: any) {
-            setError(`Invalid JSON body: ${err.message}`);
-            setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
-            return;
-          }
-        } else {
-          body = "";
+      let payload: RendererHttpSendPayload;
+      try {
+        payload = buildHttpSendPayload(
+          {
+            protocol: "http",
+            method,
+            url,
+            headersText,
+            headersRows,
+            paramsRows,
+            authType,
+            authConfig,
+            authRows,
+            bodyType,
+            bodyText,
+            bodyRows,
+            httpVersion,
+            requestTimeoutMs
+          },
+          { env: getActiveEnv(), requestId }
+        );
+      } catch (err: any) {
+        if (err instanceof InvalidJsonBodyError) {
+          setError(err.message);
+          setResponseSummary({ summary: "Invalid JSON body.", hints: ["Fix the JSON syntax before sending."] });
+          return;
         }
+        throw err;
       }
-      if (bodyType === "form") {
-        const data = rowsToObject(bodyRows);
-        body = new URLSearchParams(data).toString();
-      }
-      if (bodyType === "multipart") {
-        multipartParts = (bodyRows || [])
-          .filter((row) => row.key && row.enabled !== false)
-          .map((row) => (
-            row.kind === "file"
-              ? {
-                  kind: "file",
-                  name: interpolate(row.key),
-                  filename: row.fileName || "upload.bin",
-                  contentType: row.mimeType || "application/octet-stream",
-                  dataBase64: row.fileBase64 || ""
-                }
-              : {
-                  kind: "text",
-                  name: interpolate(row.key),
-                  value: interpolate(row.value || "")
-                }
-          ));
-        body = undefined;
-      }
-      if (bodyType === "xml") {
-        body = interpolate(bodyText);
-      }
-      if (bodyType === "raw") {
-        body = interpolate(bodyText);
-      }
-      const payload = {
-        requestId,
-        method,
-        url: buildUrlWithParams(),
-        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, interpolate(v)])),
-        body,
-        multipartParts,
-        timeoutMs: requestTimeoutMs,
-        httpVersion
-      };
 
       const preOutput: any[] = [];
       const preContext = {
@@ -2480,27 +2500,60 @@ function App() {
   async function handleGrpcSend() {
     if (!url.trim()) return;
     setIsSending(true);
+    const requestId = `grpc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setActiveGrpcRequestId(requestId);
     setGrpcResponse(null);
     try {
-      // gRPC calls are currently a placeholder - requires native module
-      // For now we show the config validation
       const validation = GrpcProtocol.validateRequest({
-        url,
+        url: interpolate(url),
         service: grpcConfig.service,
         method: grpcConfig.method,
         requestBody: grpcConfig.requestBody
       });
       if (!validation.valid) {
-        setGrpcResponse({ error: validation.errors.join("\n"), statusCode: 2 });
+        setGrpcResponse(GrpcProtocol.parseResponse({
+          error: validation.errors.join("\n"),
+          statusCode: 3
+        }));
+        return;
+      }
+
+      const metadata = grpcConfig.metadata && typeof grpcConfig.metadata === "object"
+        ? Object.fromEntries(
+            Object.entries(grpcConfig.metadata).map(([k, v]) => [k, interpolate(String(v))])
+          )
+        : {};
+
+      const payload = {
+        ...GrpcProtocol.buildRequest({
+          url: interpolate(url),
+          service: grpcConfig.service,
+          method: grpcConfig.method,
+          requestBody: interpolate(grpcConfig.requestBody || "{}"),
+          metadata,
+          callType: grpcConfig.callType || "UNARY",
+          deadline: grpcConfig.deadline || 30000,
+          tls: grpcConfig.tls,
+          protoContent: grpcConfig.protoContent || ""
+        }),
+        requestId
+      };
+
+      addLog({ source: "API", type: "info", message: `Sending gRPC ${payload.service}/${payload.method} → ${payload.url}` });
+
+      const raw = await window.api.sendGrpc(payload);
+      const result = GrpcProtocol.parseResponse(raw);
+      setGrpcResponse(result);
+
+      if (result.error) {
+        addLog({ source: "API", type: "error", message: `gRPC Error: ${GrpcProtocol.getStatusName(result.statusCode || 0)}`, data: result.error });
       } else {
-        setGrpcResponse({
-          error: "gRPC native transport not yet available. Install @grpc/grpc-js to enable.",
-          statusCode: 12 // UNIMPLEMENTED
-        });
+        addLog({ source: "API", type: "success", message: `gRPC ${GrpcProtocol.getStatusName(result.statusCode || 0)} (${result.duration || 0}ms)` });
       }
     } catch (err: any) {
-      setGrpcResponse({ error: err.message, statusCode: 13 });
+      setGrpcResponse(GrpcProtocol.parseResponse({ error: err.message, statusCode: 13 }));
     } finally {
+      setActiveGrpcRequestId(null);
       setIsSending(false);
     }
   }
@@ -3088,6 +3141,23 @@ function App() {
 
   return (
     <div className={styles.app}>
+      {externalReloadPrompt && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+          style={{ background: "rgba(56, 189, 248, 0.12)", color: "#7dd3fc", borderBottom: "1px solid rgba(56, 189, 248, 0.24)" }}
+        >
+          <span>This library was changed by another process. You have unsaved local edits.</span>
+          <span className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { void reloadFromDisk(); }}>
+              Reload from disk
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setExternalReloadPrompt(false)}>
+              Keep my changes
+            </Button>
+          </span>
+        </div>
+      )}
       <header className="flex justify-between items-center p-3 bg-panel border-b border-border shadow-sm" style={{ background: "linear-gradient(90deg, var(--panel-2), var(--panel))" }}>
         <div className="flex items-center gap-2">
           <img src={logo} alt="Portiq Logo" style={{ height: '24px', width: 'auto', marginRight: '6px' }} />
@@ -3394,6 +3464,7 @@ function App() {
                   config={grpcConfig}
                   setConfig={setGrpcConfig}
                   onSend={handleGrpcSend}
+                  onCancel={handleCancelGrpcSend}
                   isSending={isSending}
                   response={grpcResponse}
                 />

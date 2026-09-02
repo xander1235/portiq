@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   DagGraph, DagNode, RequestConfig, RequestNodeData, PayloadNodeData,
   ConditionNodeData, TransformNodeData, StepResult, StepsContext,
-} from "./types";
-import { resolveTemplate, type ResolveContext } from "./resolver";
-import { resolveStepConfig, savedRequestToConfig } from "./linkResolve";
-import { suggestRefs } from "./refSuggest";
+  ResolveContext,
+} from "@portiq/core/flows";
+import { resolveTemplate, resolveStepConfig, savedRequestToConfig, suggestRefs } from "@portiq/core/flows";
 import { TokenField } from "./TokenField";
 import { STATUS, tint } from "./nodes/nodeStyles";
 

@@ -1,0 +1,68 @@
+{
+  "info": {
+    "name": "Sample API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.example.com" }
+  ],
+  "item": [
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Debug", "value": "1", "disabled": true }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1",
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{token}}" }]
+            }
+          }
+        },
+        {
+          "name": "Create user",
+          "request": {
+            "method": "post",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/users",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"ada\"}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{baseUrl}}/login" },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "admin" },
+            { "key": "password", "value": "s3cret" }
+          ]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "grant_type", "value": "password" },
+            { "key": "scope", "value": "read", "disabled": true }
+          ]
+        }
+      }
+    }
+  ]
+}

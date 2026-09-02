@@ -17,8 +17,7 @@ import { SegmentedControl } from "../../ui/SegmentedControl";
 import styles from "../RequestEditor.module.css";
 import { cmTheme } from "../../../theme/codemirrorTheme";
 import type { Theme } from "../../../theme/theme";
-import { summarizeTests } from "../../../services/testRunner";
-import { ScriptStep } from "../../../services/scriptSteps";
+import { summarizeTests, ScriptStep } from "@portiq/core";
 import { ScriptStepsEditor } from "./ScriptStepsEditor";
 
 interface TestsTabProps {

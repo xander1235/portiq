@@ -1,0 +1,55 @@
+{
+  "name": "@portiq/core",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "import": "./src/index.ts",
+      "require": "./dist/index.js"
+    },
+    "./flows": {
+      "import": "./src/flows/index.ts",
+      "require": "./dist/flows/index.js"
+    },
+    "./ai": {
+      "browser": "./src/ai/index.browser.ts",
+      "import": "./src/ai/index.ts",
+      "require": "./dist/ai/index.js"
+    },
+    "./grpc": {
+      "import": "./src/transport/grpc.ts",
+      "require": "./dist/transport/grpc.js"
+    },
+    "./sync": {
+      "types": "./src/sync/index.ts",
+      "require": "./dist/sync/index.cjs",
+      "import": "./src/sync/index.ts"
+    },
+    "./sync/browser": "./src/sync/browser.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && esbuild src/sync/index.ts --bundle --platform=node --format=cjs --outfile=dist/sync/index.cjs --external:better-sqlite3 --external:@grpc/grpc-js --external:@grpc/proto-loader --external:ws --external:dagre --external:fuse.js && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\""
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13",
+    "@octokit/rest": "^22.0.1",
+    "better-sqlite3": "^12.11.1",
+    "dagre": "^0.8.5",
+    "fuse.js": "^7.1.0",
+    "grpc-reflection-js": "^0.3.0",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@grpc/reflection": "^1.0.4",
+    "@types/dagre": "^0.7.54",
+    "esbuild": "^0.28.1"
+  }
+}

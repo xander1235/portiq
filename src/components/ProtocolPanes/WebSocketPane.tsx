@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { json } from "@codemirror/lang-json";
-import { WebSocketProtocol } from "../../protocols/websocket";
+import { WebSocketProtocol } from "@portiq/core";
+import { createConnectionManager } from "./wsConnectionManager";
 import { TableEditor } from "../TableEditor";
 import styles from "../RequestPane/RequestEditor.module.css";
-import { customJsonLinter } from "../../utils/codemirror/jsonExtensions";
+import { customJsonLinter, jsonCommentHighlight } from "../../utils/codemirror/jsonExtensions";
 import { envVarHighlightPlugin, createEnvAutoComplete } from "../../utils/codemirror/environmentExtensions";
 import { lintGutter } from "@codemirror/lint";
 import { search } from "@codemirror/search";
@@ -215,7 +216,7 @@ export function WebSocketPane({
     const connectionId = currentRequestId ? `ws-${currentRequestId}` : connectionIdRef.current;
     connectionIdRef.current = connectionId;
 
-    const manager = WebSocketProtocol.createConnectionManager(connectionId);
+    const manager = createConnectionManager(connectionId);
     managerRef.current = manager;
 
     const unsubMessage = manager.on("message", appendMessage);
@@ -685,7 +686,7 @@ export function WebSocketPane({
                     value={messageInput}
                     height="100%"
                     theme={vscodeDark}
-                    extensions={[json(), customJsonLinter, lintGutter(), envAutoComplete, envVarHighlightPlugin, ...searchWithReplace]}
+                    extensions={[json(), customJsonLinter, jsonCommentHighlight, lintGutter(), envAutoComplete, envVarHighlightPlugin, ...searchWithReplace]}
                     onChange={(value) => setMessageInput(value)}
                     basicSetup={{ lineNumbers: true, foldGutter: true, bracketMatching: true, highlightActiveLine: false }}
                     style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: "13px" }}
