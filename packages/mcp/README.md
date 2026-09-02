@@ -61,6 +61,13 @@ resolved target host of each network send; a blocked host returns a tool error n
   `update_request`, `delete_request`, `create_collection`,
   `set_environment_variable`, `save_ad_hoc_as_request`.
 
+`create_request` / `update_request` also accept a `dagGraph` field (version 2:
+`nodes`/`edges`/`positions`) to author DAG flows over MCP — the request's
+`protocol` is set to `"dag"` automatically. Graphs are validated before
+persisting: node/edge ids must be unique and resolve, node names must be unique
+(steps are keyed by name), and a client-supplied `lastRun` is stripped.
+`update_request` with `dagGraph: null` clears the flow.
+
 ## Resources
 
 `portiq://collections`, `portiq://collection/{id}`, `portiq://request/{id}`,

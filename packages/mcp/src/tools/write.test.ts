@@ -114,3 +114,120 @@ describe("write mutation", () => {
     verify.close();
   });
 });
+
+describe("dagGraph authoring via MCP", () => {
+  const graph = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    version: 2,
+    nodes: [
+      { id: "n1", type: "request", name: "step1", label: "S1", status: "idle", data: { linkedRequestId: "r1", overrides: {} } },
+      { id: "n2", type: "condition", name: "check", label: "C", status: "idle", data: { expression: "true" } },
+    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
+    positions: { n1: { x: 0, y: 0 }, n2: { x: 100, y: 0 } },
+    ...overrides,
+  });
+
+  it("create_request with dagGraph persists a validated flow and sets protocol=dag", async () => {
+    const { c, dir } = await client(true);
+    const out = JSON.parse((await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "My Flow", method: "GET", url: "", dagGraph: graph() } })).content[0].text as string);
+    expect(out.protocol).toBe("dag");
+    expect(out.dagGraph.nodes).toHaveLength(2);
+    const verify = openAppStateStore({ dataDir: dir });
+    const saved = verify.flattenRequests().find((r) => r.id === out.id);
+    expect(saved?.protocol).toBe("dag");
+    expect(saved?.dagGraph?.edges).toHaveLength(1);
+    expect(saved?.dagGraph?.lastRun).toBeUndefined(); // forged run history stripped
+    verify.close();
+  });
+
+  it("create_request strips a client-supplied lastRun from the graph", async () => {
+    const { c, dir } = await client(true);
+    const withHistory = graph({ lastRun: { steps: { step1: { response: { status: 200 } } }, statuses: {}, skipReasons: {}, ranAt: "2020-01-01T00:00:00Z" } });
+    const out = JSON.parse((await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "F", method: "GET", url: "", dagGraph: withHistory } })).content[0].text as string);
+    expect(out.dagGraph.lastRun).toBeUndefined();
+    const verify = openAppStateStore({ dataDir: dir });
+    expect(verify.flattenRequests()[0].dagGraph?.lastRun).toBeUndefined();
+    verify.close();
+  });
+
+  it("create_request rejects a graph with an edge to an unknown node", async () => {
+    const { c } = await client(true);
+    const bad = graph({ edges: [{ id: "e1", from: "n1", to: "ghost" }] });
+    const res = await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Bad", method: "GET", url: "", dagGraph: bad } });
+    expect(res.isError).toBe(true);
+    expect((res.content as Array<{ text: string }>)[0].text).toMatch(/unknown node 'ghost'/);
+  });
+
+  it("create_request rejects duplicate node names (steps context is keyed by name)", async () => {
+    const { c } = await client(true);
+    const dup = graph({ nodes: [
+      { id: "a", type: "request", name: "same", label: "A", status: "idle", data: { overrides: {} } },
+      { id: "b", type: "request", name: "same", label: "B", status: "idle", data: { overrides: {} } },
+    ] });
+    const res = await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Dup", method: "GET", url: "", dagGraph: dup } });
+    expect(res.isError).toBe(true);
+    expect((res.content as Array<{ text: string }>)[0].text).toMatch(/duplicate node name 'same'/);
+  });
+
+  it("create_request rejects a graph with wrong version", async () => {
+    const { c } = await client(true);
+    const res = await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "V", method: "GET", url: "", dagGraph: graph({ version: 1 }) } });
+    expect(res.isError).toBe(true);
+    expect((res.content as Array<{ text: string }>)[0].text).toMatch(/version/);
+  });
+
+  it("create_request neutralizes prototype keys nested inside dagGraph", async () => {
+    const { c, dir } = await client(true);
+    const hostile = JSON.parse(`{
+      "version": 2,
+      "nodes": [{ "id": "n1", "type": "request", "name": "s", "label": "S", "status": "idle",
+        "data": { "overrides": {}, "__proto__": { "polluted": true } } }],
+      "edges": [], "positions": {}
+    }`);
+    const res = await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "H", method: "GET", url: "", dagGraph: hostile } });
+    expect(res.isError).toBe(true);
+    expect((res.content as Array<{ text: string }>)[0].text).toMatch(/__proto__/);
+    const verify = openAppStateStore({ dataDir: dir });
+    const item: any = verify.flattenRequests()[0];
+    expect(item).toBeFalsy(); // nothing persisted
+    verify.close();
+  });
+
+  it("update_request patch with dagGraph converts an existing request into a flow", async () => {
+    const { c, dir } = await client(true);
+    const created = JSON.parse((await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Plain", method: "GET", url: "https://x" } })).content[0].text as string);
+    const res = await c.callTool({ name: "update_request", arguments: { id: created.id, patch: { dagGraph: graph() } } });
+    const out = JSON.parse((res.content as Array<{ text: string }>)[0].text as string);
+    expect(out.protocol).toBe("dag");
+    expect(out.dagGraph.nodes).toHaveLength(2);
+    const verify = openAppStateStore({ dataDir: dir });
+    const saved = verify.flattenRequests().find((r) => r.id === created.id);
+    expect(saved?.protocol).toBe("dag");
+    expect(saved?.dagGraph?.nodes).toHaveLength(2);
+    verify.close();
+  });
+
+  it("update_request with dagGraph:null clears the flow", async () => {
+    const { c, dir } = await client(true);
+    const created = JSON.parse((await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Flow", method: "GET", url: "", dagGraph: graph() } })).content[0].text as string);
+    expect(created.protocol).toBe("dag");
+    await c.callTool({ name: "update_request", arguments: { id: created.id, patch: { dagGraph: null } } });
+    const verify = openAppStateStore({ dataDir: dir });
+    const saved: any = verify.flattenRequests().find((r) => r.id === created.id);
+    expect(saved.protocol).toBe("dag"); // protocol unchanged by clear; graph gone
+    expect(saved.dagGraph).toBeUndefined();
+    verify.close();
+  });
+
+  it("update_request rejects an invalid dagGraph patch without mutating the item", async () => {
+    const { c, dir } = await client(true);
+    const created = JSON.parse((await c.callTool({ name: "create_request", arguments: { collectionId: "c1", name: "Keep", method: "GET", url: "https://x" } })).content[0].text as string);
+    const res = await c.callTool({ name: "update_request", arguments: { id: created.id, patch: { dagGraph: { version: 2, nodes: [], edges: [] } } } });
+    expect(res.isError).toBe(true); // empty nodes rejected
+    const verify = openAppStateStore({ dataDir: dir });
+    const saved: any = verify.flattenRequests().find((r) => r.id === created.id);
+    expect(saved.name).toBe("Keep");
+    expect(saved.dagGraph).toBeUndefined();
+    verify.close();
+  });
+});

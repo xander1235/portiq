@@ -4,6 +4,7 @@ import type { Collection, Environment, FolderItem, RequestItem } from "@portiq/c
 import type { ServerContext } from "../context";
 import { jsonToolResult, errorToolResult } from "../util/mcpJson";
 import { withEntityRetry, newId } from "../store/write";
+import { parseDagGraph, rejectPrototypeKeys } from "./dagGraphSchema";
 
 const MUTATES = { readOnlyHint: false } as const;
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true } as const;
@@ -26,12 +27,13 @@ function findRequest(collections: Collection[], id: string): RequestItem | undef
   return undefined;
 }
 
-function makeRequestItem(args: { name: string; method: string; url: string; protocol?: string; headers?: Record<string, string>; body?: string; bodyType?: string }): RequestItem {
+function makeRequestItem(args: { name: string; method: string; url: string; protocol?: string; headers?: Record<string, string>; body?: string; bodyType?: string; dagGraph?: unknown }): RequestItem {
   return {
     type: "request", id: newId("req"), name: args.name, description: "", tags: [],
     protocol: args.protocol || "http", method: args.method, url: args.url,
     bodyType: args.bodyType || (args.body ? "raw" : "none"), bodyText: args.body ?? "",
     headersRows: Object.entries(args.headers ?? {}).map(([key, value]) => ({ key, value, comment: "", enabled: true })),
+    ...(args.dagGraph ? { dagGraph: args.dagGraph as RequestItem["dagGraph"] } : {}),
   };
 }
 
@@ -44,7 +46,19 @@ const requestFields = {
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
   bodyType: z.string().optional(),
+  dagGraph: z.unknown().optional(),
 };
+
+/** Parse a raw dagGraph argument (already zod-stripped to unknown) and return
+ *  a validated graph, or surface a descriptive error for the tool result. */
+function takeDagGraph(raw: unknown): { ok: true; dagGraph?: RequestItem["dagGraph"] } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) return { ok: true };
+  const protoHit = rejectPrototypeKeys(raw);
+  if (protoHit) return { ok: false, message: `Disallowed key at '${protoHit}'` };
+  const res = parseDagGraph(raw);
+  if ("error" in res) return { ok: false, message: res.error };
+  return { ok: true, dagGraph: res.graph };
+}
 
 const PROTOTYPE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -61,6 +75,7 @@ const requestPatchSchema = z
     headers: z.record(z.string(), z.string()).optional(),
     body: z.string().optional(),
     bodyType: z.string().optional(),
+    dagGraph: z.union([z.unknown(), z.null()]).optional(),
   })
   .strict();
 
@@ -73,6 +88,16 @@ function applyPatch(item: RequestItem, patch: unknown): void {
     }
   }
   const clean = requestPatchSchema.parse(patch);
+  const dag = takeDagGraph(clean.dagGraph);
+  if (!dag.ok) throw new Error(dag.message);
+  if (dag.dagGraph === undefined && clean.dagGraph === null) {
+    // explicit null clears the graph (turns the flow back into a plain request)
+    delete item.dagGraph;
+  } else if (dag.dagGraph) {
+    item.dagGraph = dag.dagGraph;
+    if (!clean.protocol) item.protocol = "dag";
+  }
+  delete (clean as { dagGraph?: unknown }).dagGraph;
   Object.assign(item, clean, { type: "request", id: item.id });
 }
 
@@ -80,10 +105,13 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
   const registered = [
     server.registerTool(
       "create_request",
-      { title: "Create request", description: "Add a new request to a collection.", inputSchema: requestFields, annotations: MUTATES },
+      { title: "Create request", description: "Add a new request to a collection. Pass dagGraph (version 2, nodes/edges/positions) to author a DAG flow; protocol is set to \"dag\" automatically.", inputSchema: requestFields, annotations: MUTATES },
       async (args) => {
         try {
-          const item = makeRequestItem(args);
+          const dag = takeDagGraph(args.dagGraph);
+          if (!dag.ok) return errorToolResult(dag.message);
+          const item = makeRequestItem({ ...args, dagGraph: dag.dagGraph });
+          if (dag.dagGraph) item.protocol = "dag";
           withEntityRetry(() => {
             const { collection, version } = ctx.store.entities.getCollection(args.collectionId);
             if (!collection) throw new Error(`Collection '${args.collectionId}' not found`);
@@ -199,10 +227,13 @@ export function registerWriteTools(server: McpServer, ctx: ServerContext): void 
 
     server.registerTool(
       "save_ad_hoc_as_request",
-      { title: "Save ad-hoc request", description: "Persist an ad-hoc request into a collection.", inputSchema: requestFields, annotations: MUTATES },
+      { title: "Save ad-hoc request", description: "Persist an ad-hoc request into a collection. Accepts the same fields as create_request, including dagGraph for flows.", inputSchema: requestFields, annotations: MUTATES },
       async (args) => {
         try {
-          const item = makeRequestItem(args);
+          const dag = takeDagGraph(args.dagGraph);
+          if (!dag.ok) return errorToolResult(dag.message);
+          const item = makeRequestItem({ ...args, dagGraph: dag.dagGraph });
+          if (dag.dagGraph) item.protocol = "dag";
           withEntityRetry(() => {
             const { collection, version } = ctx.store.entities.getCollection(args.collectionId);
             if (!collection) throw new Error(`Collection '${args.collectionId}' not found`);
